@@ -6,9 +6,18 @@ test_root=$(mktemp -d)
 worker_pid=
 gateway_pid=
 cleanup() {
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    printf '%s\n' '--- Worker log ---' >&2
+    cat "$test_root/worker.log" >&2 2>/dev/null || true
+    printf '%s\n' '--- Gateway log ---' >&2
+    cat "$test_root/gateway.log" >&2 2>/dev/null || true
+  fi
   [ -z "$gateway_pid" ] || kill "$gateway_pid" 2>/dev/null || true
   [ -z "$worker_pid" ] || kill "$worker_pid" 2>/dev/null || true
   rm -rf "$test_root"
+  trap - EXIT INT TERM
+  exit "$status"
 }
 trap cleanup EXIT INT TERM
 
@@ -45,10 +54,13 @@ EOF
 
 HOME="$test_root/home" "$test_root/install/node_modules/.bin/queqiao-worker" >"$test_root/worker.log" 2>&1 & worker_pid=$!
 HOME="$test_root/home" "$test_root/install/node_modules/.bin/queqiao-gateway" >"$test_root/gateway.log" 2>&1 & gateway_pid=$!
-for attempt in $(seq 1 40); do
+health=
+for attempt in $(seq 1 120); do
+  kill -0 "$worker_pid" 2>/dev/null || exit 1
+  kill -0 "$gateway_pid" 2>/dev/null || exit 1
   health=$(curl -fsS http://127.0.0.1:17575/health 2>/dev/null || true)
   echo "$health" | grep -q '"online":true' && break
-  sleep 0.25
+  sleep 0.5
 done
 echo "$health" | grep -q '"environmentId":"linux-ci"'
 echo "$health" | grep -q '"online":true'
