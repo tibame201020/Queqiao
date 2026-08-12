@@ -1,9 +1,10 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { WorkspaceCatalog, type WorkerWorkspaceConfig, workspaceAllowsTool } from "./workspace-catalog.js";
 import { createWorkerToolRuntime, WorkerToolError } from "./core-tools.js";
 import { ProcessCapacityError, ProcessRunner } from "@queqiao/process-runtime";
+import { QUEQIAO_PROTOCOL_VERSION, QUEQIAO_WORKER_CAPABILITIES } from "@queqiao/protocol";
 
 export type WorkerAppConfig = { environmentId: string; defaultWorkspaceId: string; workspaces?: readonly WorkerWorkspaceConfig[]; workspacesFile?: string; workerToken: string };
 const readRequestSchema = z.object({ workspaceId: z.string().min(1), path: z.string().min(1).max(4096), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(5000).default(500) });
@@ -15,6 +16,7 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   await catalog.initialize();
   const tools = createWorkerToolRuntime();
   const processes = new ProcessRunner();
+  const hello = { protocolVersion: QUEQIAO_PROTOCOL_VERSION, environmentId: config.environmentId, instanceId: randomUUID(), platform: process.platform === "win32" ? "windows" as const : process.platform === "darwin" ? "darwin" as const : "linux" as const, capabilities: [...QUEQIAO_WORKER_CAPABILITIES] };
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "6mb" }));
@@ -26,6 +28,7 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   app.use(async (_req, _res, next) => { try { await catalog.refresh(); next(); } catch (error) { console.error("Workspace config reload rejected", error); next(); } });
   const descriptors = () => catalog.list().map(({ config: entry, reader }) => ({ environmentId: config.environmentId, workspaceId: entry.id, displayName: entry.displayName, root: reader.root, profile: entry.profile, tools: entry.tools, commands: entry.commands }));
   app.get("/health", (_req, res) => res.json({ ok: true, service: "queqiao-worker", environmentId: config.environmentId, defaultWorkspaceId: config.defaultWorkspaceId, workspaceCount: catalog.size() }));
+  app.get("/v1/hello", (_req, res) => res.json(hello));
   app.get("/v1/workspaces", (_req, res) => res.json({ environmentId: config.environmentId, defaultWorkspaceId: config.defaultWorkspaceId, workspaces: descriptors() }));
   app.get("/v1/workspaces/:workspaceId", (req, res) => { const workspace = catalog.get(req.params.workspaceId); if (!workspace) return res.status(404).json({ error: "workspace_not_found" }); const requestedTool = req.query.tool === "workspace_info" ? "workspace_info" : "open_workspace"; if (!workspaceAllowsTool(workspace.config, requestedTool)) return res.status(403).json({ error: "tool_denied", message: `${requestedTool} is denied by workspace policy` }); res.json({ environmentId: config.environmentId, workspaceId: workspace.config.id, displayName: workspace.config.displayName, root: workspace.reader.root, profile: workspace.config.profile, tools: workspace.config.tools, commands: workspace.config.commands }); });
   app.post("/v1/tools/:toolName", async (req, res) => {

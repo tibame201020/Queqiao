@@ -6,6 +6,7 @@ const base = {
   OAUTH_APPROVAL_SECRET: "approval-secret-long-enough",
   JWT_SIGNING_SECRET: "signing-secret-with-at-least-thirty-two-bytes",
   QUEQIAO_WORKER_TOKEN: "worker-token-with-at-least-thirty-two-bytes",
+  QUEQIAO_STATE_DIR: "/tmp/queqiao-gateway-test",
 };
 
 describe("Gateway security configuration", () => {

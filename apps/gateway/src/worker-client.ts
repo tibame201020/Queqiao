@@ -1,4 +1,5 @@
 import type { WorkerEndpointConfig } from "./config.js";
+import { QUEQIAO_WORKER_CAPABILITIES, workerHelloSchema, type WorkerHello } from "@queqiao/protocol";
 
 class WorkerHttpError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -6,6 +7,7 @@ class WorkerHttpError extends Error {
 
 export class WorkerClient {
   readonly environmentId: string;
+  private handshakePromise: Promise<WorkerHello> | undefined;
   constructor(private readonly config: WorkerEndpointConfig) { this.environmentId = config.environmentId; }
   private async request<T>(pathname: string, init: RequestInit = {}): Promise<T> {
     const timeout = AbortSignal.timeout(125_000);
@@ -15,9 +17,18 @@ export class WorkerClient {
     if (!response.ok) throw new WorkerHttpError(response.status, data.message || `Worker returned HTTP ${response.status}`);
     return data;
   }
-  listWorkspaces() { return this.request<{ environmentId: string; defaultWorkspaceId: string; workspaces: Array<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[] }; commands: { allow: string[] } }> }>("/v1/workspaces"); }
-  workspaceInfo(workspaceId: string, tool: "workspace_info" | "open_workspace" = "open_workspace") { return this.request<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[] }; commands: { allow: string[] } }>(`/v1/workspaces/${encodeURIComponent(workspaceId)}?tool=${tool}`); }
-  invokeTool<T>(toolName: string, input: unknown, signal?: AbortSignal) { return this.request<{ result: T }>(`/v1/tools/${encodeURIComponent(toolName)}`, { method: "POST", body: JSON.stringify(input), ...(signal ? { signal } : {}) }).then(({ result }) => result); }
+  handshake(): Promise<WorkerHello> {
+    this.handshakePromise ??= this.request<unknown>("/v1/hello").then((value) => {
+      const hello = workerHelloSchema.parse(value);
+      if (hello.environmentId !== this.environmentId) throw new Error("Worker identity mismatch");
+      for (const capability of QUEQIAO_WORKER_CAPABILITIES) if (!hello.capabilities.includes(capability)) throw new Error(`Worker capability missing: ${capability}`);
+      return hello;
+    }).catch((error) => { this.handshakePromise = undefined; throw error; });
+    return this.handshakePromise;
+  }
+  async listWorkspaces() { await this.handshake(); return this.request<{ environmentId: string; defaultWorkspaceId: string; workspaces: Array<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[] }; commands: { allow: string[] } }> }>("/v1/workspaces"); }
+  async workspaceInfo(workspaceId: string, tool: "workspace_info" | "open_workspace" = "open_workspace") { await this.handshake(); return this.request<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[] }; commands: { allow: string[] } }>(`/v1/workspaces/${encodeURIComponent(workspaceId)}?tool=${tool}`); }
+  async invokeTool<T>(toolName: string, input: unknown, signal?: AbortSignal) { await this.handshake(); return this.request<{ result: T }>(`/v1/tools/${encodeURIComponent(toolName)}`, { method: "POST", body: JSON.stringify(input), ...(signal ? { signal } : {}) }).then(({ result }) => result); }
   async readFile(input: { workspaceId: string; path: string; offset: number; limit: number }) {
     try {
       return await this.invokeTool<{ path: string; startLine: number; endLine: number; totalLines: number; text: string }>("read_file", input);

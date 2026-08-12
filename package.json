@@ -1,48 +1,78 @@
 {
-  "name": "queqiao",
+  "name": "@tibame201020/queqiao",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "description": "One secure bridge between AI clients and multiple coding environments.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tibame201020/Queqiao.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tibame201020/Queqiao/issues"
+  },
+  "homepage": "https://github.com/tibame201020/Queqiao#readme",
+  "keywords": [
+    "mcp",
+    "chatgpt",
+    "coding-agent",
+    "gateway",
+    "oauth"
+  ],
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
     "build": "tsc -b",
+    "build:package": "node scripts/build-package.mjs",
+    "prepack": "npm run check && npm run build:package",
     "clean": "tsc -b --clean",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
-    "test:security": "vitest run apps/gateway/src/security-baseline.test.ts apps/gateway/src/config.test.ts apps/gateway/src/request-budget.test.ts apps/gateway/src/worker-client.test.ts apps/gateway/src/worker-registry.test.ts apps/worker/src/permission.test.ts packages/policy/src/index.test.ts packages/security/src/approval.test.ts packages/security/src/canonical-request.test.ts packages/workspace/src/index.test.ts packages/process-runtime/src/index.test.ts",
-    "security:gate": "npm run typecheck && npm run test:security",
+    "test:security": "vitest run packages/platform-paths/src/index.test.ts apps/cli/src/runtime-migration.test.ts apps/gateway/src/security-baseline.test.ts apps/gateway/src/config.test.ts apps/gateway/src/request-budget.test.ts apps/gateway/src/worker-client.test.ts apps/gateway/src/worker-registry.test.ts apps/worker/src/permission.test.ts packages/policy/src/index.test.ts packages/security/src/approval.test.ts packages/security/src/canonical-request.test.ts packages/workspace/src/index.test.ts packages/process-runtime/src/index.test.ts",
+    "test:cluster": "vitest run apps/gateway/src/worker-client.test.ts apps/gateway/src/worker-registry.test.ts apps/worker/src/permission.test.ts apps/gateway/src/app.test.ts",
+    "security:gate": "npm run typecheck && npm run test:security && npm audit --omit=dev --audit-level=moderate",
     "check": "npm run clean && npm run typecheck && npm test",
     "start:worker": "tsx apps/worker/src/index.ts",
-    "start:gateway": "tsx apps/gateway/src/index.ts"
-    ,"queqiao": "tsx apps/cli/src/index.ts"
+    "start:gateway": "tsx apps/gateway/src/index.ts",
+    "queqiao": "tsx apps/cli/src/index.ts"
   },
   "engines": {
     "node": ">=22.19 <25",
-    "npm": ">=11"
+    "npm": ">=9"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@types/express": "5.0.6",
+    "@types/node": "^24.10.0",
     "@types/supertest": "6.0.3",
+    "esbuild": "^0.28.2",
+    "express": "5.2.1",
+    "express-rate-limit": "8.6.2",
+    "jose": "6.1.3",
     "supertest": "7.1.4",
     "tsx": "4.23.12",
     "typescript": "7.0.2",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "yaml": "^2.9.0",
+    "zod": "4.4.3"
   },
   "allowScripts": {
     "esbuild@0.28.2": true
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
-    "dotenv": "17.2.3",
-    "express": "5.2.1",
-    "express-rate-limit": "8.6.2",
-    "jose": "6.1.3",
-    "zod": "4.4.3"
+  "bin": {
+    "queqiao": "dist/queqiao.js",
+    "queqiao-gateway": "dist/queqiao-gateway.js",
+    "queqiao-worker": "dist/queqiao-worker.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "config.example.yaml"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
-  ,"bin": { "queqiao": "apps/cli/dist/index.js" }
 }

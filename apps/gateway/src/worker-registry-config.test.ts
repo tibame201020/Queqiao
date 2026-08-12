@@ -8,21 +8,21 @@ let temporary: string | undefined;
 afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); temporary = undefined; });
 
 describe("ReloadableWorkerRegistry", () => {
-  it("adopts valid endpoint changes and retains the last good registry after invalid JSON", async () => {
+  it("adopts valid endpoint changes and retains the last good registry after invalid YAML", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-registry-"));
-    const file = path.join(temporary, "workers.json");
+    const file = path.join(temporary, "config.yaml");
     const first = [{ environmentId: "windows", url: "http://127.0.0.1:7576", token: "a".repeat(32) }];
-    await writeFile(file, JSON.stringify(first));
+    await writeFile(file, `environments:\n${first.map((entry) => `  - environmentId: ${entry.environmentId}\n    url: ${entry.url}\n    token: ${entry.token}`).join("\n")}\n`);
     const source = new ReloadableWorkerRegistry({ file });
     await source.initialize();
     expect((await source.current()).configuredEnvironmentIds()).toEqual(["windows"]);
 
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await writeFile(file, JSON.stringify([...first, { environmentId: "wsl", url: "http://127.0.0.1:7577", token: "b".repeat(32) }]));
+    await writeFile(file, `environments:\n  - environmentId: windows\n    url: http://127.0.0.1:7576\n    token: ${"a".repeat(32)}\n  - environmentId: wsl\n    url: http://127.0.0.1:7577\n    token: ${"b".repeat(32)}\n`);
     expect((await source.current()).configuredEnvironmentIds()).toEqual(["windows", "wsl"]);
 
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await writeFile(file, "not-json");
+    await writeFile(file, "environments: [invalid");
     expect((await source.current()).configuredEnvironmentIds()).toEqual(["windows", "wsl"]);
   });
 });

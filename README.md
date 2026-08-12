@@ -113,14 +113,52 @@ rename. A Worker validates every new root before replacing its in-memory catalog
 rejected update leaves the last-known-good catalog active.
 
 The verified WSL Worker is managed by a systemd user service and keeps its native
-workspace registry at `$XDG_CONFIG_HOME/queqiao/workspaces.json` (or
-`$HOME/.config/queqiao/workspaces.json`). Running the same
+configuration at `$XDG_CONFIG_HOME/queqiao/config.yaml` (or
+`$HOME/.config/queqiao/config.yaml`). Running the same
 compiled CLI inside WSL resolves and validates Linux paths without Windows mediation.
 
-## Run the v0 validation slice
+## Runtime configuration
 
-Create a local `.env` from `.env.example`, then start the two processes in separate
-terminals:
+Queqiao never requires secrets or machine-specific paths inside the source checkout.
+The bundled CLI resolves the platform layout and reports it with:
+
+```powershell
+npm run queqiao -- config paths
+```
+
+Installed from npm, initialize the external YAML config and run the native services:
+
+```shell
+npm install --global @tibame201020/queqiao
+queqiao config init --public-base-url https://example.invalid --workspace-root /path/to/project --workspace-id project
+queqiao-worker
+queqiao-gateway
+```
+
+The package is self-contained and exposes three independent process roles. Installing
+it does not start either service: a Gateway host runs `queqiao-gateway`, while every
+coding environment runs its own `queqiao-worker`. Before a Worker is considered online
+or receives a tool call, the Gateway performs an authenticated handshake and verifies
+its configured environment identity, protocol version, process instance ID, platform,
+and required capabilities.
+
+The frozen cluster baseline permits only loopback Worker endpoints. The shared token
+and handshake protect local Gateway-to-Worker routing; remote-host Workers require a
+future mutually authenticated transport and are not covered by this baseline.
+
+On Windows, configuration is stored under `%LOCALAPPDATA%\Queqiao`; on Linux and
+WSL it follows the XDG config, data, state, and runtime directories. Secrets are
+separate files referenced by `config.yaml`. User-editable configuration is YAML;
+OAuth client registrations and other internal state remain implementation-owned data.
+To migrate an older checkout safely,
+preview the non-overwriting plan and then execute it:
+
+```powershell
+npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao
+npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao --execute
+```
+
+After CLI-managed configuration exists, start the two processes in separate terminals:
 
 ```powershell
 npm run start:worker

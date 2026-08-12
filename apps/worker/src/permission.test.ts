@@ -9,6 +9,14 @@ let temporary: string | undefined;
 afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); temporary = undefined; });
 
 describe("Worker authoritative permission enforcement", () => {
+  it("exposes an authenticated, protocol-versioned Gateway handshake", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-handshake-"));
+    const app = await createWorkerApp({ environmentId: "linux", defaultWorkspaceId: "one", workerToken: "worker-secret", workspaces: [{ id: "one", displayName: "One", root: temporary }] });
+    await request(app).get("/v1/hello").expect(401);
+    const response = await request(app).get("/v1/hello").set("x-queqiao-worker-token", "worker-secret").expect(200);
+    expect(response.body).toMatchObject({ protocolVersion: "1.0", environmentId: "linux", capabilities: expect.arrayContaining(["workspace-routing", "tool-invocation"]) });
+    expect(response.body.instanceId).toMatch(/^[0-9a-f-]{36}$/);
+  });
   it("denies read_file even when called directly with a valid Worker credential", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-permission-"));
     await writeFile(path.join(temporary, "fixture.txt"), "secret\n");

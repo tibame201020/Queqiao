@@ -1,0 +1,36 @@
+version: 1
+gateway:
+  publicBaseUrl: https://example.invalid/
+  listen:
+    host: 0.0.0.0
+    port: 7575
+  trustProxyHops: 1
+  stateDirectory: /replace/with/queqiao/data/gateway
+  approvalSecretFile: /replace/with/queqiao/data/secrets/oauth-approval.secret
+  jwtSigningSecretFile: /replace/with/queqiao/data/secrets/jwt-signing.secret
+  allowedRedirectOrigins:
+    - https://chatgpt.com
+    - http://127.0.0.1
+    - http://localhost
+worker:
+  environmentId: local
+  listen:
+    host: 127.0.0.1
+    port: 7576
+  tokenFile: /replace/with/queqiao/data/secrets/worker-token.secret
+  defaultWorkspaceId: project
+environments:
+  - environmentId: local
+    url: http://127.0.0.1:7576
+    tokenFile: /replace/with/queqiao/data/secrets/worker-token.secret
+workspaces:
+  - id: project
+    displayName: Project
+    root: /replace/with/project
+    profile: read-only
+    tools:
+      allow: []
+      deny: []
+    commands:
+      allow: []
+    stepUp: []

@@ -1,9 +1,11 @@
-import "dotenv/config";
 import { createHash, randomBytes } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { loadRuntimeEnvironment, readRuntimeSecret } from "./runtime-env.mjs";
 
+await loadRuntimeEnvironment();
 const base = new URL(process.env.PUBLIC_BASE_URL);
+const approvalSecret = await readRuntimeSecret("OAUTH_APPROVAL_SECRET");
 const resource = new URL("mcp", base).href;
 const redirectUri = "http://127.0.0.1/callback";
 const verifier = randomBytes(40).toString("base64url");
@@ -12,7 +14,7 @@ async function json(url, init) { const response = await fetch(url, init); const 
 const registration = await json(new URL("oauth/register", base), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: "Queqiao run smoke", redirect_uris: [redirectUri], token_endpoint_auth_method: "none", scope: "queqiao:access" }) });
 const authorization = new URL("oauth/authorize", base);
 for (const [key, value] of Object.entries({ client_id: registration.client_id, redirect_uri: redirectUri, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: "queqiao:access", resource, state: "run-smoke" })) authorization.searchParams.set(key, value);
-const form = new URLSearchParams(authorization.searchParams); form.set("approval_secret", process.env.OAUTH_APPROVAL_SECRET);
+const form = new URLSearchParams(authorization.searchParams); form.set("approval_secret", approvalSecret);
 const approved = await fetch(new URL("oauth/authorize", base), { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form });
 if (approved.status !== 303) throw new Error(`Approval returned ${approved.status}`);
 const code = new URL(approved.headers.get("location")).searchParams.get("code");

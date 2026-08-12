@@ -52,9 +52,8 @@ export class ProcessRunner {
     const timeoutMs = request.timeoutMs ?? DEFAULT_PROCESS_TIMEOUT_MS;
     if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > MAX_PROCESS_TIMEOUT_MS) throw new Error(`timeoutMs must be between 100 and ${MAX_PROCESS_TIMEOUT_MS}`);
 
-    const resolvedExecutable = await resolveExecutable(request.executable);
     this.active += 1;
-    try { return await this.spawnAndCollect({ ...request, executable: resolvedExecutable, timeoutMs }); }
+    try { const resolvedExecutable = await resolveExecutable(request.executable); return await this.spawnAndCollect({ ...request, executable: resolvedExecutable, timeoutMs }); }
     finally { this.active -= 1; }
   }
 
