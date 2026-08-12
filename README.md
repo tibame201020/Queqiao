@@ -80,10 +80,11 @@ execute as bounded Worker-native primitives: no shell, no external command depen
 no symlink traversal, and workspace policy remains authoritative. See the
 [revision 3 evidence](docs/validation/filesystem-discovery-manifest-v3-chatgpt-2026-08-12.md).
 
-Manifest revision 4 is under validation. It adds an explicit `shell` tool while keeping
+Manifest revision 4 is frozen. It adds an explicit `shell` tool while keeping
 the safer argv-only `run` contract unchanged. `shell` is fail-closed: it requires a
 `coding` profile and an explicit workspace tool allow rule. Windows defaults to
-PowerShell and may explicitly select cmd or Git Bash; Linux/WSL defaults to Bash.
+PowerShell and may explicitly select cmd or Git Bash; Linux/WSL defaults to Bash. See
+the [revision 4 evidence](docs/validation/native-shell-manifest-v4-chatgpt-2026-08-12.md).
 
 Security Baseline v1 is frozen. OAuth replay protection, MCP request budgets, sanitized
 health reporting, fail-closed Worker routing, native policy enforcement, filesystem and
