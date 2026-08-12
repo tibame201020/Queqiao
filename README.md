@@ -80,6 +80,13 @@ execute as bounded Worker-native primitives: no shell, no external command depen
 no symlink traversal, and workspace policy remains authoritative. See the
 [revision 3 evidence](docs/validation/filesystem-discovery-manifest-v3-chatgpt-2026-08-12.md).
 
+Security Baseline v1 is frozen. OAuth replay protection, MCP request budgets, sanitized
+health reporting, fail-closed Worker routing, native policy enforcement, filesystem and
+process containment, and the documented adversarial matrix are enforced by required
+Windows/Linux GitHub checks. See the
+[security gate](docs/security/security-baseline-v1-gate.md) and
+[threat matrix](docs/security/security-baseline-v1-threat-matrix.md).
+
 ## CLI baseline
 
 The current management CLI supports:

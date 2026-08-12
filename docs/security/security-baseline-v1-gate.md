@@ -1,6 +1,6 @@
 # Security Baseline v1 gate
 
-Status: Candidate — not frozen
+Status: Frozen
 
 The gate is a required, repeatable release control. It does not certify that Queqiao
 is vulnerability-free; it guarantees that the documented adversarial invariants and
@@ -40,3 +40,12 @@ disabled, and has bounded execution time.
 Security Baseline v1 may be frozen only after the full threat matrix is classified,
 all Critical/High findings are closed or explicitly accepted, the gate passes on both
 operating systems, and the branch protection rule requires this workflow.
+
+## Freeze evidence
+
+- GitHub Actions run `31571038359` passed on 2026-08-12.
+- `Adversarial gate (ubuntu-latest)` passed.
+- `Adversarial gate (windows-latest)` passed.
+- `Runtime dependency audit` passed with no high-severity production finding.
+- `main` requires all three checks with strict status checks and administrator
+  enforcement; force pushes and deletion are disabled.
