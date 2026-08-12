@@ -5,14 +5,14 @@ import { parse } from "yaml";
 import { SafeWorkspace } from "@queqiao/workspace";
 import type { PublicToolName } from "@queqiao/protocol";
 
-const existingToolSchema = z.enum(["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "list_directory", "search_text"]);
+const existingToolSchema = z.enum(["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "shell", "list_directory", "search_text"]);
 
 export const workerWorkspaceConfigSchema = z.object({
   id: z.string().min(1).max(64).regex(/^[a-z][a-z0-9_-]*$/),
   displayName: z.string().min(1).max(128),
   root: z.string().min(1),
   profile: z.enum(["read-only", "editor", "coding"]).default("read-only"),
-  tools: z.object({ allow: z.array(existingToolSchema).default([]), deny: z.array(existingToolSchema).default([]) }).default({ allow: [], deny: [] }),
+  tools: z.object({ allow: z.array(existingToolSchema).default([]), deny: z.array(existingToolSchema).default([]), explicit: z.array(existingToolSchema).default([]) }).default({ allow: [], deny: [], explicit: [] }),
   commands: z.object({ allow: z.array(z.string().min(1).max(128)).default([]) }).default({ allow: [] }),
 });
 export type WorkerWorkspaceConfig = z.infer<typeof workerWorkspaceConfigSchema>;
@@ -74,7 +74,8 @@ export class WorkspaceCatalog {
 
 export function workspaceAllowsTool(config: WorkerWorkspaceConfig, tool: PublicToolName): boolean {
   if (["write_file", "edit_file", "apply_patch"].includes(tool) && config.profile === "read-only") return false;
-  if (tool === "run" && config.profile !== "coding") return false;
+  if (["run", "shell"].includes(tool) && config.profile !== "coding") return false;
   if (config.tools.deny.includes(tool as typeof config.tools.deny[number])) return false;
+  if (tool === "shell") return config.tools.explicit.includes("shell");
   return config.tools.allow.length === 0 || config.tools.allow.includes(tool as typeof config.tools.allow[number]);
 }

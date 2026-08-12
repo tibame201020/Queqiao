@@ -4,7 +4,7 @@ import { MAX_PROCESS_TIMEOUT_MS, type ProcessRunner } from "@queqiao/process-run
 import { ToolRuntime, type QueqiaoExtension } from "@queqiao/tool-runtime";
 import { workspaceAllowsTool, type WorkspaceCatalog } from "./workspace-catalog.js";
 
-export type WorkerToolContext = { catalog: WorkspaceCatalog; processes: ProcessRunner; signal?: AbortSignal };
+export type WorkerToolContext = { catalog: WorkspaceCatalog; processes: Pick<ProcessRunner, "run">; signal?: AbortSignal };
 
 const workerCoreTools: QueqiaoExtension<WorkerToolContext> = {
   manifest: {
@@ -144,8 +144,44 @@ const workerCoreTools: QueqiaoExtension<WorkerToolContext> = {
         return context.processes.run({ executable, args, cwd: absoluteCwd, timeoutMs, ...(context.signal ? { signal: context.signal } : {}) });
       },
     });
+
+    api.registerTool({
+      name: "shell",
+      title: "Run native shell",
+      description: "Run a command through the native environment shell in an explicitly authorized coding workspace.",
+      inputSchema: z.object({
+        workspaceId: z.string().min(1).max(64),
+        shell: z.enum(["default", "bash", "powershell", "cmd", "git-bash"]).default("default"),
+        command: z.string().min(1).max(32_768).refine((value) => !value.includes("\0"), "command must not contain NUL"),
+        cwd: z.string().min(1).max(4096).default("."),
+        timeoutMs: z.number().int().min(100).max(MAX_PROCESS_TIMEOUT_MS).default(30_000),
+      }),
+      requiredCapabilities: ["workspace:exec"],
+      risk: "execute",
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      async execute(input, context) {
+        const { workspaceId, shell, command, cwd, timeoutMs } = input as { workspaceId: string; shell: "default" | "bash" | "powershell" | "cmd" | "git-bash"; command: string; cwd: string; timeoutMs: number };
+        const workspace = context.catalog.get(workspaceId);
+        if (!workspace) throw new WorkerToolError(404, "workspace_not_found", `Workspace is not available: ${workspaceId}`);
+        if (!workspaceAllowsTool(workspace.config, "shell")) throw new WorkerToolError(403, "tool_denied", "shell requires a coding profile and explicit workspace allow policy");
+        const absoluteCwd = await workspace.reader.resolveDirectory(cwd);
+        const invocation = nativeShellInvocation(shell, command);
+        return { shell: invocation.name, ...(await context.processes.run({ executable: invocation.executable, args: invocation.args, cwd: absoluteCwd, timeoutMs, ...(context.signal ? { signal: context.signal } : {}) })) };
+      },
+    });
   },
 };
+
+function nativeShellInvocation(shell: "default" | "bash" | "powershell" | "cmd" | "git-bash", command: string): { name: string; executable: string; args: string[] } {
+  if (process.platform === "win32") {
+    if (shell === "default" || shell === "powershell") return { name: "powershell", executable: "powershell.exe", args: ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command] };
+    if (shell === "cmd") return { name: "cmd", executable: "cmd.exe", args: ["/d", "/s", "/c", command] };
+    if (shell === "bash" || shell === "git-bash") return { name: "git-bash", executable: "bash.exe", args: ["-lc", command] };
+  } else if (shell === "default" || shell === "bash") {
+    return { name: "bash", executable: "bash", args: ["-lc", command] };
+  }
+  throw new WorkerToolError(400, "shell_unavailable", `${shell} is not supported by this ${process.platform} Worker`);
+}
 
 export class WorkerToolError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {

@@ -55,6 +55,7 @@ describe("Queqiao v0 vertical slice", () => {
     const authorization = { client_id: registered.body.client_id as string, redirect_uri: "https://chatgpt.com/connector/oauth/callback", response_type: "code", code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256", scope: "workspace:read", resource: "http://localhost:7575/mcp", state: "v0" };
     const authorizationPage = await request(gateway).get("/oauth/authorize").set("Host", "localhost").query(authorization).expect(200);
     expect(authorizationPage.text).toContain("Scopes: queqiao:access");
+    expect(authorizationPage.headers["content-security-policy"]).toContain("form-action 'self' https://chatgpt.com");
     const approved = await request(gateway).post("/oauth/authorize").set("Host", "localhost").type("form").send({ ...authorization, approval_secret: "correct horse battery staple" }).expect(303);
     const code = new URL(approved.headers.location).searchParams.get("code");
     const token = await request(gateway).post("/oauth/token").set("Host", "localhost").type("form").send({ grant_type: "authorization_code", code, redirect_uri: authorization.redirect_uri, client_id: authorization.client_id, code_verifier: verifier, resource: authorization.resource }).expect(200);

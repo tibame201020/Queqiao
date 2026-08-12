@@ -1,7 +1,7 @@
 import { WorkerClient } from "./worker-client.js";
 import type { WorkerEndpointConfig } from "./config.js";
 
-export type WorkspaceRoute = { environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[] }; commands: { allow: string[] }; online: true };
+export type WorkspaceRoute = { environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] }; online: true };
 export type EnvironmentState = { environmentId: string; online: boolean; defaultWorkspaceId?: string; workspaces: WorkspaceRoute[] };
 
 export class WorkerRegistry {
@@ -46,6 +46,7 @@ export class WorkerRegistry {
     const workspace = state.workspaces.find((entry) => entry.workspaceId === workspaceId);
     if (!workspace) throw new Error(`Workspace is not available: ${workspaceId}`);
     if (workspace.tools.deny.includes(tool)) throw new Error(`${tool} is denied by workspace policy`);
+    if (tool === "shell" && !workspace.tools.explicit.includes("shell")) throw new Error("shell requires explicit workspace allow policy");
     if (workspace.tools.allow.length > 0 && !workspace.tools.allow.includes(tool)) throw new Error(`${tool} is not allowed by workspace policy`);
   }
 
@@ -56,4 +57,5 @@ export class WorkerRegistry {
   async writeFile(input: { workspaceId: string; path: string; content: string }) { const worker = await this.route(input.workspaceId); return worker.writeFile(input); }
   async editFile(input: { workspaceId: string; path: string; oldText: string; newText: string }) { const worker = await this.route(input.workspaceId); return worker.editFile(input); }
   async run(input: { workspaceId: string; executable: string; args: string[]; cwd: string; timeoutMs: number }, signal?: AbortSignal) { const worker = await this.route(input.workspaceId); return worker.run(input, signal); }
+  async shell(input: { workspaceId: string; shell: "default" | "bash" | "powershell" | "cmd" | "git-bash"; command: string; cwd: string; timeoutMs: number }, signal?: AbortSignal) { const worker = await this.route(input.workspaceId); return worker.shell(input, signal); }
 }

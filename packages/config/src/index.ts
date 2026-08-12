@@ -14,6 +14,7 @@ export const QUEQIAO_CONFIG_VERSION = 1 as const;
 const toolRulesSchema = z.object({
   allow: z.array(publicToolNameSchema).default([]),
   deny: z.array(publicToolNameSchema).default([]),
+  explicit: z.array(publicToolNameSchema).default([]),
 });
 
 const commandRulesSchema = z.object({
@@ -32,7 +33,7 @@ export const workspaceConfigSchema = z.object({
   displayName: z.string().min(1).max(128),
   root: z.string().min(1),
   profile: permissionProfileSchema.default("read-only"),
-  tools: toolRulesSchema.default({ allow: [], deny: [] }),
+  tools: toolRulesSchema.default({ allow: [], deny: [], explicit: [] }),
   commands: commandRulesSchema.default({ allow: [] }),
   stepUp: z.array(stepUpRuleSchema).default([]),
 });
@@ -75,6 +76,11 @@ export const runtimeConfigSchema = z.object({
     tokenFile: z.string().min(1), defaultWorkspaceId: workspaceIdSchema,
   }).optional(),
   environments: z.array(environmentSchema).default([]),
+  discovery: z.object({
+    roots: z.array(z.string().min(1)).default([]),
+    maxDepth: z.number().int().min(1).max(8).default(4),
+    exclude: z.array(z.string().min(1).max(128)).default(["node_modules", ".cache", ".config", ".local", ".ssh", ".gnupg", ".aws", ".azure", ".npm", ".nvm"]),
+  }).default({ roots: [], maxDepth: 4, exclude: ["node_modules", ".cache", ".config", ".local", ".ssh", ".gnupg", ".aws", ".azure", ".npm", ".nvm"] }),
   workspaces: z.array(workspaceConfigSchema).default([]),
 });
 export type RuntimeConfig = z.infer<typeof runtimeConfigSchema>;

@@ -2,11 +2,11 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { WorkspaceCatalog, type WorkerWorkspaceConfig, workspaceAllowsTool } from "./workspace-catalog.js";
-import { createWorkerToolRuntime, WorkerToolError } from "./core-tools.js";
+import { createWorkerToolRuntime, WorkerToolError, type WorkerToolContext } from "./core-tools.js";
 import { ProcessCapacityError, ProcessRunner } from "@queqiao/process-runtime";
 import { QUEQIAO_PROTOCOL_VERSION, QUEQIAO_WORKER_CAPABILITIES } from "@queqiao/protocol";
 
-export type WorkerAppConfig = { environmentId: string; defaultWorkspaceId: string; workspaces?: readonly WorkerWorkspaceConfig[]; workspacesFile?: string; workerToken: string };
+export type WorkerAppConfig = { environmentId: string; defaultWorkspaceId: string; workspaces?: readonly WorkerWorkspaceConfig[]; workspacesFile?: string; workerToken: string; processes?: WorkerToolContext["processes"] };
 const readRequestSchema = z.object({ workspaceId: z.string().min(1), path: z.string().min(1).max(4096), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(5000).default(500) });
 function safeEqual(left: string, right: string): boolean { return timingSafeEqual(createHash("sha256").update(left).digest(), createHash("sha256").update(right).digest()); }
 
@@ -15,7 +15,7 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   const catalog = new WorkspaceCatalog(config.defaultWorkspaceId, config.workspacesFile ? { file: config.workspacesFile } : { workspaces: config.workspaces! });
   await catalog.initialize();
   const tools = createWorkerToolRuntime();
-  const processes = new ProcessRunner();
+  const processes = config.processes ?? new ProcessRunner();
   const hello = { protocolVersion: QUEQIAO_PROTOCOL_VERSION, environmentId: config.environmentId, instanceId: randomUUID(), platform: process.platform === "win32" ? "windows" as const : process.platform === "darwin" ? "darwin" as const : "linux" as const, capabilities: [...QUEQIAO_WORKER_CAPABILITIES] };
   const app = express();
   app.disable("x-powered-by");

@@ -26,8 +26,8 @@ export class WorkerClient {
     }).catch((error) => { this.handshakePromise = undefined; throw error; });
     return this.handshakePromise;
   }
-  async listWorkspaces() { await this.handshake(); return this.request<{ environmentId: string; defaultWorkspaceId: string; workspaces: Array<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[] }; commands: { allow: string[] } }> }>("/v1/workspaces"); }
-  async workspaceInfo(workspaceId: string, tool: "workspace_info" | "open_workspace" = "open_workspace") { await this.handshake(); return this.request<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[] }; commands: { allow: string[] } }>(`/v1/workspaces/${encodeURIComponent(workspaceId)}?tool=${tool}`); }
+  async listWorkspaces() { await this.handshake(); return this.request<{ environmentId: string; defaultWorkspaceId: string; workspaces: Array<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] } }> }>("/v1/workspaces"); }
+  async workspaceInfo(workspaceId: string, tool: "workspace_info" | "open_workspace" = "open_workspace") { await this.handshake(); return this.request<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] } }>(`/v1/workspaces/${encodeURIComponent(workspaceId)}?tool=${tool}`); }
   async invokeTool<T>(toolName: string, input: unknown, signal?: AbortSignal) { await this.handshake(); return this.request<{ result: T }>(`/v1/tools/${encodeURIComponent(toolName)}`, { method: "POST", body: JSON.stringify(input), ...(signal ? { signal } : {}) }).then(({ result }) => result); }
   async readFile(input: { workspaceId: string; path: string; offset: number; limit: number }) {
     try {
@@ -42,4 +42,5 @@ export class WorkerClient {
   writeFile(input: { workspaceId: string; path: string; content: string }) { return this.invokeTool<{ path: string; bytes: number }>("write_file", input); }
   editFile(input: { workspaceId: string; path: string; oldText: string; newText: string }) { return this.invokeTool<{ path: string; bytes: number; replacements: number }>("edit_file", input); }
   run(input: { workspaceId: string; executable: string; args: string[]; cwd: string; timeoutMs: number }, signal?: AbortSignal) { return this.invokeTool<{ exitCode: number | null; signal: string | null; stdout: string; stderr: string; durationMs: number; timedOut: boolean; aborted: boolean; outputLimitExceeded: boolean }>("run", input, signal); }
+  shell(input: { workspaceId: string; shell: "default" | "bash" | "powershell" | "cmd" | "git-bash"; command: string; cwd: string; timeoutMs: number }, signal?: AbortSignal) { return this.invokeTool<{ shell: string; exitCode: number | null; signal: string | null; stdout: string; stderr: string; durationMs: number; timedOut: boolean; aborted: boolean; outputLimitExceeded: boolean }>("shell", input, signal); }
 }

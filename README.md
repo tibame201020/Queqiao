@@ -80,6 +80,12 @@ execute as bounded Worker-native primitives: no shell, no external command depen
 no symlink traversal, and workspace policy remains authoritative. See the
 [revision 3 evidence](docs/validation/filesystem-discovery-manifest-v3-chatgpt-2026-08-12.md).
 
+Manifest revision 4 is frozen. It adds an explicit `shell` tool while keeping
+the safer argv-only `run` contract unchanged. `shell` is fail-closed: it requires a
+`coding` profile and an explicit workspace tool allow rule. Windows defaults to
+PowerShell and may explicitly select cmd or Git Bash; Linux/WSL defaults to Bash. See
+the [revision 4 evidence](docs/validation/native-shell-manifest-v4-chatgpt-2026-08-12.md).
+
 Security Baseline v1 is frozen. OAuth replay protection, MCP request budgets, sanitized
 health reporting, fail-closed Worker routing, native policy enforcement, filesystem and
 process containment, and the documented adversarial matrix are enforced by required
@@ -96,6 +102,11 @@ queqiao workspace list
 queqiao workspace init --id <id> --name <name> --root <path>
 queqiao workspace add --id <id> --name <name> --root <path>
 queqiao workspace remove --id <id>
+queqiao discovery list
+queqiao discovery add --root <path>
+queqiao discovery remove --root <path>
+queqiao workspace discover
+queqiao workspace approve --id <id> --name <name> --root <discovered-repository>
 queqiao environment list
 queqiao environment add --id <id> --url <loopback-url> --token-file <path>
 queqiao environment remove --id <id>
@@ -107,6 +118,11 @@ queqiao command deny --workspace <id> --command <executable>
 queqiao permissions show
 queqiao doctor
 ```
+
+Discovery roots are search boundaries, never workspace grants. Discovery is read-only,
+bounded by depth, skips symlinks and sensitive/excluded directories, and reports Git
+repository candidates. A candidate becomes accessible to MCP only after the separate
+`workspace approve` operation.
 
 Configuration changes use an exclusive lock, validated temporary file, and atomic
 rename. A Worker validates every new root before replacing its in-memory catalog; a

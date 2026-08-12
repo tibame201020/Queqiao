@@ -30,7 +30,7 @@
     "clean": "tsc -b --clean",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
-    "test:security": "vitest run packages/platform-paths/src/index.test.ts apps/cli/src/runtime-migration.test.ts apps/gateway/src/security-baseline.test.ts apps/gateway/src/config.test.ts apps/gateway/src/request-budget.test.ts apps/gateway/src/worker-client.test.ts apps/gateway/src/worker-registry.test.ts apps/worker/src/permission.test.ts packages/policy/src/index.test.ts packages/security/src/approval.test.ts packages/security/src/canonical-request.test.ts packages/workspace/src/index.test.ts packages/process-runtime/src/index.test.ts",
+    "test:security": "vitest run packages/platform-paths/src/index.test.ts apps/cli/src/runtime-migration.test.ts apps/cli/src/workspace-discovery.test.ts apps/gateway/src/security-baseline.test.ts apps/gateway/src/config.test.ts apps/gateway/src/request-budget.test.ts apps/gateway/src/worker-client.test.ts apps/gateway/src/worker-registry.test.ts apps/worker/src/permission.test.ts packages/policy/src/index.test.ts packages/security/src/approval.test.ts packages/security/src/canonical-request.test.ts packages/workspace/src/index.test.ts packages/process-runtime/src/index.test.ts",
     "test:cluster": "vitest run apps/gateway/src/worker-client.test.ts apps/gateway/src/worker-registry.test.ts apps/worker/src/permission.test.ts apps/gateway/src/app.test.ts",
     "security:gate": "npm run typecheck && npm run test:security && npm audit --omit=dev --audit-level=moderate",
     "check": "npm run clean && npm run typecheck && npm test",
