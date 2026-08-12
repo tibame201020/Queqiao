@@ -52,8 +52,9 @@ workspaces:
     profile: read-only
 EOF
 
-HOME="$test_root/home" "$test_root/install/node_modules/.bin/queqiao-worker" >"$test_root/worker.log" 2>&1 & worker_pid=$!
-HOME="$test_root/home" "$test_root/install/node_modules/.bin/queqiao-gateway" >"$test_root/gateway.log" 2>&1 & gateway_pid=$!
+config_file="$test_root/home/.config/queqiao/config.yaml"
+QUEQIAO_CONFIG_FILE="$config_file" "$test_root/install/node_modules/.bin/queqiao-worker" >"$test_root/worker.log" 2>&1 & worker_pid=$!
+QUEQIAO_CONFIG_FILE="$config_file" "$test_root/install/node_modules/.bin/queqiao-gateway" >"$test_root/gateway.log" 2>&1 & gateway_pid=$!
 health=
 for attempt in $(seq 1 120); do
   kill -0 "$worker_pid" 2>/dev/null || exit 1
