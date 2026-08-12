@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "apps/worker" },
+    { "path": "apps/gateway" },
+    { "path": "apps/cli" },
+    { "path": "packages/protocol" },
+    { "path": "packages/config" },
+    { "path": "packages/security" },
+    { "path": "packages/policy" },
+    { "path": "packages/tool-runtime" },
+    { "path": "packages/workspace" },
+    { "path": "packages/process-runtime" }
+  ]
+}
