@@ -52,7 +52,9 @@ describe("Worker authoritative permission enforcement", () => {
 
   it("requires explicit shell permission and uses the host-native shell", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-shell-"));
-    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", defaultWorkspaceId: "allowed", workerToken: "worker-secret", workspaces: [
+    const invocations: Array<{ executable: string; args: readonly string[] }> = [];
+    const windowsExecutor = { async run(input: { executable: string; args: readonly string[] }) { invocations.push(input); return { exitCode: 0, signal: null, stdout: "native-shell-ok\r\n", stderr: "", durationMs: 1, timedOut: false, aborted: false, outputLimitExceeded: false }; } };
+    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", defaultWorkspaceId: "allowed", workerToken: "worker-secret", ...(process.platform === "win32" ? { processes: windowsExecutor } : {}), workspaces: [
       { id: "allowed", displayName: "Allowed", root: temporary, profile: "coding", tools: { allow: [], deny: [], explicit: ["shell"] } },
       { id: "implicit", displayName: "Implicit", root: temporary, profile: "coding" },
       { id: "editor", displayName: "Editor", root: temporary, profile: "editor", tools: { allow: [], deny: [], explicit: ["shell"] } },
@@ -61,8 +63,9 @@ describe("Worker authoritative permission enforcement", () => {
     const allowed = await request(app).post("/v1/tools/shell").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "allowed", shell: "default", command, cwd: "." }).expect(200);
     expect(allowed.body.result).toMatchObject({ shell: process.platform === "win32" ? "powershell" : "bash", exitCode: 0, timedOut: false });
     expect(allowed.body.result.stdout.trim()).toBe("native-shell-ok");
+    if (process.platform === "win32") expect(invocations[0]).toMatchObject({ executable: "powershell.exe", args: ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command] });
     await request(app).post("/v1/tools/shell").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "implicit", command }).expect(403);
     await request(app).post("/v1/tools/shell").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "editor", command }).expect(403);
     await request(app).post("/v1/tools/shell").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "allowed", command, cwd: ".." }).expect(400);
-  }, 15_000);
+  });
 });

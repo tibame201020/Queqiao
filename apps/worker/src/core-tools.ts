@@ -4,7 +4,7 @@ import { MAX_PROCESS_TIMEOUT_MS, type ProcessRunner } from "@queqiao/process-run
 import { ToolRuntime, type QueqiaoExtension } from "@queqiao/tool-runtime";
 import { workspaceAllowsTool, type WorkspaceCatalog } from "./workspace-catalog.js";
 
-export type WorkerToolContext = { catalog: WorkspaceCatalog; processes: ProcessRunner; signal?: AbortSignal };
+export type WorkerToolContext = { catalog: WorkspaceCatalog; processes: Pick<ProcessRunner, "run">; signal?: AbortSignal };
 
 const workerCoreTools: QueqiaoExtension<WorkerToolContext> = {
   manifest: {
