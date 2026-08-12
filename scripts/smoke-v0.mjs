@@ -1,11 +1,10 @@
-import { loadRuntimeEnvironment } from "@queqiao/platform-paths";
-import { readFile } from "node:fs/promises";
+import { loadRuntimeEnvironment, readRuntimeSecret } from "./runtime-env.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 await loadRuntimeEnvironment();
-const approvalSecret = process.env.OAUTH_APPROVAL_SECRET_FILE ? (await readFile(process.env.OAUTH_APPROVAL_SECRET_FILE, "utf8")).trim() : process.env.OAUTH_APPROVAL_SECRET;
+const approvalSecret = await readRuntimeSecret("OAUTH_APPROVAL_SECRET");
 const base = new URL(process.env.PUBLIC_BASE_URL);
 const resource = new URL("mcp", base).href;
 const redirectUri = "http://127.0.0.1/callback";

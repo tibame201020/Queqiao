@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { parse } from "yaml";
 import { SafeWorkspace } from "@queqiao/workspace";
 import type { PublicToolName } from "@queqiao/protocol";
 
@@ -48,7 +49,7 @@ export class WorkspaceCatalog {
       const info = await stat(this.source.file);
       if (!force && info.mtimeMs === this.loadedMtimeMs) return;
       mtimeMs = info.mtimeMs;
-      raw = JSON.parse(await readFile(this.source.file, "utf8"));
+      raw = (parse(await readFile(this.source.file, "utf8")) as { workspaces?: unknown }).workspaces;
     } else {
       if (!force) return;
       raw = this.source.workspaces;

@@ -13,19 +13,19 @@ describe("WorkspaceCatalog hot reload", () => {
     const firstRoot = path.join(temporary, "first");
     const secondRoot = path.join(temporary, "second");
     await Promise.all([mkdir(firstRoot), mkdir(secondRoot)]);
-    const file = path.join(temporary, "workspaces.json");
-    await writeFile(file, JSON.stringify([{ id: "first", displayName: "First", root: firstRoot }]));
+    const file = path.join(temporary, "config.yaml");
+    await writeFile(file, `workspaces:\n  - id: first\n    displayName: First\n    root: ${JSON.stringify(firstRoot)}\n`);
     const catalog = new WorkspaceCatalog("first", { file });
     await catalog.initialize();
     expect(catalog.list().map((entry) => entry.config.id)).toEqual(["first"]);
 
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await writeFile(file, JSON.stringify([{ id: "first", displayName: "First", root: firstRoot }, { id: "second", displayName: "Second", root: secondRoot }]));
+    await writeFile(file, `workspaces:\n  - id: first\n    displayName: First\n    root: ${JSON.stringify(firstRoot)}\n  - id: second\n    displayName: Second\n    root: ${JSON.stringify(secondRoot)}\n`);
     await catalog.refresh();
     expect(catalog.list().map((entry) => entry.config.id)).toEqual(["first", "second"]);
 
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await writeFile(file, JSON.stringify([{ id: "first", displayName: "Broken", root: path.join(temporary, "missing") }]));
+    await writeFile(file, `workspaces:\n  - id: first\n    displayName: Broken\n    root: ${JSON.stringify(path.join(temporary, "missing"))}\n`);
     await expect(catalog.refresh()).rejects.toThrow();
     expect(catalog.list().map((entry) => entry.config.id)).toEqual(["first", "second"]);
   });

@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { parse } from "yaml";
 import { WorkerRegistry } from "./worker-registry.js";
 import type { WorkerEndpointConfig } from "./config.js";
 
@@ -40,7 +41,8 @@ export class ReloadableWorkerRegistry {
       const info = await stat(this.source.file);
       if (!force && info.mtimeMs === this.loadedMtimeMs) return;
       mtimeMs = info.mtimeMs;
-      endpoints = await Promise.all(workerFileSchema.parse(JSON.parse(await readFile(this.source.file, "utf8"))).map(async (entry) => ({ environmentId: entry.environmentId, url: new URL(entry.url), token: entry.token || (await readFile(path.resolve(entry.tokenFile!), "utf8")).trim() })));
+      const document = parse(await readFile(this.source.file, "utf8")) as { environments?: unknown };
+      endpoints = await Promise.all(workerFileSchema.parse(document.environments).map(async (entry) => ({ environmentId: entry.environmentId, url: new URL(entry.url), token: entry.token || (await readFile(path.resolve(entry.tokenFile!), "utf8")).trim() })));
     } else {
       if (!force) return;
       endpoints = this.source.workers;

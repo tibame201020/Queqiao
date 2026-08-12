@@ -1,21 +1,17 @@
 import { readFile } from "node:fs/promises";
+import { readRuntimeConfig } from "@queqiao/config";
 import { resolveRuntimeLayout } from "@queqiao/platform-paths";
 
+let runtime;
 export async function loadRuntimeEnvironment() {
   const layout = resolveRuntimeLayout();
-  const source = process.env.QUEQIAO_ENV_FILE || layout.environmentFile;
-  const contents = await readFile(source, "utf8");
-  for (const line of contents.split(/\r?\n/)) {
-    const match = line.match(/^([A-Z][A-Z0-9_]*)=(.*)$/);
-    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2];
-  }
+  runtime = await readRuntimeConfig(process.env.QUEQIAO_CONFIG_FILE || layout.configFile);
+  if (runtime.gateway) process.env.PUBLIC_BASE_URL ||= runtime.gateway.publicBaseUrl;
   return layout;
 }
-
 export async function readRuntimeSecret(name) {
-  const file = process.env[`${name}_FILE`];
-  if (file) return (await readFile(file, "utf8")).trim();
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name}_FILE is required`);
-  return value;
+  if (!runtime) await loadRuntimeEnvironment();
+  const file = name === "OAUTH_APPROVAL_SECRET" ? runtime.gateway?.approvalSecretFile : undefined;
+  if (!file) throw new Error(`${name} is not configured`);
+  return (await readFile(file, "utf8")).trim();
 }

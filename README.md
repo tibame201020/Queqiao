@@ -113,8 +113,8 @@ rename. A Worker validates every new root before replacing its in-memory catalog
 rejected update leaves the last-known-good catalog active.
 
 The verified WSL Worker is managed by a systemd user service and keeps its native
-workspace registry at `$XDG_CONFIG_HOME/queqiao/workspaces.json` (or
-`$HOME/.config/queqiao/workspaces.json`). Running the same
+configuration at `$XDG_CONFIG_HOME/queqiao/config.yaml` (or
+`$HOME/.config/queqiao/config.yaml`). Running the same
 compiled CLI inside WSL resolves and validates Linux paths without Windows mediation.
 
 ## Runtime configuration
@@ -126,9 +126,20 @@ The bundled CLI resolves the platform layout and reports it with:
 npm run queqiao -- config paths
 ```
 
+Installed from npm, initialize the external YAML config and run the native services:
+
+```shell
+npm install --global @tibame201020/queqiao
+queqiao config init --public-base-url https://example.invalid --workspace-root /path/to/project --workspace-id project
+queqiao-worker
+queqiao-gateway
+```
+
 On Windows, configuration is stored under `%LOCALAPPDATA%\Queqiao`; on Linux and
 WSL it follows the XDG config, data, state, and runtime directories. Secrets are
-separate files referenced by `runtime.env`. To migrate an older checkout safely,
+separate files referenced by `config.yaml`. User-editable configuration is YAML;
+OAuth client registrations and other internal state remain implementation-owned data.
+To migrate an older checkout safely,
 preview the non-overwriting plan and then execute it:
 
 ```powershell
