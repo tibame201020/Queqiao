@@ -1,6 +1,6 @@
 # Security Baseline v1 threat matrix
 
-Status: Candidate audit
+Status: Frozen
 
 Ratings describe risk to Queqiao's MCP authentication, routing, authorization, and
 native execution boundary. Extension package provenance is assessed separately.
@@ -44,9 +44,10 @@ native execution boundary. Extension package provenance is assessed separately.
 - Local compromise of the same operating-system account is outside the remote MCP
   adversary boundary and can already access that user's files and process credentials.
 
-## Remaining freeze work
+## Freeze completion
 
-1. Add integration assertions for global approval throttling and registration lifecycle.
-2. Verify GitHub runners pass on both Windows and Linux after push.
-3. Configure branch protection to require the Security Baseline workflow.
-4. Run the public Funnel acceptance without changing the nine-tool manifest.
+1. Global approval throttling and concurrent registration persistence are covered by
+   adversarial integration tests.
+2. GitHub Actions run `31571038359` passed on Windows and Linux.
+3. The three Security Baseline jobs are required on `main` with administrator enforcement.
+4. Public Funnel acceptance passed without changing the nine-tool manifest.
