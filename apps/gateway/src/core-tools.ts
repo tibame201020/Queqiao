@@ -207,5 +207,28 @@ export const coreWorkspaceTools: QueqiaoExtension<GatewayToolContext> = {
         return { workspaceId: selected, executable, ...(await context.workers.run({ workspaceId: selected, executable, args, cwd, timeoutMs }, context.signal)) };
       },
     });
+
+    api.registerTool({
+      name: "shell",
+      title: "Run native shell",
+      description: "Run a command through the workspace environment's native shell. This high-risk tool must be explicitly enabled for a coding workspace.",
+      inputSchema: z.object({
+        workspaceId: z.string().min(1).optional(),
+        shell: z.enum(["default", "bash", "powershell", "cmd", "git-bash"]).default("default"),
+        command: z.string().min(1).max(32_768).refine((value) => !value.includes("\0"), "command must not contain NUL"),
+        cwd: z.string().min(1).max(4096).default("."),
+        timeoutMs: z.number().int().min(100).max(MAX_PROCESS_TIMEOUT_MS).default(30_000),
+      }),
+      requiredCapabilities: ["workspace:exec"],
+      risk: "execute",
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      async execute(input, context) {
+        requireHandshake(context);
+        const { workspaceId, shell, command, cwd, timeoutMs } = input as { workspaceId?: string; shell: "default" | "bash" | "powershell" | "cmd" | "git-bash"; command: string; cwd: string; timeoutMs: number };
+        const selected = await selectWorkspace(context, workspaceId);
+        await context.workers.requireTool(selected, "shell");
+        return { workspaceId: selected, ...(await context.workers.shell({ workspaceId: selected, shell, command, cwd, timeoutMs }, context.signal)) };
+      },
+    });
   },
 };

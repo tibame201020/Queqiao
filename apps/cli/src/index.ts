@@ -6,14 +6,15 @@ import { AtomicConfigStore } from "./atomic-config-store.js";
 import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig } from "@queqiao/config";
 import { resolveRuntimeLayout } from "@queqiao/platform-paths";
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
+import { discoverWorkspaces, resolveDiscoveryRoot } from "./workspace-discovery.js";
 
-const managedToolSchema = z.enum(["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "list_directory", "search_text"]);
+const managedToolSchema = z.enum(["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "shell", "list_directory", "search_text"]);
 const workspaceSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9_-]*$/),
   displayName: z.string().min(1),
   root: z.string().min(1),
   profile: z.enum(["read-only", "editor", "coding"]).default("read-only"),
-  tools: z.object({ allow: z.array(managedToolSchema).default([]), deny: z.array(managedToolSchema).default([]) }).default({ allow: [], deny: [] }),
+  tools: z.object({ allow: z.array(managedToolSchema).default([]), deny: z.array(managedToolSchema).default([]), explicit: z.array(managedToolSchema).default([]) }).default({ allow: [], deny: [], explicit: [] }),
   commands: z.object({ allow: z.array(z.string().min(1).max(128)).default([]) }).default({ allow: [] }),
 });
 
@@ -21,7 +22,7 @@ function option(args: string[], name: string): string | undefined { const index 
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
 function print(value: unknown) { process.stdout.write(`${JSON.stringify(value, null, 2)}\n`); }
 function unique<T>(values: T[]): T[] { return [...new Set(values)]; }
-function newWorkspace(id: string, displayName: string, root: string) { return workspaceConfigSchema.parse({ id, displayName, root, profile: "read-only", tools: { allow: [], deny: [] }, commands: { allow: [] } }); }
+function newWorkspace(id: string, displayName: string, root: string) { return workspaceConfigSchema.parse({ id, displayName, root, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }); }
 
 const args = process.argv.slice(2);
 const domain = args[0];
@@ -44,13 +45,26 @@ async function main() {
   if (domain === "workspace" && action === "list") return print({ ...(await configStore.metadata()), workspaces: (await configStore.read()).workspaces });
   if (domain === "workspace" && action === "init") {
     const id = requiredOption(args, "id"); const displayName = option(args, "name") || id; const root = path.resolve(requiredOption(args, "root")); await access(root);
-    const config = await configStore.initialize({ version: 1, environments: [], workspaces: [newWorkspace(id, displayName, root)] });
+    const config = await configStore.initialize(runtimeConfigSchema.parse({ version: 1, environments: [], workspaces: [newWorkspace(id, displayName, root)] }));
     return print({ initialized: true, file: configFile, workspaces: config.workspaces });
   }
   if (domain === "workspace" && action === "add") {
     const id = requiredOption(args, "id"); const displayName = option(args, "name") || id; const root = path.resolve(requiredOption(args, "root")); await access(root);
     const config = await configStore.update((current) => { if (current.workspaces.some((entry) => entry.id === id)) throw new Error(`Workspace already exists: ${id}`); return { ...current, workspaces: [...current.workspaces, newWorkspace(id, displayName, root)] }; }); const workspaces = config.workspaces;
     return print({ changed: true, workspace: id, workspaces });
+  }
+  if (domain === "workspace" && action === "discover") {
+    const config = await configStore.read();
+    const candidates = await discoverWorkspaces(config.discovery.roots, config.discovery.maxDepth, config.discovery.exclude);
+    const registered = new Set(await Promise.all(config.workspaces.map((entry) => path.resolve(entry.root))));
+    return print({ roots: config.discovery.roots, candidates: candidates.map((entry) => ({ ...entry, registered: registered.has(path.resolve(entry.root)) })) });
+  }
+  if (domain === "workspace" && action === "approve") {
+    const id = requiredOption(args, "id"); const displayName = option(args, "name") || id;
+    const current = await configStore.read();
+    const root = await resolveDiscoveryRoot(requiredOption(args, "root"), current.discovery.roots);
+    const config = await configStore.update((value) => { if (value.workspaces.some((entry) => entry.id === id)) throw new Error(`Workspace already exists: ${id}`); return { ...value, workspaces: [...value.workspaces, newWorkspace(id, displayName, root)] }; });
+    return print({ changed: true, approved: id, root, workspaces: config.workspaces });
   }
   if (domain === "workspace" && action === "remove") {
     const id = requiredOption(args, "id");
@@ -66,7 +80,7 @@ async function main() {
   if (domain === "tool" && (action === "allow" || action === "deny")) {
     const id = requiredOption(args, "workspace"); const tool = managedToolSchema.parse(requiredOption(args, "tool"));
     let found = false;
-    const config = await configStore.update((current) => ({ ...current, workspaces: current.workspaces.map((entry) => { if (entry.id !== id) return entry; found = true; const allow = entry.tools.allow.filter((item) => item !== tool); const deny = entry.tools.deny.filter((item) => item !== tool); return { ...entry, tools: action === "allow" ? { allow: unique([...allow, tool]), deny } : { allow, deny: unique([...deny, tool]) } }; }) })); const workspaces = config.workspaces;
+    const config = await configStore.update((current) => ({ ...current, workspaces: current.workspaces.map((entry) => { if (entry.id !== id) return entry; found = true; const allow = entry.tools.allow.filter((item) => item !== tool); const deny = entry.tools.deny.filter((item) => item !== tool); const explicit = entry.tools.explicit.filter((item) => item !== tool); if (tool === "shell") return { ...entry, tools: action === "allow" ? { allow, deny, explicit: unique([...explicit, tool]) } : { allow, deny: unique([...deny, tool]), explicit } }; return { ...entry, tools: action === "allow" ? { allow: unique([...allow, tool]), deny, explicit } : { allow, deny: unique([...deny, tool]), explicit } }; }) })); const workspaces = config.workspaces;
     if (!found) throw new Error(`Workspace not found: ${id}`);
     return print({ changed: true, workspaceId: id, tool, decision: action, policy: workspaces.find((entry) => entry.id === id)?.tools });
   }
@@ -80,6 +94,15 @@ async function main() {
   if (domain === "environment" && action === "list") {
     const environments = (await configStore.read()).environments;
     return print({ ...(await configStore.metadata()), environments });
+  }
+  if (domain === "discovery" && action === "list") {
+    const discovery = (await configStore.read()).discovery;
+    return print({ ...(await configStore.metadata()), discovery });
+  }
+  if (domain === "discovery" && (action === "add" || action === "remove")) {
+    const root = await realpathDirectory(requiredOption(args, "root"));
+    const config = await configStore.update((current) => ({ ...current, discovery: { ...current.discovery, roots: action === "add" ? unique([...current.discovery.roots, root]) : current.discovery.roots.filter((entry) => path.resolve(entry) !== root) } }));
+    return print({ changed: true, decision: action, root, discovery: config.discovery });
   }
   if (domain === "environment" && action === "add") {
     const environmentId = requiredOption(args, "id");
@@ -98,7 +121,7 @@ async function main() {
   }
   if (domain === "permissions" && action === "show") {
     const id = option(args, "workspace"); const workspaces = (await configStore.read()).workspaces; const selected = id ? workspaces.filter((entry) => entry.id === id) : workspaces; if (id && !selected.length) throw new Error(`Workspace not found: ${id}`);
-    return print({ version: "1.0", manifestRevision: 3, oauthScopes: ["queqiao:access"], publicTools: ["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "list_directory", "search_text"], workspaces: selected.map(({ root: _root, ...entry }) => entry), note: "OAuth authenticates the connector only. run requires a coding profile plus an allowlisted executable and never invokes a shell." });
+    return print({ version: "1.0", manifestRevision: 4, oauthScopes: ["queqiao:access"], publicTools: ["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "shell", "list_directory", "search_text"], workspaces: selected.map(({ root: _root, ...entry }) => entry), note: "OAuth authenticates the connector only. run is argv-only. shell requires a coding profile and an explicit tool allow policy." });
   }
   if (domain === "doctor") {
     const environments = await Promise.all((await configStore.read()).environments.map(async (entry) => { try { const response = await fetch(new URL("/health", entry.url), { signal: AbortSignal.timeout(3000) }); return { environmentId: entry.environmentId, online: response.ok, status: response.status }; } catch (error) { return { environmentId: entry.environmentId, online: false, error: error instanceof Error ? error.message : "Unknown error" }; } }));
@@ -107,7 +130,14 @@ async function main() {
   if (domain === "config" && action === "paths") return print(layout);
   if (domain === "migrate" && action === "from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));
   if (domain === "migrate" && action === "runtime-v1") return print(await migrateRuntimeLayoutV1(layout, args.includes("--execute")));
-  throw new Error("Usage: queqiao config init|paths, workspace init|list|add|remove, environment list|add|remove, profile set, tool allow|deny, command allow|deny, permissions show, doctor");
+  throw new Error("Usage: queqiao config init|paths, workspace init|list|add|remove|discover|approve, discovery list|add|remove, environment list|add|remove, profile set, tool allow|deny, command allow|deny, permissions show, doctor");
+}
+
+async function realpathDirectory(value: string): Promise<string> {
+  const resolved = path.resolve(value);
+  const info = await import("node:fs/promises").then(({ stat }) => stat(resolved));
+  if (!info.isDirectory()) throw new Error(`Discovery root is not a directory: ${resolved}`);
+  return import("node:fs/promises").then(({ realpath }) => realpath(resolved));
 }
 
 main().catch((error) => { process.stderr.write(`${error instanceof Error ? error.message : error}\n`); process.exitCode = 1; });

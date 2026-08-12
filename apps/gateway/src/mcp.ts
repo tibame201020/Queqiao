@@ -4,7 +4,7 @@ import { coreWorkspaceTools, type GatewayToolContext } from "./core-tools.js";
 import type { WorkerRegistry } from "./worker-registry.js";
 
 export const QUEQIAO_V0_TOOL_NAMES = ["workspace_info", "read_file"] as const;
-export const QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES = ["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "list_directory", "search_text"] as const;
+export const QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES = ["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "shell", "list_directory", "search_text"] as const;
 
 function result(value: unknown) {
   return { content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }] };

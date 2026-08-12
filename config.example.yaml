@@ -23,6 +23,20 @@ environments:
   - environmentId: local
     url: http://127.0.0.1:7576
     tokenFile: /replace/with/queqiao/data/secrets/worker-token.secret
+discovery:
+  roots: []
+  maxDepth: 4
+  exclude:
+    - node_modules
+    - .cache
+    - .config
+    - .local
+    - .ssh
+    - .gnupg
+    - .aws
+    - .azure
+    - .npm
+    - .nvm
 workspaces:
   - id: project
     displayName: Project
@@ -31,6 +45,7 @@ workspaces:
     tools:
       allow: []
       deny: []
+      explicit: []
     commands:
       allow: []
     stepUp: []

@@ -32,6 +32,7 @@ export const publicToolNameSchema = z.enum([
   "edit_file",
   "apply_patch",
   "run",
+  "shell",
 ]);
 
 export const workerHelloSchema = z.object({
