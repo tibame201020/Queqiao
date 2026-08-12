@@ -23,7 +23,8 @@ export async function createGatewayApp(config: GatewayRuntimeConfig): Promise<Ex
     });
     next();
   });
-  app.use((_req, res, next) => { res.set({ "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" }); next(); });
+  const formActionOrigins = [...config.allowedRedirectOrigins].map((origin) => new URL(origin).origin).join(" ");
+  app.use((_req, res, next) => { res.set({ "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${formActionOrigins}; frame-ancestors 'none'` }); next(); });
   app.use(["/oauth/authorize", "/oauth/token", "/oauth/register"], rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false }));
   app.post("/oauth/authorize", rateLimit({ windowMs: 60_000, limit: 10, keyGenerator: () => "global-approval-secret", standardHeaders: "draft-8", legacyHeaders: false }));
   app.use(oauth.router);
