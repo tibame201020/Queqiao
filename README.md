@@ -117,10 +117,26 @@ workspace registry at `$XDG_CONFIG_HOME/queqiao/workspaces.json` (or
 `$HOME/.config/queqiao/workspaces.json`). Running the same
 compiled CLI inside WSL resolves and validates Linux paths without Windows mediation.
 
-## Run the v0 validation slice
+## Runtime configuration
 
-Create a local `.env` from `.env.example`, then start the two processes in separate
-terminals:
+Queqiao never requires secrets or machine-specific paths inside the source checkout.
+The bundled CLI resolves the platform layout and reports it with:
+
+```powershell
+npm run queqiao -- config paths
+```
+
+On Windows, configuration is stored under `%LOCALAPPDATA%\Queqiao`; on Linux and
+WSL it follows the XDG config, data, state, and runtime directories. Secrets are
+separate files referenced by `runtime.env`. To migrate an older checkout safely,
+preview the non-overwriting plan and then execute it:
+
+```powershell
+npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao
+npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao --execute
+```
+
+After CLI-managed configuration exists, start the two processes in separate terminals:
 
 ```powershell
 npm run start:worker

@@ -1,1 +1,1 @@
-{"name":"@queqiao/cli","version":"0.1.0","private":true,"type":"module","dependencies":{"zod":"4.4.3"}}
+{"name":"@queqiao/cli","version":"0.1.0","private":true,"type":"module","dependencies":{"@queqiao/platform-paths":"0.1.0","zod":"4.4.3"}}

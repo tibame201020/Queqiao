@@ -1,4 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 import { WorkerRegistry } from "./worker-registry.js";
 import type { WorkerEndpointConfig } from "./config.js";
@@ -9,8 +10,9 @@ export const workerEndpointSchema = z.object({
     const url = new URL(value);
     return url.protocol === "http:" && ["127.0.0.1", "localhost", "::1"].includes(url.hostname);
   }, "Worker URL must be loopback HTTP in the verified baseline"),
-  token: z.string().min(32),
-});
+  token: z.string().min(32).optional(),
+  tokenFile: z.string().min(1).optional(),
+}).refine((entry) => Boolean(entry.token) !== Boolean(entry.tokenFile), "Configure exactly one Worker token source");
 const workerFileSchema = z.array(workerEndpointSchema).min(1);
 
 export class ReloadableWorkerRegistry {
@@ -38,7 +40,7 @@ export class ReloadableWorkerRegistry {
       const info = await stat(this.source.file);
       if (!force && info.mtimeMs === this.loadedMtimeMs) return;
       mtimeMs = info.mtimeMs;
-      endpoints = workerFileSchema.parse(JSON.parse(await readFile(this.source.file, "utf8"))).map((entry) => ({ environmentId: entry.environmentId, url: new URL(entry.url), token: entry.token }));
+      endpoints = await Promise.all(workerFileSchema.parse(JSON.parse(await readFile(this.source.file, "utf8"))).map(async (entry) => ({ environmentId: entry.environmentId, url: new URL(entry.url), token: entry.token || (await readFile(path.resolve(entry.tokenFile!), "utf8")).trim() })));
     } else {
       if (!force) return;
       endpoints = this.source.workers;
@@ -53,4 +55,3 @@ export class ReloadableWorkerRegistry {
     return this.registry;
   }
 }
-

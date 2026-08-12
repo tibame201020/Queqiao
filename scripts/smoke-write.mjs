@@ -1,9 +1,11 @@
-import "dotenv/config";
 import { createHash, randomBytes } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { loadRuntimeEnvironment, readRuntimeSecret } from "./runtime-env.mjs";
 
+await loadRuntimeEnvironment();
 const base = new URL(process.env.PUBLIC_BASE_URL);
+const approvalSecret = await readRuntimeSecret("OAUTH_APPROVAL_SECRET");
 const resource = new URL("mcp", base).href;
 const redirectUri = "http://127.0.0.1/callback";
 const scopes = "queqiao:access";
@@ -25,7 +27,7 @@ const registration = await json(new URL("oauth/register", base), {
 const authorization = new URL("oauth/authorize", base);
 for (const [key, value] of Object.entries({ client_id: registration.client_id, redirect_uri: redirectUri, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", scope: scopes, resource, state: "write-smoke" })) authorization.searchParams.set(key, value);
 const form = new URLSearchParams(authorization.searchParams);
-form.set("approval_secret", process.env.OAUTH_APPROVAL_SECRET);
+form.set("approval_secret", approvalSecret);
 const approved = await fetch(new URL("oauth/authorize", base), { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form });
 if (approved.status !== 303) throw new Error(`Approval returned ${approved.status}`);
 const code = new URL(approved.headers.get("location")).searchParams.get("code");

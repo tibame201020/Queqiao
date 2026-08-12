@@ -12,6 +12,9 @@ import { createGatewayApp } from "./app.js";
 import type { GatewayRuntimeConfig } from "./config.js";
 import { QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES } from "./mcp.js";
 
+const forbiddenFetchPorts = new Set([1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723, 2049, 3659, 4045, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697, 10080]);
+async function listenOnSafePort(app: { listen(port: number, host: string): Server }): Promise<Server> { for (;;) { const server = app.listen(0, "127.0.0.1"); await new Promise<void>((resolve) => server.once("listening", resolve)); const address = server.address(); if (!address || typeof address === "string") throw new Error("Server did not listen"); if (!forbiddenFetchPorts.has(address.port)) return server; await new Promise<void>((resolve) => server.close(() => resolve())); } }
+
 describe("Queqiao v0 vertical slice", () => {
   let temporary: string;
   let workerServer: Server;
@@ -26,8 +29,7 @@ describe("Queqiao v0 vertical slice", () => {
     await mkdir(secondary);
     await writeFile(path.join(secondary, "fixture.txt"), "hello from secondary workspace\n", "utf8");
     const worker = await createWorkerApp({ environmentId: "windows", defaultWorkspaceId: "fixture", workspaces: [{ id: "fixture", displayName: "Fixture", root: temporary }, { id: "secondary", displayName: "Secondary", root: secondary, profile: "coding", commands: { allow: [path.basename(process.execPath).toLowerCase()] } }], workerToken: "worker-secret" });
-    workerServer = worker.listen(0, "127.0.0.1");
-    await new Promise<void>((resolve) => workerServer.once("listening", resolve));
+    workerServer = await listenOnSafePort(worker);
     const address = workerServer.address(); if (!address || typeof address === "string") throw new Error("Worker did not listen");
     const config: GatewayRuntimeConfig = { port: 7575, publicBaseUrl: base, resourceUrl: "http://localhost:7575/mcp", stateDir: path.join(temporary, ".state"), approvalSecret: "correct horse battery staple", jwtSecret: new TextEncoder().encode("test-signing-secret-with-at-least-thirty-two-bytes"), trustProxyHops: 1, allowedRedirectOrigins: new Set(["https://chatgpt.com"]), workers: [{ environmentId: "windows", url: new URL(`http://127.0.0.1:${address.port}`), token: "worker-secret" }] };
     gateway = await createGatewayApp(config);
@@ -58,8 +60,7 @@ describe("Queqiao v0 vertical slice", () => {
     const token = await request(gateway).post("/oauth/token").set("Host", "localhost").type("form").send({ grant_type: "authorization_code", code, redirect_uri: authorization.redirect_uri, client_id: authorization.client_id, code_verifier: verifier, resource: authorization.resource }).expect(200);
     expect(token.body.scope).toBe("queqiao:access");
 
-    gatewayServer = gateway.listen(0, "127.0.0.1");
-    await new Promise<void>((resolve) => gatewayServer!.once("listening", resolve));
+    gatewayServer = await listenOnSafePort(gateway);
     const address = gatewayServer.address(); if (!address || typeof address === "string") throw new Error("Gateway did not listen");
     const client = new Client({ name: "queqiao-contract", version: "1" });
     const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${address.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token.body.access_token}` } } });

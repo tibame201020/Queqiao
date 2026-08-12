@@ -10,6 +10,7 @@
     { "path": "packages/policy" },
     { "path": "packages/tool-runtime" },
     { "path": "packages/workspace" },
-    { "path": "packages/process-runtime" }
+    { "path": "packages/process-runtime" },
+    { "path": "packages/platform-paths" }
   ]
 }
