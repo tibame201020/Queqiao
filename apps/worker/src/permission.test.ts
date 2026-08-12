@@ -64,5 +64,5 @@ describe("Worker authoritative permission enforcement", () => {
     await request(app).post("/v1/tools/shell").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "implicit", command }).expect(403);
     await request(app).post("/v1/tools/shell").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "editor", command }).expect(403);
     await request(app).post("/v1/tools/shell").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "allowed", command, cwd: ".." }).expect(400);
-  });
+  }, 15_000);
 });

@@ -55,6 +55,9 @@ describe("Security Baseline v1 adversarial gate", () => {
     await request(app).post("/oauth/register").send({ redirect_uris: [`${redirectUri}#fragment`] }).expect(400);
     const client = await register();
     const valid = await authorize(client.client_id);
+    const authorizationPage = await request(app).get("/oauth/authorize").query(valid.authorization).expect(200);
+    expect(authorizationPage.headers["content-security-policy"]).toContain("form-action 'self' https://chatgpt.com");
+    expect(authorizationPage.headers["content-security-policy"]).not.toContain("attacker.example");
     await request(app).get("/oauth/authorize").query({ ...valid.authorization, code_challenge_method: "plain" }).expect(400);
     await request(app).get("/oauth/authorize").query({ ...valid.authorization, code_challenge: "short" }).expect(400);
     await request(app).get("/oauth/authorize").query({ ...valid.authorization, resource: "https://attacker.example/mcp" }).expect(400);
