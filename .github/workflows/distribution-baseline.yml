@@ -1,0 +1,49 @@
+name: Distribution and Cluster Baseline
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package-install:
+    name: Self-contained package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --ignore-scripts
+      - run: npm run build:package
+      - shell: bash
+        run: |
+          mkdir package-test
+          npm pack --ignore-scripts --pack-destination package-test >/dev/null
+          npm install --prefix package-test/install package-test/*.tgz --ignore-scripts
+          package-test/install/node_modules/.bin/queqiao config paths
+
+  linux-gateway-cluster:
+    name: Linux Gateway and Worker handshake
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --ignore-scripts
+      - run: npm run security:gate
+      - run: npm run test:cluster
+      - run: npm run build:package
+      - shell: bash
+        run: |
+          mkdir package-test
+          npm pack --ignore-scripts --pack-destination package-test >/dev/null
+          sh scripts/linux-package-integration.sh "$(find package-test -name '*.tgz' -print -quit)"

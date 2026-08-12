@@ -3,6 +3,7 @@ import { z } from "zod";
 export * from "./v0-tools.js";
 
 export const QUEQIAO_PROTOCOL_VERSION = "1.0" as const;
+export const QUEQIAO_WORKER_CAPABILITIES = ["workspace-routing", "tool-invocation"] as const;
 export const MAX_TEXT_MUTATION_BYTES = 64 * 1024;
 
 export const identifierSchema = z

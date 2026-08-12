@@ -135,6 +135,17 @@ queqiao-worker
 queqiao-gateway
 ```
 
+The package is self-contained and exposes three independent process roles. Installing
+it does not start either service: a Gateway host runs `queqiao-gateway`, while every
+coding environment runs its own `queqiao-worker`. Before a Worker is considered online
+or receives a tool call, the Gateway performs an authenticated handshake and verifies
+its configured environment identity, protocol version, process instance ID, platform,
+and required capabilities.
+
+The frozen cluster baseline permits only loopback Worker endpoints. The shared token
+and handshake protect local Gateway-to-Worker routing; remote-host Workers require a
+future mutually authenticated transport and are not covered by this baseline.
+
 On Windows, configuration is stored under `%LOCALAPPDATA%\Queqiao`; on Linux and
 WSL it follows the XDG config, data, state, and runtime directories. Secrets are
 separate files referenced by `config.yaml`. User-editable configuration is YAML;

@@ -1,17 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkerRegistry } from "./worker-registry.js";
+import { QUEQIAO_PROTOCOL_VERSION, QUEQIAO_WORKER_CAPABILITIES } from "@queqiao/protocol";
 
 afterEach(() => vi.unstubAllGlobals());
 
 function state(environmentId: string, workspaceId = "shared") {
   return { environmentId, defaultWorkspaceId: workspaceId, workspaces: [{ environmentId, workspaceId, displayName: workspaceId, root: "/workspace", profile: "read-only", tools: { allow: [], deny: [] }, commands: { allow: [] } }] };
 }
+function hello(environmentId: string) { return { protocolVersion: QUEQIAO_PROTOCOL_VERSION, environmentId, instanceId: "11111111-1111-4111-8111-111111111111", platform: "linux", capabilities: [...QUEQIAO_WORKER_CAPABILITIES] }; }
 
 describe("Worker routing security", () => {
   it("fails closed when a workspace ID is ambiguous across environments", async () => {
     vi.stubGlobal("fetch", vi.fn((url: URL | string) => {
       const environmentId = String(url).includes("7576") ? "windows" : "wsl";
-      return Promise.resolve(new Response(JSON.stringify(state(environmentId)), { status: 200, headers: { "content-type": "application/json" } }));
+      return Promise.resolve(new Response(JSON.stringify(String(url).includes("/v1/hello") ? hello(environmentId) : state(environmentId)), { status: 200, headers: { "content-type": "application/json" } }));
     }));
     const registry = new WorkerRegistry([
       { environmentId: "windows", url: new URL("http://127.0.0.1:7576"), token: "a" },
@@ -21,7 +23,7 @@ describe("Worker routing security", () => {
   });
 
   it("marks a Worker offline when its claimed environment identity differs", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(state("attacker")), { status: 200, headers: { "content-type": "application/json" } }))));
+    vi.stubGlobal("fetch", vi.fn((url: URL | string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("/v1/hello") ? hello("attacker") : state("attacker")), { status: 200, headers: { "content-type": "application/json" } }))));
     const registry = new WorkerRegistry([{ environmentId: "windows", url: new URL("http://127.0.0.1:7576"), token: "secret" }]);
     await expect(registry.listEnvironments()).resolves.toEqual([{ environmentId: "windows", online: false, workspaces: [] }]);
     await expect(registry.route("shared")).rejects.toThrow(/not available/);
