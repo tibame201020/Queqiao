@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-tarball=$1
+tarball=$(realpath "$1")
 test_root=$(mktemp -d)
 worker_pid=
 gateway_pid=

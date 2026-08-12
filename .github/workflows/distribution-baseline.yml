@@ -27,7 +27,8 @@ jobs:
         run: |
           mkdir package-test
           npm pack --ignore-scripts --pack-destination package-test >/dev/null
-          npm install --prefix package-test/install package-test/*.tgz --ignore-scripts
+          tarball="$(find "$(pwd)/package-test" -name '*.tgz' -print -quit)"
+          npm install --prefix package-test/install "$tarball" --ignore-scripts
           package-test/install/node_modules/.bin/queqiao config paths
 
   linux-gateway-cluster:
@@ -46,4 +47,4 @@ jobs:
         run: |
           mkdir package-test
           npm pack --ignore-scripts --pack-destination package-test >/dev/null
-          sh scripts/linux-package-integration.sh "$(find package-test -name '*.tgz' -print -quit)"
+          sh scripts/linux-package-integration.sh "$(find "$(pwd)/package-test" -name '*.tgz' -print -quit)"
