@@ -25,6 +25,42 @@ describe("ProcessRunner", () => {
     expect(path.resolve(result.stdout)).toBe(path.resolve(temporary));
   });
 
+  it("preserves only platform user-location variables and strips arbitrary parent secrets", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-process-"));
+    const keys = process.platform === "win32"
+      ? ["USERPROFILE", "APPDATA", "LOCALAPPDATA", "QUEQIAO_TEST_SECRET"]
+      : ["HOME", "QUEQIAO_TEST_SECRET"];
+    const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    try {
+      process.env.QUEQIAO_TEST_SECRET = "must-not-reach-child";
+      if (process.platform === "win32") {
+        process.env.USERPROFILE = "C:\\Users\\queqiao-test";
+        process.env.APPDATA = "C:\\Users\\queqiao-test\\AppData\\Roaming";
+        process.env.LOCALAPPDATA = "C:\\Users\\queqiao-test\\AppData\\Local";
+      } else {
+        process.env.HOME = "/home/queqiao-test";
+      }
+      const probe = "process.stdout.write(JSON.stringify({USERPROFILE:process.env.USERPROFILE??null,APPDATA:process.env.APPDATA??null,LOCALAPPDATA:process.env.LOCALAPPDATA??null,HOME:process.env.HOME??null,SECRET:process.env.QUEQIAO_TEST_SECRET??null}))";
+      const result = await new ProcessRunner().run({ executable: nodeExecutable, args: ["-e", probe], cwd: temporary });
+      expect(result.exitCode).toBe(0);
+      const child = JSON.parse(result.stdout) as Record<string, string | null>;
+      expect(child.SECRET).toBeNull();
+      if (process.platform === "win32") {
+        expect(child.USERPROFILE).toBe("C:\\Users\\queqiao-test");
+        expect(child.APPDATA).toBe("C:\\Users\\queqiao-test\\AppData\\Roaming");
+        expect(child.LOCALAPPDATA).toBe("C:\\Users\\queqiao-test\\AppData\\Local");
+      } else {
+        expect(child.HOME).toBe("/home/queqiao-test");
+      }
+    } finally {
+      for (const key of keys) {
+        const value = previous[key];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it("terminates timeout and bounded-output synchronous processes", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-process-"));
     const runner = new ProcessRunner(2, 1024);
@@ -39,8 +75,16 @@ describe("ProcessRunner", () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-process-"));
     const runner = new ProcessRunner();
     const abort = new AbortController();
-    const aborted = runner.run({ executable: nodeExecutable, args: ["-e", "setInterval(()=>{},1000)"], cwd: temporary, signal: abort.signal });
-    setTimeout(() => abort.abort(), 50);
+    const marker = path.join(temporary, "sync-accepted.txt");
+    const aborted = runner.run({ executable: nodeExecutable, args: ["-e", `require('fs').writeFileSync(${JSON.stringify(marker)},'accepted'); setInterval(()=>{},1000)`], cwd: temporary, signal: abort.signal });
+    for (let attempts = 0; ; attempts += 1) {
+      try { await access(marker); break; }
+      catch {
+        if (attempts >= 100) throw new Error("Timed out waiting for synchronous process acceptance marker");
+        await sleep(20);
+      }
+    }
+    abort.abort();
     await expect(aborted).resolves.toMatchObject({ aborted: true });
     expect(runner.activeCount()).toBe(0);
   });
