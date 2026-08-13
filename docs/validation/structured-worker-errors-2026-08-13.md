@@ -64,3 +64,38 @@ Observed results:
 ## Release boundary
 
 This candidate does not introduce job/process management, new public tools, new tool arguments, or a connector manifest migration. Shadow validation must use the existing Shadow connector against the existing Revision 6 manifest and must prove the agent-facing error envelope before PR promotion.
+
+## Shadow real-client acceptance
+
+The candidate bundle from this branch was deployed only to the isolated Shadow Gateway, Windows Worker, and WSL Worker. The stable connector remained operational during the candidate rollout.
+
+The existing Shadow connector discovered the unchanged public contract:
+
+- Core Manifest Revision: 6;
+- public tool count: 17;
+- deployment manifest fingerprint unchanged from stable;
+- Worker Protocol: 2.0;
+- Windows and WSL Shadow environments both online.
+
+Actual tool failures through the Shadow ChatGPT connector returned the new machine-readable envelope:
+
+```text
+Worker command policy denial:
+code=command_denied
+layer=worker
+retryable=false
+
+Gateway missing Workspace:
+code=workspace_not_found
+layer=gateway
+retryable=false
+
+Worker concurrency pressure:
+code=process_capacity
+layer=worker
+retryable=true
+```
+
+The capacity case was produced in the dedicated Shadow Windows validation Workspace by occupying both bounded async process slots and issuing one additional synchronous `run`. The accepted async processes retained the existing bounded lifetime semantics and no Job domain or process-management API was introduced.
+
+Result: PASS for Shadow real-client acceptance. No connector schema refresh or new connector binding was required.
