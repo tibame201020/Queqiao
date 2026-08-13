@@ -252,7 +252,9 @@ async function resolveExecutable(executable: string): Promise<string> {
 }
 
 function minimalEnvironment(): NodeJS.ProcessEnv {
-  const names = process.platform === "win32" ? ["PATH", "PATHEXT", "SystemRoot", "TEMP", "TMP"] : ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR"];
+  const names = process.platform === "win32"
+    ? ["PATH", "PATHEXT", "SystemRoot", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"]
+    : ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR"];
   return Object.fromEntries(names.flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]]])) as NodeJS.ProcessEnv;
 }
 
