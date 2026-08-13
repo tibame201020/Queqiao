@@ -66,8 +66,9 @@ done
 echo "$health" | grep -q '"environmentId":"linux-ci"'
 echo "$health" | grep -q '"online":true'
 hello=$(curl -fsS -H 'x-queqiao-worker-token: worker-token-for-linux-integration-at-least-32-bytes' http://127.0.0.1:17576/v1/hello)
-echo "$hello" | grep -q '"protocolVersion":"1.0"'
+echo "$hello" | grep -q '"protocolVersion":"2.0"'
 echo "$hello" | grep -q '"platform":"linux"'
 echo "$hello" | grep -q '"workspace-routing"'
+echo "$hello" | grep -q '"async-process-v1"'
 test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:17576/v1/hello)" = 401
 printf '%s\n' 'Linux package, Gateway, Worker, and authenticated handshake verified.'

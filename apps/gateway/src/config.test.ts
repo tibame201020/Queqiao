@@ -21,4 +21,10 @@ describe("Gateway security configuration", () => {
     expect(() => loadGatewayConfig({ ...base, QUEQIAO_WORKER_TOKEN: "short" })).toThrow(/32 bytes/);
     expect(() => loadGatewayConfig({ ...base, JWT_SIGNING_SECRET: "short" })).toThrow(/32 bytes/);
   });
+
+  it("keeps a path-prefixed public base URL as a directory base", () => {
+    const config = loadGatewayConfig({ ...base, PUBLIC_BASE_URL: "https://queqiao.example/shadow-r5" });
+    expect(config.publicBaseUrl.href).toBe("https://queqiao.example/shadow-r5/");
+    expect(config.resourceUrl).toBe("https://queqiao.example/shadow-r5/mcp");
+  });
 });

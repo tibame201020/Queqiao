@@ -27,12 +27,25 @@ export type ProcessResult = {
   outputLimitExceeded: boolean;
 };
 
+/**
+ * Async execution intentionally exposes only native process start metadata.
+ * It is not a durable Queqiao Job identity and stdout/stderr are not retained.
+ */
+export type AsyncProcessResult = {
+  pid: number;
+  startedAt: string;
+  timeoutMs: number;
+  stdout: "discarded";
+  stderr: "discarded";
+};
+
 export class ProcessCapacityError extends Error {
   constructor() { super("Worker process concurrency limit reached"); }
 }
 
 export class ProcessRunner {
   private active = 0;
+  private readonly asyncChildren = new Map<number, { child: ChildProcess; timer: NodeJS.Timeout }>();
 
   constructor(
     private readonly concurrency = DEFAULT_PROCESS_CONCURRENCY,
@@ -42,19 +55,57 @@ export class ProcessRunner {
   }
 
   activeCount(): number { return this.active; }
+  asyncCount(): number { return this.asyncChildren.size; }
 
   async run(request: ProcessRequest): Promise<ProcessResult> {
+    const prepared = await this.prepare(request);
+    this.acquire();
+    try { return await this.spawnAndCollect(prepared); }
+    finally { this.release(); }
+  }
+
+  /**
+   * Start a bounded native process and return only after Node confirms the OS
+   * process was spawned. Request cancellation is observed until that acceptance
+   * point; after acceptance the request signal is deliberately detached.
+   */
+  async start(request: ProcessRequest): Promise<AsyncProcessResult> {
+    const prepared = await this.prepare(request);
+    this.acquire();
+    let handedOff = false;
+    try {
+      const result = await this.spawnAndAccept(prepared);
+      handedOff = true;
+      return result;
+    } finally {
+      if (!handedOff) this.release();
+    }
+  }
+
+  /** Terminate tracked async process trees during an orderly Worker shutdown. */
+  shutdown(): void {
+    for (const { child } of this.asyncChildren.values()) terminateTree(child);
+  }
+
+  private async prepare(request: ProcessRequest): Promise<ProcessRequest & { executable: string; timeoutMs: number }> {
     validateExecutable(request.executable);
     if (request.args.length > 256) throw new Error("Too many process arguments");
     for (const argument of request.args) if (argument.includes("\0")) throw new Error("Process arguments must not contain NUL");
-    if (this.active >= this.concurrency) throw new ProcessCapacityError();
     if (request.signal?.aborted) throw request.signal.reason ?? new Error("Process request aborted");
     const timeoutMs = request.timeoutMs ?? DEFAULT_PROCESS_TIMEOUT_MS;
     if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > MAX_PROCESS_TIMEOUT_MS) throw new Error(`timeoutMs must be between 100 and ${MAX_PROCESS_TIMEOUT_MS}`);
+    const executable = await resolveExecutable(request.executable);
+    if (request.signal?.aborted) throw request.signal.reason ?? new Error("Process request aborted");
+    return { ...request, executable, timeoutMs };
+  }
 
+  private acquire(): void {
+    if (this.active >= this.concurrency) throw new ProcessCapacityError();
     this.active += 1;
-    try { const resolvedExecutable = await resolveExecutable(request.executable); return await this.spawnAndCollect({ ...request, executable: resolvedExecutable, timeoutMs }); }
-    finally { this.active -= 1; }
+  }
+
+  private release(): void {
+    this.active = Math.max(0, this.active - 1);
   }
 
   private spawnAndCollect(request: ProcessRequest & { timeoutMs: number }): Promise<ProcessResult> {
@@ -66,14 +117,7 @@ export class ProcessRunner {
       let aborted = false;
       let outputLimitExceeded = false;
       let settled = false;
-      const child = spawn(request.executable, [...request.args], {
-        cwd: request.cwd,
-        shell: false,
-        windowsHide: true,
-        detached: process.platform !== "win32",
-        stdio: ["ignore", "pipe", "pipe"],
-        env: minimalEnvironment(),
-      });
+      const child = spawnNative(request, ["ignore", "pipe", "pipe"]);
 
       const finish = (exitCode: number | null, signal: NodeJS.Signals | null) => {
         if (settled) return;
@@ -94,15 +138,92 @@ export class ProcessRunner {
         }
         if (stream === "stdout") stdout = Buffer.concat([stdout, chunk]); else stderr = Buffer.concat([stderr, chunk]);
       };
-      child.stdout.on("data", (chunk: Buffer) => append("stdout", chunk));
-      child.stderr.on("data", (chunk: Buffer) => append("stderr", chunk));
-      child.once("error", (error) => { if (!settled) { settled = true; clearTimeout(timer); request.signal?.removeEventListener("abort", onAbort); reject(error); } });
+      child.stdout!.on("data", (chunk: Buffer) => append("stdout", chunk));
+      child.stderr!.on("data", (chunk: Buffer) => append("stderr", chunk));
+      child.once("error", (error) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          request.signal?.removeEventListener("abort", onAbort);
+          reject(error);
+        }
+      });
       child.once("close", finish);
       const timer = setTimeout(() => { timedOut = true; terminate(); }, request.timeoutMs);
       const onAbort = () => { aborted = true; terminate(); };
       request.signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
+
+  private spawnAndAccept(request: ProcessRequest & { timeoutMs: number }): Promise<AsyncProcessResult> {
+    return new Promise((resolve, reject) => {
+      const startedAt = new Date();
+      const child = spawnNative(request, ["ignore", "ignore", "ignore"]);
+      let accepted = false;
+      let settled = false;
+      let preAcceptanceFailure: unknown;
+
+      const cleanupPreAcceptance = () => request.signal?.removeEventListener("abort", onAbort);
+      const failWithoutProcess = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        cleanupPreAcceptance();
+        reject(error);
+      };
+      const cancelBeforeAcceptance = (error: unknown) => {
+        if (settled || accepted) return;
+        preAcceptanceFailure = error;
+        cleanupPreAcceptance();
+        terminateTree(child);
+      };
+      const onAbort = () => cancelBeforeAcceptance(request.signal?.reason ?? new Error("Process request aborted"));
+      request.signal?.addEventListener("abort", onAbort, { once: true });
+
+      child.once("error", failWithoutProcess);
+      child.once("spawn", () => {
+        if (settled) return;
+        if (preAcceptanceFailure || request.signal?.aborted) {
+          cancelBeforeAcceptance(preAcceptanceFailure ?? request.signal?.reason ?? new Error("Process request aborted"));
+          return;
+        }
+        if (!child.pid) return cancelBeforeAcceptance(new Error("Native process started without a process id"));
+        accepted = true;
+        settled = true;
+        cleanupPreAcceptance();
+        const pid = child.pid;
+        const timer = setTimeout(() => terminateTree(child), request.timeoutMs);
+        this.asyncChildren.set(pid, { child, timer });
+        resolve({ pid, startedAt: startedAt.toISOString(), timeoutMs: request.timeoutMs, stdout: "discarded", stderr: "discarded" });
+      });
+      child.once("close", () => {
+        if (!accepted) {
+          if (!settled) {
+            settled = true;
+            cleanupPreAcceptance();
+            reject(preAcceptanceFailure ?? new Error("Native process exited before successful acceptance"));
+          }
+          return;
+        }
+        const tracked = child.pid ? this.asyncChildren.get(child.pid) : undefined;
+        if (tracked) {
+          clearTimeout(tracked.timer);
+          this.asyncChildren.delete(child.pid!);
+        }
+        this.release();
+      });
+    });
+  }
+}
+
+function spawnNative(request: ProcessRequest & { executable: string }, stdio: ["ignore", "pipe" | "ignore", "pipe" | "ignore"]): ChildProcess {
+  return spawn(request.executable, [...request.args], {
+    cwd: request.cwd,
+    shell: false,
+    windowsHide: true,
+    detached: process.platform !== "win32",
+    stdio,
+    env: minimalEnvironment(),
+  });
 }
 
 function validateExecutable(executable: string): void {

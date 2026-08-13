@@ -1,128 +1,231 @@
 # Architecture
 
-## System context
+This document distinguishes the verified current runtime from the Secure Agent Substrate target boundaries. Target sections are architectural direction and must not be read as claims that every listed feature is already shipped.
+
+## Current verified system context
 
 ```text
 ChatGPT / MCP client
         |
         | HTTPS + OAuth + Streamable HTTP MCP
         v
-Queqiao Gateway  <---- outbound authenticated worker channel ----+
-        |                                                        |
-        +----------------------+----------------------+-----------+
+Queqiao Gateway
+        |
+        | authenticated environment-local Worker requests
+        +----------------------+----------------------+
                                |                      |
                         Windows Worker            WSL Worker
                                |                      |
                         Windows workspaces        Linux workspaces
 ```
 
-Only the Gateway is reachable through the public tunnel. A Worker initiates its own
-authenticated connection and never requires a public listening port.
+Only the Gateway is publicly exposed. The currently verified Windows/WSL deployment uses loopback HTTP Worker endpoints on the same host. Each native Worker is authoritative for its own Workspace filesystem/process operations and validates delegated requests again.
 
-The current verified Windows/WSL baseline uses loopback-only Worker endpoints while
-both environments run on the same WSL2 host. The registry abstraction deliberately
-keeps routing independent of that transport so a later outbound persistent channel
-can replace loopback without changing the public MCP contract.
+The Worker boundary is intentionally independent from this current loopback transport. A later persistent/outbound Worker transport may replace the local HTTP wiring without redefining Core tool semantics or the public MCP contract.
 
-## Module boundaries
+The current Core contract is **Core Manifest Revision 6**. Core exposes ten typed tools:
+
+- `workspace_info`
+- `list_workspaces`
+- `open_workspace`
+- `read_file`
+- `write_file`
+- `edit_file`
+- `list_directory`
+- `search_text`
+- `run`
+- `shell`
+
+The current candidate deployment additionally enables the first-party Git extension with seven named public tools: `git_repositories`, `git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and `git_worktree_remove`, yielding an effective 17-tool Deployment Manifest. `workspace_info` accepts an optional Workspace ID for explicit cross-environment inspection, and `list_workspaces` returns a safe deployment-attestation projection.
+
+Historical Revision 4 and Revision 5 validation evidence remains authoritative for those contracts and is not rewritten by later revisions.
+
+## Version axes
+
+Queqiao uses distinct version dimensions. They must not be treated as aliases:
+
+- **Queqiao release version** — the packaged product release.
+- **Core Manifest Revision** — the bundled Core public tool contract.
+- **Deployment Manifest Fingerprint** — the deterministic effective public manifest after configured public-tool extensions are composed. It is implemented and exposed through safe deployment diagnostics/attestation.
+- **Worker Protocol Version** — Gateway-to-Worker compatibility/version ownership.
+- **MCP specification revision window** — the finite set/range supported by the MCP adapter. The Secure Agent Substrate implementation explicitly pins `2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28`; deprecated 2024 transport revisions and unknown future revisions are not inherited from SDK defaults.
+
+A change in one version dimension does not silently imply a change in another.
+
+## Current module boundaries
 
 ### `apps/gateway`
 
-Internet-facing composition root. It owns OAuth, MCP session lifecycle, stable tool
-registration, worker presence, request routing, timeouts, cancellation, and public
-rate limits. It MUST NOT import filesystem or child-process execution modules.
+Internet-facing composition root. It owns OAuth, the remote Streamable HTTP MCP adapter, public tool registration, Worker presence/routing, request budgets, cancellation propagation, and public security headers. The adapter supports both the selected 2025 legacy era and the `2026-07-28` modern era while mapping both to the same transport-neutral Queqiao tool runtime.
+
+The Gateway MUST NOT perform native Workspace filesystem/process execution. MCP-specific construction, protocol-version handling, HTTP adaptation, and result/schema mapping are isolated at the Gateway adapter boundary; MCP SDK dependencies do not belong in Core/domain packages.
 
 ### `apps/worker`
 
-Environment-local composition root. It loads local workspace policy, connects to a
-Gateway, validates every delegated request again, and invokes workspace capabilities.
-It MUST NOT implement the public OAuth authorization server.
+Environment-local authoritative execution root. It loads native Workspace policy, exposes the current authenticated Worker HTTP API, validates delegated requests, and invokes bounded native Workspace/process capabilities.
 
-Native operations are registered through the shared tool runtime and reached through
-a versioned internal invocation route. Compatibility endpoints may remain during a
-rolling upgrade, but they delegate to the same runtime and authoritative policy path.
+A Worker MUST NOT rely on Gateway authorization alone and MUST NOT implement the public OAuth authorization server.
+
+The current loopback HTTP API is the deployed Worker transport, not the permanent definition of the Worker protocol boundary.
 
 ### `apps/cli`
 
-Administrative interface for atomic configuration changes, migrations, diagnostics,
-service lifecycle, credentials, and permission inspection. CLI changes must not alter
-the public MCP tool schema.
+Administrative interface for validated/atomic configuration changes, migrations, diagnostics, local runtime/service lifecycle, Workspace authority management, and permission inspection.
+
+CLI/config changes do not by themselves mutate a client's cached public MCP tool schema.
+
+### `packages/contracts`
+
+Transport-neutral Queqiao domain contracts. It owns stable identifiers, Workspace/profile/tool policy value schemas, approval/assurance domain values, Workspace descriptors, and shared bounded mutation constants used by Core packages.
+
+This package has no MCP SDK dependency and does not own Gateway-to-Worker transport/version semantics.
+
+### `packages/worker-protocol`
+
+Explicit Gateway-to-Worker protocol contract. It owns the Worker Protocol Version, the current `/v1` Worker HTTP API prefix, Worker capability negotiation, Worker hello validation, and shared invocation response typing.
+
+The current HTTP route implementation remains in Gateway/Worker apps; the version/contract ownership is independent from MCP protocol revisions.
 
 ### `packages/protocol`
 
-Transport-neutral, versioned schemas shared by Gateway and Worker. Breaking wire
-changes require a protocol version change and an explicit compatibility policy.
+Compatibility facade retained during migration. It re-exports `@queqiao/contracts` and `@queqiao/worker-protocol`, including the legacy `QUEQIAO_PROTOCOL_VERSION` alias bound to the explicitly named Worker Protocol Version, plus historical v0 tool-contract exports.
+
+New Core code must depend on the bounded-context package it actually needs instead of adding new direct dependencies on this compatibility facade.
 
 ### `packages/config`
 
-Versioned configuration schemas and migration contracts. Persistence and secret
-storage are adapters; runtime modules receive validated configuration only.
+Versioned runtime configuration schemas and migration contracts. Persistence and secret storage remain external adapters; runtime modules receive validated configuration.
+
+Live machine configuration and secrets are not repository source.
 
 ### `packages/security`
 
-Authentication and step-up authorization orchestration. OAuth establishes an MCP
-client identity through the single `queqiao:access` handshake scope; it does not
-authorize workspace capabilities. Higher-risk actions may additionally require local user
-approval or a short-lived one-time code. Every approval grant is single-use and bound
-to the principal, environment, workspace, tool, and canonical request digest.
+Authentication/authorization-support primitives such as canonical request binding and step-up approval foundations. OAuth currently authenticates the MCP connector through `queqiao:access`; it does not grant Workspace authority.
 
-Raw approval codes are never persisted. Provider adapters own platform-specific local
-prompts, secure secret storage, hashing, signing, expiry, attempt limits, and grant
-revocation. Neither Gateway nor Worker business logic implements these directly.
-
-The action digest uses deterministic JSON key ordering and SHA-256 over the complete
-validated request. Both trust boundaries recompute it; a digest supplied by a client
-is never accepted as authoritative.
+Raw secrets/approval material must not be exposed through public tool results, public health, or ordinary diagnostics.
 
 ### `packages/policy`
 
-Pure authorization decisions. Effective capability is the intersection of workspace
-profile, per-tool rules, command rules, path containment, and required
-security assurance. Policy decides whether step-up is required; Security fulfills it.
+Pure authorization decisions. Effective capability is bounded by Workspace profile, per-tool policy, command policy, and related security requirements.
+
+Worker-side policy enforcement remains authoritative.
 
 ### `packages/tool-runtime`
 
-Transport-neutral tool and extension contracts. It validates extension identity,
-rejects tool collisions, validates inputs, seals manifests before serving traffic,
-and runs ordered interception hooks. It does not know about MCP content, HTTP, local
-filesystems, or process execution. Core tools use the same registration path as
-optional extensions.
+Transport-neutral typed tool runtime and extension host. The current implementation supports typed registration, tool-specific `extend`/wrap/replace, deterministic dependency/order DAG composition, scoped activation, lifecycle sealing, input validation, and fail-closed conflict diagnostics.
+
+Configured extensions are explicitly installed trusted local TypeScript modules. The mandatory Workspace/profile/tool/process authority envelope executes outside extension implementations, so replacements and wrappers cannot increase authority. Public composition feeds the deterministic Deployment Manifest and diagnostics model.
 
 ### `packages/process-runtime`
 
-Environment-native, shell-free process execution with trusted executable resolution,
-bounded output, timeout and cancellation propagation, process-tree termination, and
-per-Worker concurrency limits. Workspace and command authorization remain outside the
-runtime and are enforced by the native Worker before invocation.
+Environment-native process execution with trusted executable resolution, bounded synchronous output, timeout/cancellation propagation, process-tree termination, minimal child environment, and shared per-Worker concurrency limits across synchronous and asynchronous execution.
 
-### Future runtime packages
+`run` and `shell` support `mode: sync | async`. Sync remains request-bound. Async returns after native process acceptance with a native PID, keeps lifetime/concurrency policy authoritative, and discards stdout/stderr. It does not create a Queqiao Job domain or durable restart-recovery contract.
 
-- `packages/workspace`: safe filesystem, search, patch, process, and git primitives.
-- `packages/transport`: reconnecting worker channel and request multiplexing.
-- `packages/observability`: structured logs, metrics, traces, and redacted audit events.
-- `packages/testkit`: contract fixtures and hostile path/command test utilities.
+### `packages/workspace`
 
-They will be introduced with the first vertical slice rather than as empty modules.
+Implemented safe Workspace filesystem primitives. The package currently provides contained path resolution plus bounded read/list/search/write/edit behavior and is used by native Workers.
 
-## Invariants
+Workspace is an authority boundary. Repository/worktree/project-marker interpretation is not a required Core identity model; ADR-0009 moves those semantics to extensions/clients while preserving Core containment and bounded discovery primitives.
 
-1. The Gateway never accesses a workspace filesystem directly.
+### Future/supporting runtime packages
+
+Packages such as the following may be introduced when their implementation tickets require them:
+
+- transport/channel abstraction for a future non-loopback Worker transport;
+- observability/audit projection helpers;
+- shared hostile-fixture/contract test utilities.
+
+They must be introduced for concrete implementation needs rather than as speculative empty modules.
+
+## Secure Agent Substrate target boundaries
+
+The following sections describe the accepted target architecture and are implemented incrementally through `docs/wayfinder/secure-agent-substrate/TICKETS.md`.
+
+### Protocol bounded contexts
+
+Per ADR-0007, responsibilities converge on three explicit contexts:
+
+```text
+transport-neutral domain contracts
+            |
+            +--> Worker protocol contracts/version
+            |
+            +--> MCP adapter mapping/compatibility
+```
+
+Core runtime, policy, Workspace, process, and extension contracts must not depend on MCP SDK content/result types. MCP revision negotiation, Streamable HTTP specifics, public schema serialization, and OAuth/resource integration remain adapter concerns.
+
+Remote HTTP(S) MCP remains the supported client transport. No local stdio MCP mode is introduced by this effort.
+
+### Extension composition and authority
+
+Per ADR-0008, explicitly installed trusted local TypeScript extensions can:
+
+- register a typed tool;
+- explicitly extend/wrap a selected tool;
+- explicitly replace a selected implementation.
+
+Composition is deterministic through an explicit dependency/order DAG. Cycles, missing required dependencies, duplicate active replacements, invalid host binding, and incompatible contracts fail closed.
+
+The mandatory Worker authority envelope is outside replaceable extension implementations. Extensions cannot increase the invoking Workspace/profile/tool/process authority ceiling.
+
+Public-tool composition produces a deterministic deployment-level manifest/fingerprint. Workspace activation affects capability effectiveness but does not mutate the client-visible manifest merely because a user selects another Workspace.
+
+### Workspace authority versus domain discovery
+
+Per ADR-0009:
+
+```text
+Workspace = explicit filesystem/process authority boundary
+Repository / Worktree = Git extension resources inside that boundary
+Project / AGENTS / Skill markers = extension or client interpretation
+```
+
+Discovery is not authorization. A discovered `.git` directory or project marker does not create or broaden a Workspace grant.
+
+Any Queqiao-created Git worktree must remain within the selected Workspace authority boundary.
+
+### Bounded asynchronous execution
+
+Per ADR-0010, Core Manifest Revision 5 introduced `run` and `shell` with `mode: sync | async`; Revision 6 preserves that execution contract while making Workspace inspection explicitly targetable.
+
+Sync retains request-bound cancellation semantics. Async detaches an accepted native process from the initiating MCP request while keeping Worker lifetime/concurrency/resource policy authoritative.
+
+This does not introduce a Queqiao Job domain, durable JobStore, restart recovery guarantee, or Core tmux dependency.
+
+## Security invariants
+
+These apply to current and future implementations:
+
+1. The Gateway never performs native Workspace filesystem/process execution.
 2. A Worker never trusts authorization performed only by the Gateway.
-3. ChatGPT cannot submit an arbitrary local root; it can select only configured IDs.
-4. Every operation includes an environment-independent opaque workspace handle.
-5. Public tool names and input schemas remain stable across workspace configuration.
-6. Worker disconnects degrade only that environment, not the complete MCP endpoint.
-7. Configuration writes are atomic, validated, versioned, and auditable.
-8. Secrets never appear in workspace configuration, tool output, or normal logs.
-9. OAuth authenticates the MCP client but does not automatically approve every action.
-10. A step-up grant is short-lived, single-use, and valid only for the exact action.
+3. MCP clients select configured Workspace IDs; they cannot grant themselves arbitrary filesystem roots.
+4. Filesystem operations remain contained by canonical Workspace boundaries and must reject traversal/symlink/junction escape paths as applicable.
+5. Process execution remains bounded by profile/tool/command/cwd/timeout/concurrency/output/cancellation policy.
+6. Enabling a high-risk tool such as `shell` requires explicit Workspace policy; blank normal allowlists do not implicitly grant it.
+7. Extension composition cannot replace the mandatory security/policy envelope.
+8. Runtime configuration, endpoint-specific data, tokens, signing material, approval secrets, generated state, and logs remain outside source control.
+9. Public health and diagnostics expose only intentionally safe/redacted projections.
+10. OAuth callback CSP must preserve validated ChatGPT redirect-origin support without broadening to arbitrary external origins.
+11. Historical validation evidence is append-only: new behavior receives new evidence rather than retroactively changing old acceptance claims.
 
-## Production acceptance gates
+## Delivery and production acceptance
 
-- Unit tests for protocol, config migration, policy, path containment, and command rules.
-- Gateway/Worker contract tests across supported protocol versions.
-- End-to-end Windows and WSL tests through one Gateway endpoint.
-- OAuth refresh, revocation, reconnect, cancellation, shutdown, and recovery tests.
-- Resource limits for output size, file size, process count, duration, and concurrency.
-- Structured health/readiness endpoints and redacted security audit records.
-- Reproducible locked dependencies and explicit configuration migration procedures.
+Secure Agent Substrate work follows `docs/wayfinder/secure-agent-substrate/VALIDATION-DELIVERY.md`.
+
+The active development model is blue/green: the currently working stable Queqiao stack remains the collaboration/recovery path while candidate artifacts are built in a physically separate Git worktree and validated through a separate shadow Gateway + native Worker stack.
+
+Candidate validation and promotion are separate states. A successful implementation/build does not automatically replace stable runtime artifacts.
+
+Repository-level production checks for relevant slices include:
+
+```text
+npm run typecheck
+npm test
+npm run test:security
+npm run build:package
+git diff --check
+```
+
+Security/release slices additionally run the applicable security gate, cluster/interoperability tests, and real-client Windows/WSL acceptance required by their tickets.

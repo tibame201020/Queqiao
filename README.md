@@ -27,20 +27,26 @@ See [Architecture](docs/architecture.md) and the [architecture decisions](docs/a
 
 ## Project status
 
-Queqiao is under active development. The frozen coding baseline exposes
-`workspace_info`, `list_workspaces`, `open_workspace`, `read_file`, `write_file`, and
-`edit_file` through an OAuth-protected Gateway. Write and edit require an `editor` or
-`coding` workspace profile. OAuth uses the single `queqiao:access` handshake scope;
-it does not grant filesystem or process capabilities.
+Queqiao is under active development. The current Secure Agent Substrate candidate uses
+**Core Manifest Revision 6** and **Worker Protocol 2.0**. Core exposes ten typed tools:
+`workspace_info`, `list_workspaces`, `open_workspace`, `read_file`, `write_file`,
+`edit_file`, `list_directory`, `search_text`, `run`, and `shell`. The candidate also
+enables the first-party Git extension with seven named typed tools, for a deterministic
+17-tool public Deployment Manifest.
 
-The v0 sequence is intentionally fixed:
+`workspace_info` may explicitly target a configured Workspace or use the deployment
+default. `list_workspaces` includes a safe deployment-attestation projection containing
+the Core Manifest Revision, Deployment Manifest Fingerprint, public tool count, Worker
+Protocol Version, and bounded MCP compatibility window. OAuth still uses only the
+`queqiao:access` handshake scope; Workspace profile/tool/command policy remains the
+authority boundary.
 
-1. validate one workspace through ChatGPT;
-2. freeze the compatible baseline;
-3. add and validate multiple workspaces;
-4. add and validate Windows and WSL Workers;
-5. add the management CLI and broader coding tools;
-6. add optional step-up security features last.
+`run` and `shell` support `mode: sync | async`. Async mode returns after native process
+acceptance with a native PID and bounded lifetime while discarding stdout/stderr; it
+does not introduce a Queqiao Job API, durable restart recovery, or tmux dependency.
+Remote Streamable HTTP(S) MCP is the supported client transport. Queqiao currently pins
+`2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28` rather than inheriting an
+unbounded SDK compatibility range.
 
 The v0 public path was validated through ChatGPT on 2026-08-12. See the
 [validation evidence](docs/validation/v0-chatgpt-2026-08-12.md).
@@ -86,6 +92,14 @@ the safer argv-only `run` contract unchanged. `shell` is fail-closed: it require
 PowerShell and may explicitly select cmd or Git Bash; Linux/WSL defaults to Bash. See
 the [revision 4 evidence](docs/validation/native-shell-manifest-v4-chatgpt-2026-08-12.md).
 
+Core Manifest Revision 5 introduced `mode: sync | async` on `run` and `shell` while
+preserving bounded process policy and intentionally avoiding a durable Job abstraction. See
+the [Revision 5 async evidence](docs/validation/core-manifest-revision-5-async-execution-2026-08-13.md).
+
+Core Manifest Revision 6 makes `workspace_info` explicitly targetable by Workspace ID and
+adds safe deployment attestation to `list_workspaces` without adding an eighteenth public
+tool. See the [Revision 6 evidence](docs/validation/core-manifest-revision-6-workspace-attestation-2026-08-13.md).
+
 Security Baseline v1 is frozen. OAuth replay protection, MCP request budgets, sanitized
 health reporting, fail-closed Worker routing, native policy enforcement, filesystem and
 process containment, and the documented adversarial matrix are enforced by required
@@ -105,8 +119,6 @@ queqiao workspace remove --id <id>
 queqiao discovery list
 queqiao discovery add --root <path>
 queqiao discovery remove --root <path>
-queqiao workspace discover
-queqiao workspace approve --id <id> --name <name> --root <discovered-repository>
 queqiao environment list
 queqiao environment add --id <id> --url <loopback-url> --token-file <path>
 queqiao environment remove --id <id>
@@ -116,13 +128,18 @@ queqiao tool deny --workspace <id> --tool <tool>
 queqiao command allow --workspace <id> --command <executable>
 queqiao command deny --workspace <id> --command <executable>
 queqiao permissions show
+queqiao manifest show
+queqiao extension list
+queqiao extension doctor
+queqiao tool explain <tool>
 queqiao doctor
 ```
 
-Discovery roots are search boundaries, never workspace grants. Discovery is read-only,
-bounded by depth, skips symlinks and sensitive/excluded directories, and reports Git
-repository candidates. A candidate becomes accessible to MCP only after the separate
-`workspace approve` operation.
+Discovery roots are optional read-only search scopes, never Workspace grants. Core Workspace
+authority is created only through explicit administrator-controlled `workspace init` /
+`workspace add` operations against an existing directory. Repository/worktree discovery
+and lifecycle semantics belong to the Git extension and never broaden the selected
+Workspace authority boundary.
 
 Configuration changes use an exclusive lock, validated temporary file, and atomic
 rename. A Worker validates every new root before replacing its in-memory catalog; a

@@ -14,7 +14,7 @@ describe("Worker authoritative permission enforcement", () => {
     const app = await createWorkerApp({ environmentId: "linux", defaultWorkspaceId: "one", workerToken: "worker-secret", workspaces: [{ id: "one", displayName: "One", root: temporary }] });
     await request(app).get("/v1/hello").expect(401);
     const response = await request(app).get("/v1/hello").set("x-queqiao-worker-token", "worker-secret").expect(200);
-    expect(response.body).toMatchObject({ protocolVersion: "1.0", environmentId: "linux", capabilities: expect.arrayContaining(["workspace-routing", "tool-invocation"]) });
+    expect(response.body).toMatchObject({ protocolVersion: "2.0", environmentId: "linux", capabilities: expect.arrayContaining(["workspace-routing", "tool-invocation", "async-process-v1"]) });
     expect(response.body.instanceId).toMatch(/^[0-9a-f-]{36}$/);
   });
   it("denies read_file even when called directly with a valid Worker credential", async () => {
@@ -48,6 +48,28 @@ describe("Worker authoritative permission enforcement", () => {
     await request(app).post("/v1/tools/run").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "editor", executable, args: ["--version"] }).expect(403);
     await request(app).post("/v1/tools/run").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "coding", executable: "git", args: ["--version"] }).expect(403);
     await request(app).post("/v1/tools/run").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "coding", executable, args: ["--version"], cwd: ".." }).expect(400);
+  });
+
+  it("routes omitted mode to sync and explicit async to start through the same Worker authority path", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-mode-routing-"));
+    const calls: Array<{ method: "run" | "start"; executable: string }> = [];
+    const processes = {
+      async run(input: { executable: string }) { calls.push({ method: "run", executable: input.executable }); return { exitCode: 0, signal: null, stdout: "sync-ok", stderr: "", durationMs: 1, timedOut: false, aborted: false, outputLimitExceeded: false }; },
+      async start(input: { executable: string }) { calls.push({ method: "start", executable: input.executable }); return { pid: 4321, startedAt: "2026-08-13T01:00:00.000Z", timeoutMs: 30_000, stdout: "discarded" as const, stderr: "discarded" as const }; },
+    };
+    const executable = "node";
+    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", defaultWorkspaceId: "coding", workerToken: "worker-secret", processes, workspaces: [{ id: "coding", displayName: "Coding", root: temporary, profile: "coding", tools: { allow: [], deny: [], explicit: ["shell"] }, commands: { allow: [executable] } }] });
+
+    const sync = await request(app).post("/v1/tools/run").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "coding", executable, args: [], cwd: "." }).expect(200);
+    expect(sync.body.result).toMatchObject({ exitCode: 0, stdout: "sync-ok" });
+
+    const asyncRun = await request(app).post("/v1/tools/run").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "coding", executable, args: [], cwd: ".", mode: "async" }).expect(200);
+    expect(asyncRun.body.result).toMatchObject({ pid: 4321, stdout: "discarded", stderr: "discarded" });
+
+    const command = process.platform === "win32" ? "Write-Output async-shell" : "printf async-shell";
+    const asyncShell = await request(app).post("/v1/tools/shell").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "coding", shell: "default", command, cwd: ".", mode: "async" }).expect(200);
+    expect(asyncShell.body.result).toMatchObject({ shell: process.platform === "win32" ? "powershell" : "bash", pid: 4321, stdout: "discarded" });
+    expect(calls.map((call) => call.method)).toEqual(["run", "start", "start"]);
   });
 
   it("requires explicit shell permission and uses the host-native shell", async () => {

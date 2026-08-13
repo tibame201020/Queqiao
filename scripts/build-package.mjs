@@ -2,7 +2,7 @@ import { rm } from "node:fs/promises";
 import { build } from "esbuild";
 import path from "node:path";
 
-const internalPackages = new Map(["config", "platform-paths", "policy", "process-runtime", "protocol", "security", "tool-runtime", "workspace"].map((name) => [`@queqiao/${name}`, path.resolve(`packages/${name}/src/index.ts`)]));
+const internalPackages = new Map(["config", "contracts", "core-manifest", "extension-git", "mcp-compat", "operations", "platform-paths", "policy", "process-runtime", "protocol", "security", "tool-runtime", "worker-protocol", "workspace"].map((name) => [`@queqiao/${name}`, path.resolve(`packages/${name}/src/index.ts`)]));
 const internalSourcePlugin = { name: "queqiao-internal-source", setup(build) { build.onResolve({ filter: /^@queqiao\// }, (args) => ({ path: internalPackages.get(args.path) || "", ...(internalPackages.has(args.path) ? {} : { errors: [{ text: `Unknown internal package: ${args.path}` }] }) })); } };
 
 await rm("dist", { recursive: true, force: true });

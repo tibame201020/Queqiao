@@ -6,7 +6,7 @@
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "dependencies": {
-    "zod": "4.4.3"
+    "@queqiao/contracts": "0.1.0",
+    "@queqiao/worker-protocol": "0.1.0"
   }
 }
-
