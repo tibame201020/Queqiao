@@ -111,8 +111,10 @@ describe("Queqiao v0 vertical slice", () => {
       expect(JSON.stringify(executed.content)).toContain("gateway-worker-ok");
       const deniedWrite = await client.callTool({ name: "write_file", arguments: { workspaceId: "fixture", path: "denied.txt", content: "no" } });
       expect(deniedWrite.isError).toBe(true);
+      expect(JSON.parse((deniedWrite.content[0] as { type: "text"; text: string }).text)).toMatchObject({ code: "tool_denied", layer: "worker", retryable: false });
       const missing = await client.callTool({ name: "read_file", arguments: { workspaceId: "missing", path: "fixture.txt" } });
       expect(missing.isError).toBe(true);
+      expect(JSON.parse((missing.content[0] as { type: "text"; text: string }).text)).toMatchObject({ code: "workspace_not_found", layer: "gateway", retryable: false });
     } finally { await transport.close(); }
   });
 });

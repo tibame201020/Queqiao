@@ -1,9 +1,6 @@
 import type { WorkerEndpointConfig } from "./config.js";
+import { WorkerHttpError } from "./errors.js";
 import { QUEQIAO_WORKER_CAPABILITIES, QUEQIAO_WORKER_HTTP_API_PREFIX, workerHelloSchema, workerRunResultSchema, workerShellResultSchema, type WorkerHello, type WorkerRunResult, type WorkerShellResult, type WorkerToolInvocationResponse } from "@queqiao/worker-protocol";
-
-class WorkerHttpError extends Error {
-  constructor(readonly status: number, message: string) { super(message); }
-}
 
 export class WorkerClient {
   readonly environmentId: string;
@@ -13,8 +10,8 @@ export class WorkerClient {
     const timeout = AbortSignal.timeout(125_000);
     const signal = init.signal ? AbortSignal.any([timeout, init.signal]) : timeout;
     const response = await fetch(new URL(pathname, this.config.url), { ...init, signal, headers: { "content-type": "application/json", "x-queqiao-worker-token": this.config.token, ...init.headers } });
-    const data = await response.json() as T & { message?: string };
-    if (!response.ok) throw new WorkerHttpError(response.status, data.message || `Worker returned HTTP ${response.status}`);
+    const data = await response.json() as T & { error?: string; message?: string };
+    if (!response.ok) throw new WorkerHttpError(response.status, data.error || "worker_error", data.message || `Worker returned HTTP ${response.status}`);
     return data;
   }
   handshake(): Promise<WorkerHello> {

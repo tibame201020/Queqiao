@@ -8,6 +8,7 @@ import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "@queqiao/mcp-compat";
 import { buildOperationsDiagnostics, publicOperationsProjection } from "@queqiao/operations";
 import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import type { McpCancellationRegistry } from "./cancellation-registry.js";
+import { toQueqiaoErrorEnvelope } from "./errors.js";
 
 export const QUEQIAO_V0_TOOL_NAMES = ["workspace_info", "read_file"] as const;
 export const QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES = CORE_PUBLIC_TOOL_ORDER;
@@ -17,7 +18,7 @@ function result(value: unknown) {
 }
 
 function failure(error: unknown) {
-  return { isError: true, content: [{ type: "text" as const, text: error instanceof Error ? error.message : "Unknown error" }] };
+  return { isError: true, content: [{ type: "text" as const, text: JSON.stringify(toQueqiaoErrorEnvelope(error)) }] };
 }
 
 export function createGatewayToolRuntime(): ToolRuntime<GatewayToolContext> {
