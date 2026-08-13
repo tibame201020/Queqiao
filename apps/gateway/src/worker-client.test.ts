@@ -21,9 +21,9 @@ describe("WorkerClient rolling upgrade", () => {
   });
 
   it("does not bypass a policy denial through the legacy route", async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(hello), { status: 200, headers: { "content-type": "application/json" } })).mockResolvedValue(new Response(JSON.stringify({ message: "read_file is denied" }), { status: 403, headers: { "content-type": "application/json" } }));
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(hello), { status: 200, headers: { "content-type": "application/json" } })).mockResolvedValue(new Response(JSON.stringify({ error: "tool_denied", message: "read_file is denied" }), { status: 403, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetch);
-    await expect(new WorkerClient(config).readFile({ workspaceId: "one", path: "a.txt", offset: 0, limit: 1 })).rejects.toThrow("denied");
+    await expect(new WorkerClient(config).readFile({ workspaceId: "one", path: "a.txt", offset: 0, limit: 1 })).rejects.toMatchObject({ code: "tool_denied", layer: "worker", retryable: false, message: "read_file is denied" });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
   it("fails closed before workspace access when the Worker protocol is incompatible", async () => {

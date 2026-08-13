@@ -1,5 +1,6 @@
 import { WorkerClient } from "./worker-client.js";
 import type { WorkerEndpointConfig } from "./config.js";
+import { QueqiaoError } from "./errors.js";
 
 export type WorkspaceRoute = { environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] }; online: true };
 export type EnvironmentState = { environmentId: string; online: boolean; defaultWorkspaceId?: string; workspaces: WorkspaceRoute[] };
@@ -28,7 +29,7 @@ export class WorkerRegistry {
     for (const worker of this.workers) {
       try { const state = await worker.listWorkspaces(); if (state.environmentId === worker.environmentId) return { worker, workspaceId: state.defaultWorkspaceId }; } catch { /* try next */ }
     }
-    throw new Error("No Queqiao Worker is online");
+    throw new QueqiaoError("worker_unavailable", "No Queqiao Worker is online", "gateway", true);
   }
 
   async route(workspaceId: string): Promise<WorkerClient> {
@@ -36,31 +37,31 @@ export class WorkerRegistry {
     for (const worker of this.workers) {
       try { const state = await worker.listWorkspaces(); if (state.environmentId === worker.environmentId && state.workspaces.some((workspace) => workspace.workspaceId === workspaceId)) matches.push(worker); } catch { /* offline */ }
     }
-    if (!matches.length) throw new Error(`Workspace is not available: ${workspaceId}`);
-    if (matches.length > 1) throw new Error(`Workspace ID is ambiguous across environments: ${workspaceId}`);
+    if (!matches.length) throw new QueqiaoError("workspace_not_found", `Workspace is not available: ${workspaceId}`);
+    if (matches.length > 1) throw new QueqiaoError("workspace_ambiguous", `Workspace ID is ambiguous across environments: ${workspaceId}`);
     return matches[0]!;
   }
 
   async requireTool(workspaceId: string, tool: string): Promise<void> {
     const state = await this.listWorkspaces();
     const workspace = state.workspaces.find((entry) => entry.workspaceId === workspaceId);
-    if (!workspace) throw new Error(`Workspace is not available: ${workspaceId}`);
-    if (workspace.tools.deny.includes(tool)) throw new Error(`${tool} is denied by workspace policy`);
-    if (tool === "shell" && !workspace.tools.explicit.includes("shell")) throw new Error("shell requires explicit workspace allow policy");
-    if (workspace.tools.allow.length > 0 && !workspace.tools.allow.includes(tool)) throw new Error(`${tool} is not allowed by workspace policy`);
+    if (!workspace) throw new QueqiaoError("workspace_not_found", `Workspace is not available: ${workspaceId}`);
+    if (workspace.tools.deny.includes(tool)) throw new QueqiaoError("tool_denied", `${tool} is denied by workspace policy`);
+    if (tool === "shell" && !workspace.tools.explicit.includes("shell")) throw new QueqiaoError("tool_denied", "shell requires explicit workspace allow policy");
+    if (workspace.tools.allow.length > 0 && !workspace.tools.allow.includes(tool)) throw new QueqiaoError("tool_denied", `${tool} is not allowed by workspace policy`);
   }
 
   async workspaceRoute(workspaceId: string): Promise<WorkspaceRoute> {
     const state = await this.listWorkspaces();
     const matches = state.workspaces.filter((entry) => entry.workspaceId === workspaceId);
-    if (!matches.length) throw new Error(`Workspace is not available: ${workspaceId}`);
-    if (matches.length > 1) throw new Error(`Workspace ID is ambiguous across environments: ${workspaceId}`);
+    if (!matches.length) throw new QueqiaoError("workspace_not_found", `Workspace is not available: ${workspaceId}`);
+    if (matches.length > 1) throw new QueqiaoError("workspace_ambiguous", `Workspace ID is ambiguous across environments: ${workspaceId}`);
     return matches[0]!;
   }
 
   async invokeTool<T>(toolName: string, input: unknown, signal?: AbortSignal): Promise<T> {
     const workspaceId = input && typeof input === "object" && typeof (input as { workspaceId?: unknown }).workspaceId === "string" ? (input as { workspaceId: string }).workspaceId : undefined;
-    if (!workspaceId) throw new Error("workspaceId is required for Worker-hosted extension tools");
+    if (!workspaceId) throw new QueqiaoError("invalid_request", "workspaceId is required for Worker-hosted extension tools");
     const worker = await this.route(workspaceId);
     return worker.invokeTool<T>(toolName, input, signal);
   }

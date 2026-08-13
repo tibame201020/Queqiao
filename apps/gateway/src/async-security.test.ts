@@ -146,7 +146,9 @@ describe("async disconnect and resource security", () => {
 
     const denied = await client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", "process.stdout.write('should-not-run')"], timeoutMs: 1000 } });
     expect(denied.isError).toBe(true);
-    expect(JSON.stringify(denied.content)).toContain("concurrency limit");
+    const capacityError = JSON.parse((denied.content[0] as { type: "text"; text: string }).text) as { code: string; message: string; layer: string; retryable: boolean };
+    expect(capacityError).toMatchObject({ code: "process_capacity", layer: "worker", retryable: true });
+    expect(capacityError.message).toContain("concurrency limit");
 
     const deadline = Date.now() + 2500;
     while (processes.activeCount() !== 0 && Date.now() < deadline) await delay(25);
