@@ -9,3 +9,7 @@ instead of silently rewriting the reason a boundary exists.
 - [ADR-0004: Minimal tools and a transport-neutral extension runtime](0004-tool-and-extension-runtime.md)
 - [ADR-0005: Native process execution without a shell](0005-native-process-runtime.md)
 - [ADR-0006: Bounded filesystem discovery tools](0006-bounded-filesystem-discovery.md)
+- [ADR-0007: Separate domain contracts, Worker protocol, and MCP adapter](0007-protocol-bounded-contexts.md)
+- [ADR-0008: Deterministic extension composition and deployment manifest](0008-extension-composition-and-manifest.md)
+- [ADR-0009: Workspace is an authority boundary; discovery semantics belong outside Core](0009-workspace-authority-and-discovery.md)
+- [ADR-0010: `run` and `shell` support bounded sync and async execution modes](0010-async-execution-modes.md)

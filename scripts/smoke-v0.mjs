@@ -1,7 +1,6 @@
 import { loadRuntimeEnvironment, readRuntimeSecret } from "./runtime-env.mjs";
 import { createHash, randomBytes } from "node:crypto";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 await loadRuntimeEnvironment();
 const approvalSecret = await readRuntimeSecret("OAUTH_APPROVAL_SECRET");

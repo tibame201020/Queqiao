@@ -27,7 +27,7 @@ describe("Security Baseline v1 adversarial gate", () => {
       approvalSecret: "correct horse battery staple",
       jwtSecret,
       trustProxyHops: 1,
-      allowedRedirectOrigins: new Set(["https://chatgpt.com"]),
+      allowedRedirectOrigins: new Set(["https://chatgpt.com", "http://127.0.0.1", "http://[::1]"]),
       workers: [{ environmentId: "windows", url: new URL("http://127.0.0.1:65534"), token: "worker-secret" }],
     };
     app = await createGatewayApp(config);
@@ -62,6 +62,50 @@ describe("Security Baseline v1 adversarial gate", () => {
     await request(app).get("/oauth/authorize").query({ ...valid.authorization, code_challenge: "short" }).expect(400);
     await request(app).get("/oauth/authorize").query({ ...valid.authorization, resource: "https://attacker.example/mcp" }).expect(400);
     await request(app).post("/oauth/authorize").type("form").send({ ...valid.authorization, approval_secret: "wrong" }).expect(403);
+  });
+
+  it("allows arbitrary ports only for explicitly allowed loopback IP redirect origins", async () => {
+    const loopback = "http://127.0.0.1:6276/oauth/callback";
+    const ipv6Loopback = "http://[::1]:6276/oauth/callback";
+    const registered = await request(app).post("/oauth/register").send({ client_name: "Native MCP client", redirect_uris: [loopback, ipv6Loopback], scope: "queqiao:access" }).expect(201);
+    expect(registered.body.redirect_uris).toEqual([loopback, ipv6Loopback]);
+    await request(app).post("/oauth/register").send({ redirect_uris: ["http://localhost:6276/oauth/callback"] }).expect(400);
+    await request(app).post("/oauth/register").send({ redirect_uris: ["http://127.0.0.2:6276/oauth/callback"] }).expect(400);
+
+    const verifier = randomBytes(40).toString("base64url");
+    const authorization = {
+      client_id: registered.body.client_id as string,
+      redirect_uri: loopback,
+      response_type: "code",
+      code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+      code_challenge_method: "S256",
+      scope: "queqiao:access",
+      resource: new URL("mcp", publicBaseUrl).href,
+      state: "native-loopback",
+    };
+    await request(app).get("/oauth/authorize").query(authorization).expect(200);
+    await request(app).get("/oauth/authorize").query({ ...authorization, redirect_uri: "http://127.0.0.1:6277/oauth/callback" }).expect(400);
+  });
+
+  it("requires the authorized MCP resource again at authorization-code token exchange", async () => {
+    const client = await register();
+    const missing = await authorize(client.client_id);
+    const missingResponse = await request(app).post("/oauth/token").type("form").send({ grant_type: "authorization_code", code: missing.code, redirect_uri: redirectUri, client_id: client.client_id, code_verifier: missing.verifier }).expect(400);
+    expect(missingResponse.body.error).toBe("invalid_target");
+    await request(app).post("/oauth/token").type("form").send({ grant_type: "authorization_code", code: missing.code, redirect_uri: redirectUri, client_id: client.client_id, code_verifier: missing.verifier, resource: missing.authorization.resource }).expect(400).expect(({ body }) => expect(body.error).toBe("invalid_grant"));
+
+    const wrong = await authorize(client.client_id);
+    const wrongResponse = await request(app).post("/oauth/token").type("form").send({ grant_type: "authorization_code", code: wrong.code, redirect_uri: redirectUri, client_id: client.client_id, code_verifier: wrong.verifier, resource: "https://attacker.example/mcp" }).expect(400);
+    expect(wrongResponse.body.error).toBe("invalid_target");
+  });
+
+  it("scopes Origin validation to MCP while allowing OAuth browser navigation", async () => {
+    const client = await register();
+    const valid = await authorize(client.client_id);
+    await request(app).get("/oauth/authorize").set("Origin", "null").query(valid.authorization).expect(200);
+    await request(app).post("/mcp").set("Origin", "null").send({ jsonrpc: "2.0", id: 1, method: "tools/list" }).expect(403);
+    await request(app).post("/mcp").set("Origin", "https://attacker.example").send({ jsonrpc: "2.0", id: 1, method: "tools/list" }).expect(403);
+    await request(app).post("/mcp").set("Origin", "https://chatgpt.com").send({ jsonrpc: "2.0", id: 1, method: "tools/list" }).expect(401);
   });
 
   it("keeps public health free of workspace roots and policy details", async () => {

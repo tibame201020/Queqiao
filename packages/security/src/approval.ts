@@ -3,9 +3,9 @@ import type {
   EnvironmentId,
   PublicToolName,
   WorkspaceId,
-} from "@queqiao/protocol";
+} from "@queqiao/contracts";
 
-export type { ApprovalMethod } from "@queqiao/protocol";
+export type { ApprovalMethod } from "@queqiao/contracts";
 export type ApprovalStatus = "pending" | "approved" | "denied" | "expired" | "consumed";
 
 export type ActionBinding = {

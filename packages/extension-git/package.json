@@ -1,0 +1,14 @@
+{
+  "name": "@queqiao/extension-git",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@queqiao/config": "0.1.0",
+    "@queqiao/contracts": "0.1.0",
+    "@queqiao/tool-runtime": "0.1.0",
+    "zod": "4.4.3"
+  }
+}

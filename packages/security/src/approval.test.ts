@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EnvironmentId, WorkspaceId } from "@queqiao/protocol";
+import type { EnvironmentId, WorkspaceId } from "@queqiao/contracts";
 import {
   grantMatchesAction,
   InvalidChallengeTransitionError,

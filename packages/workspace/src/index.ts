@@ -2,7 +2,7 @@ import { constants, type Stats } from "node:fs";
 import { access, chmod, lstat, open, readFile, readdir, realpath, rename, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { MAX_TEXT_MUTATION_BYTES } from "@queqiao/protocol";
+import { MAX_TEXT_MUTATION_BYTES } from "@queqiao/contracts";
 
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const MAX_SEARCH_FILE_BYTES = 1024 * 1024;
@@ -38,6 +38,18 @@ export class SafeWorkspace {
     const lexical = path.resolve(this.canonicalRoot, relativePath);
     if (!this.isInside(lexical)) throw new Error("Path escapes the workspace");
     return lexical;
+  }
+
+  private async assertNoLinkComponents(absolutePath: string): Promise<void> {
+    if (!this.isInside(absolutePath)) throw new Error("Path escapes the workspace");
+    const relative = path.relative(this.canonicalRoot, absolutePath);
+    if (!relative) return;
+    let cursor = this.canonicalRoot;
+    for (const component of relative.split(path.sep)) {
+      cursor = path.join(cursor, component);
+      const info = await lstat(cursor);
+      if (info.isSymbolicLink()) throw new Error("Symbolic-link or junction paths are not supported");
+    }
   }
 
   private async existingFile(relativePath: string): Promise<{ absolute: string; info: Stats }> {
@@ -98,6 +110,48 @@ export class SafeWorkspace {
     const lines = buffer.toString("utf8").split(/\r?\n/);
     const selected = lines.slice(offset, offset + limit);
     return { path: relativePath.replaceAll("\\", "/"), offset, limit, startLine: selected.length ? offset + 1 : 0, endLine: offset + selected.length, totalLines: lines.length, text: selected.join("\n") };
+  }
+
+  async assertContainedExistingPath(absolutePath: string): Promise<string> {
+    this.assertInitialized();
+    if (!path.isAbsolute(absolutePath)) throw new Error("Contained path must be absolute");
+    const lexical = path.resolve(absolutePath);
+    await this.assertNoLinkComponents(lexical);
+    const canonical = await realpath(lexical);
+    if (!this.isInside(canonical)) throw new Error("Path escapes the workspace");
+    return canonical;
+  }
+
+  async relativeContainedExistingPath(absolutePath: string): Promise<string> {
+    const canonical = await this.assertContainedExistingPath(absolutePath);
+    const relative = path.relative(this.canonicalRoot, canonical);
+    return relative ? relative.replaceAll("\\", "/") : ".";
+  }
+
+  async resolveStrictDirectory(relativePath = "."): Promise<string> {
+    const lexical = this.lexicalPath(relativePath);
+    await this.assertNoLinkComponents(lexical);
+    const canonical = await realpath(lexical);
+    if (!this.isInside(canonical)) throw new Error("Directory escapes the workspace");
+    const info = await stat(canonical);
+    if (!info.isDirectory()) throw new Error("Working directory is not a directory");
+    return canonical;
+  }
+
+  async resolveNewDirectoryTarget(relativePath: string): Promise<string> {
+    const lexical = this.lexicalPath(relativePath);
+    const lexicalParent = path.dirname(lexical);
+    await this.assertNoLinkComponents(lexicalParent);
+    const canonicalParent = await realpath(lexicalParent);
+    if (!this.isInside(canonicalParent)) throw new Error("Parent directory escapes the workspace");
+    const target = path.join(canonicalParent, path.basename(lexical));
+    try {
+      await lstat(target);
+      throw new Error("Target already exists");
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    }
+    return target;
   }
 
   async resolveDirectory(relativePath = "."): Promise<string> {

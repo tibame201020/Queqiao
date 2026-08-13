@@ -50,12 +50,26 @@ export class WorkerRegistry {
     if (workspace.tools.allow.length > 0 && !workspace.tools.allow.includes(tool)) throw new Error(`${tool} is not allowed by workspace policy`);
   }
 
+  async workspaceRoute(workspaceId: string): Promise<WorkspaceRoute> {
+    const state = await this.listWorkspaces();
+    const matches = state.workspaces.filter((entry) => entry.workspaceId === workspaceId);
+    if (!matches.length) throw new Error(`Workspace is not available: ${workspaceId}`);
+    if (matches.length > 1) throw new Error(`Workspace ID is ambiguous across environments: ${workspaceId}`);
+    return matches[0]!;
+  }
+
+  async invokeTool<T>(toolName: string, input: unknown, signal?: AbortSignal): Promise<T> {
+    const workspaceId = input && typeof input === "object" && typeof (input as { workspaceId?: unknown }).workspaceId === "string" ? (input as { workspaceId: string }).workspaceId : undefined;
+    if (!workspaceId) throw new Error("workspaceId is required for Worker-hosted extension tools");
+    const worker = await this.route(workspaceId);
+    return worker.invokeTool<T>(toolName, input, signal);
+  }
   workspaceInfo(workspaceId: string, tool: "workspace_info" | "open_workspace" = "open_workspace") { return this.route(workspaceId).then((worker) => worker.workspaceInfo(workspaceId, tool)); }
   async readFile(input: { workspaceId: string; path: string; offset: number; limit: number }) { const worker = await this.route(input.workspaceId); return worker.readFile(input); }
   async listDirectory(input: { workspaceId: string; path: string; depth: number; limit: number; cursor?: string; includeHidden: boolean }) { const worker = await this.route(input.workspaceId); return worker.listDirectory(input); }
   async searchText(input: { workspaceId: string; query: string; path: string; globs: string[]; maxResults: number; caseSensitive: boolean; timeoutMs: number }, signal?: AbortSignal) { const worker = await this.route(input.workspaceId); return worker.searchText(input, signal); }
   async writeFile(input: { workspaceId: string; path: string; content: string }) { const worker = await this.route(input.workspaceId); return worker.writeFile(input); }
   async editFile(input: { workspaceId: string; path: string; oldText: string; newText: string }) { const worker = await this.route(input.workspaceId); return worker.editFile(input); }
-  async run(input: { workspaceId: string; executable: string; args: string[]; cwd: string; timeoutMs: number }, signal?: AbortSignal) { const worker = await this.route(input.workspaceId); return worker.run(input, signal); }
-  async shell(input: { workspaceId: string; shell: "default" | "bash" | "powershell" | "cmd" | "git-bash"; command: string; cwd: string; timeoutMs: number }, signal?: AbortSignal) { const worker = await this.route(input.workspaceId); return worker.shell(input, signal); }
+  async run(input: { workspaceId: string; executable: string; args: string[]; cwd: string; timeoutMs: number; mode: "sync" | "async" }, signal?: AbortSignal) { const worker = await this.route(input.workspaceId); return worker.run(input, signal); }
+  async shell(input: { workspaceId: string; shell: "default" | "bash" | "powershell" | "cmd" | "git-bash"; command: string; cwd: string; timeoutMs: number; mode: "sync" | "async" }, signal?: AbortSignal) { const worker = await this.route(input.workspaceId); return worker.shell(input, signal); }
 }

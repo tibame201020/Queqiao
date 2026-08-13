@@ -8,7 +8,27 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: distribution-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  full-test:
+    name: Full test suite (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm test
+
   package-install:
     name: Self-contained package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -22,11 +42,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci --ignore-scripts
-      - run: npm run build:package
       - shell: bash
         run: |
           mkdir package-test
-          npm pack --ignore-scripts --pack-destination package-test >/dev/null
+          npm pack --pack-destination package-test >/dev/null
           tarball="$(find "$(pwd)/package-test" -name '*.tgz' -print -quit)"
           npm install --prefix package-test/install "$tarball" --ignore-scripts
           package-test/install/node_modules/.bin/queqiao config paths
@@ -42,9 +61,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run security:gate
       - run: npm run test:cluster
-      - run: npm run build:package
       - shell: bash
         run: |
           mkdir package-test
-          npm pack --ignore-scripts --pack-destination package-test >/dev/null
+          npm pack --pack-destination package-test >/dev/null
           sh scripts/linux-package-integration.sh "$(find "$(pwd)/package-test" -name '*.tgz' -print -quit)"

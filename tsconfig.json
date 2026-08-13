@@ -1,16 +1,56 @@
 {
   "files": [],
   "references": [
-    { "path": "apps/worker" },
-    { "path": "apps/gateway" },
-    { "path": "apps/cli" },
-    { "path": "packages/protocol" },
-    { "path": "packages/config" },
-    { "path": "packages/security" },
-    { "path": "packages/policy" },
-    { "path": "packages/tool-runtime" },
-    { "path": "packages/workspace" },
-    { "path": "packages/process-runtime" },
-    { "path": "packages/platform-paths" }
+    {
+      "path": "apps/worker"
+    },
+    {
+      "path": "apps/gateway"
+    },
+    {
+      "path": "apps/cli"
+    },
+    {
+      "path": "packages/contracts"
+    },
+    {
+      "path": "packages/worker-protocol"
+    },
+    {
+      "path": "packages/protocol"
+    },
+    {
+      "path": "packages/config"
+    },
+    {
+      "path": "packages/security"
+    },
+    {
+      "path": "packages/policy"
+    },
+    {
+      "path": "packages/tool-runtime"
+    },
+    {
+      "path": "packages/workspace"
+    },
+    {
+      "path": "packages/process-runtime"
+    },
+    {
+      "path": "packages/platform-paths"
+    },
+    {
+      "path": "packages/core-manifest"
+    },
+    {
+      "path": "packages/mcp-compat"
+    },
+    {
+      "path": "packages/operations"
+    },
+    {
+      "path": "packages/extension-git"
+    }
   ]
 }

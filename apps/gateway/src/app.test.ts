@@ -4,13 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import type { Server } from "node:http";
 import request from "supertest";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createWorkerApp } from "../../worker/src/app.js";
 import { createGatewayApp } from "./app.js";
 import type { GatewayRuntimeConfig } from "./config.js";
 import { QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES } from "./mcp.js";
+import { CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core-manifest";
+import { buildDeploymentManifest, canonicalJson, deploymentManifestFingerprint } from "@queqiao/operations";
 
 const forbiddenFetchPorts = new Set([1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723, 2049, 3659, 4045, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697, 10080]);
 async function listenOnSafePort(app: { listen(port: number, host: string): Server }): Promise<Server> { for (;;) { const server = app.listen(0, "127.0.0.1"); await new Promise<void>((resolve) => server.once("listening", resolve)); const address = server.address(); if (!address || typeof address === "string") throw new Error("Server did not listen"); if (!forbiddenFetchPorts.has(address.port)) return server; await new Promise<void>((resolve) => server.close(() => resolve())); } }
@@ -63,11 +64,17 @@ describe("Queqiao v0 vertical slice", () => {
 
     gatewayServer = await listenOnSafePort(gateway);
     const address = gatewayServer.address(); if (!address || typeof address === "string") throw new Error("Gateway did not listen");
-    const client = new Client({ name: "queqiao-contract", version: "1" });
+    const client = new Client({ name: "queqiao-contract", version: "1" }, { supportedProtocolVersions: ["2025-11-25"], versionNegotiation: { mode: "legacy" } });
     const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${address.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${token.body.access_token}` } } });
     try {
       await client.connect(transport);
-      expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual([...QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES]);
+      expect(client.getNegotiatedProtocolVersion()).toBe("2025-11-25");
+      expect(client.getProtocolEra()).toBe("legacy");
+      const listedTools = (await client.listTools()).tools;
+      expect(listedTools.map((tool) => tool.name)).toEqual([...QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES]);
+      const expectedManifest = buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: [] });
+      const actualManifestTools = listedTools.map((tool) => ({ name: tool.name, title: tool.title, description: tool.description, inputSchema: tool.inputSchema, annotations: tool.annotations }));
+      expect(canonicalJson(actualManifestTools.sort((left, right) => left.name.localeCompare(right.name)))).toBe(canonicalJson(expectedManifest.tools));
       expect(JSON.stringify((await client.callTool({ name: "workspace_info", arguments: {} })).content)).toContain("windows");
       const read = await client.callTool({ name: "read_file", arguments: { path: "fixture.txt", offset: 0, limit: 1 } });
       expect(read.isError).not.toBe(true);
@@ -79,7 +86,16 @@ describe("Queqiao v0 vertical slice", () => {
       expect(search.isError).not.toBe(true);
       expect(JSON.stringify(search.content)).toContain("fixture.txt");
       const listed = await client.callTool({ name: "list_workspaces", arguments: {} });
-      expect(JSON.stringify(listed.content)).toContain("secondary");
+      const listedPayload = JSON.parse((listed.content[0] as { type: "text"; text: string }).text) as { deployment: { coreManifestRevision: number; deploymentManifestFingerprint: string; publicToolCount: number; workerProtocolVersion: string; supportedMcpProtocolVersions: string[] }; workspaces: Array<{ workspaceId: string }> };
+      expect(listedPayload.workspaces.map((entry) => entry.workspaceId)).toContain("secondary");
+      expect(listedPayload.deployment.coreManifestRevision).toBe(QUEQIAO_CORE_MANIFEST_REVISION);
+      expect(listedPayload.deployment.deploymentManifestFingerprint).toBe(deploymentManifestFingerprint(expectedManifest));
+      expect(listedPayload.deployment.publicToolCount).toBe(10);
+      expect(listedPayload.deployment.workerProtocolVersion).toBe("2.0");
+      expect(listedPayload.deployment.supportedMcpProtocolVersions).toContain("2026-07-28");
+      const explicitInfo = await client.callTool({ name: "workspace_info", arguments: { workspaceId: "secondary" } });
+      expect(explicitInfo.isError).not.toBe(true);
+      expect(JSON.stringify(explicitInfo.content)).toContain("secondary");
       const opened = await client.callTool({ name: "open_workspace", arguments: { workspaceId: "secondary" } });
       expect(opened.isError).not.toBe(true);
       const secondaryRead = await client.callTool({ name: "read_file", arguments: { workspaceId: "secondary", path: "fixture.txt" } });
