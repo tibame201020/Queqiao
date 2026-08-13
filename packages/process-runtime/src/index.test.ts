@@ -75,8 +75,16 @@ describe("ProcessRunner", () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-process-"));
     const runner = new ProcessRunner();
     const abort = new AbortController();
-    const aborted = runner.run({ executable: nodeExecutable, args: ["-e", "setInterval(()=>{},1000)"], cwd: temporary, signal: abort.signal });
-    setTimeout(() => abort.abort(), 50);
+    const marker = path.join(temporary, "sync-accepted.txt");
+    const aborted = runner.run({ executable: nodeExecutable, args: ["-e", `require('fs').writeFileSync(${JSON.stringify(marker)},'accepted'); setInterval(()=>{},1000)`], cwd: temporary, signal: abort.signal });
+    for (let attempts = 0; ; attempts += 1) {
+      try { await access(marker); break; }
+      catch {
+        if (attempts >= 100) throw new Error("Timed out waiting for synchronous process acceptance marker");
+        await sleep(20);
+      }
+    }
+    abort.abort();
     await expect(aborted).resolves.toMatchObject({ aborted: true });
     expect(runner.activeCount()).toBe(0);
   });

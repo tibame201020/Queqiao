@@ -85,3 +85,7 @@ The real `Queqiao Shadow` connector verified:
 - Core Manifest Revision remained 6, public tool count remained 17, Worker Protocol remained 2.0, and the deployment manifest fingerprint remained unchanged.
 
 This confirms that the change restores standard Windows CLI config discovery without broadening arbitrary environment inheritance, command policy, MCP schema, or workspace containment.
+
+## CI acceptance-race hardening
+
+The first PR Windows full-suite run exposed an existing timing race in the synchronous cancellation test: it aborted after a fixed 50 ms delay, which can occur before native process acceptance on a loaded Windows runner. The production cancellation semantics were not changed. The test was made deterministic by having the child write an acceptance marker and aborting only after the marker is observable. The focused process-runtime suite and subsequent full local suite passed after this test-only hardening.
