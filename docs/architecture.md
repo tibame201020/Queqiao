@@ -23,7 +23,9 @@ Only the Gateway is publicly exposed. The currently verified Windows/WSL deploym
 
 The Worker boundary is intentionally independent from this current loopback transport. ADR-0011 defines the accepted target topology: Workers initiate registration with the Gateway, while logical invocation remains `Client -> Gateway -> Worker -> Gateway -> Client`. Registration direction does not require a persistent connection; connection lifetime is a transport concern.
 
-The target Worker Registry is in-memory runtime presence, not persisted registration state. Registration carries stable Worker identity, environment identity, a transport descriptor, Worker Protocol version, capabilities, and optional instance version. Gateway-observed liveness is configurable and low-frequency; no Worker lease/heartbeat lease is required. Functional `doctor` diagnostics are a separate optional Worker Protocol capability and are not part of basic liveness.
+The target Worker Registry is in-memory runtime presence, not persisted registration state. Registration carries stable Worker identity, environment identity, a transport descriptor, Worker Protocol version, optional capabilities, and optional instance version. `environmentId` is unique within one logical cluster; replica/load-balancing semantics are not part of this architecture. Worker Protocol version defines the mandatory contract, while capabilities describe only optional Worker operations. Incompatible Worker Protocol registrations are rejected.
+
+Gateway-observed liveness is configurable and low-frequency; no Worker lease/heartbeat lease is required. A failed health check marks observed reachability but does not permanently veto a real invocation attempt; a successful invocation can restore reachability. Functional `doctor` diagnostics are a separate optional Worker Protocol capability and are not part of basic liveness.
 
 The transport descriptor is intentionally abstract. Loopback HTTP is the current verified implementation; future bindings such as gRPC may be introduced without redefining Worker Protocol semantics, Gateway routing responsibilities, or Worker-authoritative execution policy.
 

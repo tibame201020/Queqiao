@@ -65,13 +65,19 @@ instanceVersion (optional)
 
 Registration does not carry Workspace policy, command allowlists, filesystem roots, resource statistics, extension details, or health/doctor results. Those remain Worker-owned runtime state queried through explicit protocol capabilities when needed.
 
+`protocolVersion` defines the mandatory Worker Protocol contract. If the registered protocol version is incompatible with the Gateway's supported Worker Protocol, registration is rejected rather than retained as non-routable presence.
+
+`capabilities` declares only optional Worker Protocol operations beyond that mandatory contract, such as future `doctor` or resource-diagnostic operations. The Gateway may identify, present, and route these optional operations, but it does not implement their functional behavior.
+
 ### Worker identity and authentication
 
 `workerId` is a stable security identity and is distinct from `environmentId` and from its authentication credential.
 
+Within one logical Queqiao cluster, `environmentId` is unique. Queqiao does not currently define replicas, load balancing, placement, or multiple Workers sharing one environment identity. A future multi-node model requires a separate architectural decision rather than overloading `environmentId`.
+
 The Gateway authenticates a Worker before accepting registration. Existing Worker credentials may evolve to support this model; registration must not turn an unauthenticated self-asserted `workerId` into trusted routing state.
 
-A duplicate active `workerId` fails closed. A new registration must not silently replace another authenticated live Worker merely because it claims the same identity. Replacement/restart semantics require the previous registration to be demonstrably inactive or an explicit management action.
+A duplicate active `workerId` fails closed. A new registration must not silently replace another authenticated live Worker merely because it claims the same identity. A Worker may perform best-effort `unregister` during orderly shutdown. Without a lease, a replacement registration for the same `workerId` is accepted only when the previous instance is already considered `unreachable` and the new instance successfully authenticates as that same Worker identity, or when an explicit management action authorizes replacement.
 
 ### Transport descriptor
 
@@ -103,7 +109,9 @@ No registration lease or Worker heartbeat lease is required.
 
 The Gateway may perform configurable, low-frequency Worker liveness checks. Liveness checks answer only whether the Worker/Worker Protocol endpoint is alive and responsive. They must not perform Workspace scans, Git operations, shell execution, extension diagnostics, or other functional probes.
 
-Health-check frequency and timeout are management configuration. Implementations must remain compatible with Queqiao Resource Safety requirements and must not introduce high-frequency idle polling or unbounded background work.
+Liveness is observational rather than authoritative for routing. A failed health check may mark a registration `unreachable`, but it does not permanently veto a real invocation attempt. If a later invocation succeeds, the Gateway may immediately restore the Worker to `reachable`. Invocation transport failures may likewise contribute to liveness state.
+
+Health-check frequency, timeout, and failure thresholds are management configuration. Implementations must remain compatible with Queqiao Resource Safety requirements and must not introduce high-frequency idle polling or unbounded background work.
 
 ### Doctor and enhanced diagnostics
 
