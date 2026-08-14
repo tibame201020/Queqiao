@@ -7,4 +7,6 @@ coverage/
 .env.*
 !.env.example
 .queqiao/
+resource-safety-*.json
+resource-safety-report.json
 
