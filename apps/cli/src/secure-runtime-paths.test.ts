@@ -17,17 +17,18 @@ function currentSid(): string {
 
 function aclState(target: string): { protected: boolean; sids: string[]; inherited: boolean[] } {
   const script = [
-    "$acl=Get-Acl -LiteralPath $env:QUEQIAO_ACL_TARGET",
-    "$rules=@($acl.Access | ForEach-Object { [pscustomobject]@{ sid=$_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; inherited=$_.IsInherited } })",
-    "[pscustomobject]@{ protected=$acl.AreAccessRulesProtected; rules=$rules } | ConvertTo-Json -Compress -Depth 4",
+    "$p=$env:QUEQIAO_ACL_TARGET",
+    "$acl=if([System.IO.Directory]::Exists($p)){[System.IO.Directory]::GetAccessControl($p)}else{[System.IO.File]::GetAccessControl($p)}",
+    "$rules=@($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | ForEach-Object { [pscustomobject]@{ sid=$_.IdentityReference.Value; inherited=[bool]$_.IsInherited } })",
+    "[pscustomobject]@{ isProtected=[bool]$acl.AreAccessRulesProtected; rules=$rules } | ConvertTo-Json -Compress -Depth 4",
   ].join("; ");
   const parsed = JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
     encoding: "utf8",
     windowsHide: true,
     env: { ...process.env, QUEQIAO_ACL_TARGET: target },
-  })) as { protected: boolean; rules: Array<{ sid: string; inherited: boolean }> | { sid: string; inherited: boolean } };
+  })) as { isProtected: boolean; rules: Array<{ sid: string; inherited: boolean }> | { sid: string; inherited: boolean } };
   const rules = Array.isArray(parsed.rules) ? parsed.rules : [parsed.rules];
-  return { protected: parsed.protected, sids: rules.map((rule) => rule.sid).sort(), inherited: rules.map((rule) => rule.inherited) };
+  return { protected: parsed.isProtected, sids: rules.map((rule) => rule.sid).sort(), inherited: rules.map((rule) => rule.inherited) };
 }
 
 describe.skipIf(process.platform !== "win32")("Windows runtime ACL hardening", () => {
