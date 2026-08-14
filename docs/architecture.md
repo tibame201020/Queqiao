@@ -21,7 +21,11 @@ Queqiao Gateway
 
 Only the Gateway is publicly exposed. The currently verified Windows/WSL deployment uses loopback HTTP Worker endpoints on the same host. Each native Worker is authoritative for its own Workspace filesystem/process operations and validates delegated requests again.
 
-The Worker boundary is intentionally independent from this current loopback transport. A later persistent/outbound Worker transport may replace the local HTTP wiring without redefining Core tool semantics or the public MCP contract.
+The Worker boundary is intentionally independent from this current loopback transport. ADR-0011 defines the accepted target topology: Workers initiate registration with the Gateway, while logical invocation remains `Client -> Gateway -> Worker -> Gateway -> Client`. Registration direction does not require a persistent connection; connection lifetime is a transport concern.
+
+The target Worker Registry is in-memory runtime presence, not persisted registration state. Registration carries stable Worker identity, environment identity, a transport descriptor, Worker Protocol version, capabilities, and optional instance version. Gateway-observed liveness is configurable and low-frequency; no Worker lease/heartbeat lease is required. Functional `doctor` diagnostics are a separate optional Worker Protocol capability and are not part of basic liveness.
+
+The transport descriptor is intentionally abstract. Loopback HTTP is the current verified implementation; future bindings such as gRPC may be introduced without redefining Worker Protocol semantics, Gateway routing responsibilities, or Worker-authoritative execution policy.
 
 The current Core contract is **Core Manifest Revision 6**. Core exposes ten typed tools:
 
