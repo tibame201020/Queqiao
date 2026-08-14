@@ -110,6 +110,20 @@ export class WorkerMembershipStore {
     });
   }
 
+  updateTransport(workerId: string, transport: WorkerTransportDescriptor): Promise<WorkerMembershipRegistry> {
+    return this.serialize(async () => {
+      const current = await this.read();
+      let found = false;
+      const workers = current.workers.map((worker) => {
+        if (worker.workerId !== workerId) return worker;
+        found = true;
+        return workerMembershipSchema.parse({ ...worker, transport });
+      });
+      if (!found) throw new Error(`Worker membership not found: ${workerId}`);
+      return this.writeValidated({ ...current, workers });
+    });
+  }
+
   remove(workerId: string): Promise<WorkerMembershipRegistry> {
     return this.serialize(async () => {
       const current = await this.read();

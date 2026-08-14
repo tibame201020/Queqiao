@@ -13,6 +13,7 @@ import { resolveRuntimeLayout } from "@queqiao/platform-paths";
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
 import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-paths.js";
+import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, setupGateway, setupWorker, updateJoinedWorkerTransport } from "./enrollment-cli.js";
 
 const managedToolSchema = toolNameSchema;
 const workspaceSchema = z.object({
@@ -39,6 +40,13 @@ const configFile = path.resolve(option(args, "file") || layout.configFile);
 const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
 
 async function main() {
+  if (domain === "gateway" && action === "setup") return print(await setupGateway(configFile, args, layout.gatewayStateDir, layout.secretsDir));
+  if (domain === "worker" && action === "setup") return print(await setupWorker(configFile, args, layout.secretsDir));
+  if (domain === "gateway" && action === "join-token") return print(await createJoinToken(configFile, args));
+  if (domain === "worker" && action === "join") return print(await joinWorker(configFile, args));
+  if (domain === "worker" && action === "list") return print(await listJoinedWorkers(configFile));
+  if (domain === "worker" && action === "update") return print(await updateJoinedWorkerTransport(configFile, requiredOption(args, "worker-id"), requiredOption(args, "endpoint")));
+  if (domain === "worker" && action === "remove") return print(await removeJoinedWorker(configFile, requiredOption(args, "worker-id")));
   if (domain === "config" && action === "init") {
     try { await access(configFile); throw new Error(`Configuration already exists: ${configFile}`); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     const publicBaseUrl = new URL(requiredOption(args, "public-base-url")); const root = await resolveWorkspaceAuthorityRoot(requiredOption(args, "workspace-root"));
@@ -139,7 +147,7 @@ async function main() {
   if (domain === "config" && action === "paths") return print(layout);
   if (domain === "migrate" && action === "from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));
   if (domain === "migrate" && action === "runtime-v1") return print(await migrateRuntimeLayoutV1(layout, args.includes("--execute")));
-  throw new Error("Usage: queqiao config init|paths, workspace init|list|add|remove, discovery list|add|remove, environment list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor");
+  throw new Error("Usage: queqiao gateway setup|join-token, worker setup|join|list|update|remove, config init|paths, workspace init|list|add|remove, discovery list|add|remove, environment list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor");
 }
 
 async function realpathDirectory(value: string): Promise<string> {

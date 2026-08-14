@@ -8,12 +8,24 @@ import { ProcessCapacityError, ProcessRunner } from "@queqiao/process-runtime";
 import { QUEQIAO_WORKER_CAPABILITIES, QUEQIAO_WORKER_HTTP_API_PREFIX, QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import type { ExtensionHost, ToolRuntime } from "@queqiao/tool-runtime";
 
-export type WorkerAppConfig = { environmentId: string; defaultWorkspaceId: string; workspaces?: readonly WorkerWorkspaceConfig[]; workspacesFile?: string; workerToken: string; processes?: WorkerProcessExecutor; extensionHost?: ExtensionHost<WorkerToolContext> };
+export type WorkerAppConfig = {
+  workerId?: string;
+  environmentId: string;
+  defaultWorkspaceId: string;
+  workspaces?: readonly WorkerWorkspaceConfig[];
+  workspacesFile?: string;
+  workerToken?: string;
+  workerCredential?: { current(): Promise<string> };
+  processes?: WorkerProcessExecutor;
+  extensionHost?: ExtensionHost<WorkerToolContext>;
+};
+
 const readRequestSchema = z.object({ workspaceId: z.string().min(1), path: z.string().min(1).max(4096), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(5000).default(500) });
 function safeEqual(left: string, right: string): boolean { return timingSafeEqual(createHash("sha256").update(left).digest(), createHash("sha256").update(right).digest()); }
 
 export async function createWorkerApp(config: WorkerAppConfig): Promise<Express> {
   if (Boolean(config.workspaces) === Boolean(config.workspacesFile)) throw new Error("Configure exactly one workspace source");
+  if (!config.workerCredential && !config.workerToken) throw new Error("Worker credential source is required");
   const catalog = new WorkspaceCatalog(config.defaultWorkspaceId, config.workspacesFile ? { file: config.workspacesFile } : { workspaces: config.workspaces! });
   await catalog.initialize();
   const coreTools = createWorkerToolRuntime();
@@ -28,10 +40,15 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "6mb" }));
-  app.use((req: Request, res: Response, next: NextFunction) => {
+  app.use(async (req: Request, res: Response, next: NextFunction) => {
     if (req.path === "/health") return next();
-    if (!safeEqual(req.header("x-queqiao-worker-token") || "", config.workerToken)) return res.status(401).json({ error: "unauthorized" });
-    next();
+    try {
+      const expected = config.workerCredential ? await config.workerCredential.current() : config.workerToken || "";
+      if (!safeEqual(req.header("x-queqiao-worker-token") || "", expected)) return res.status(401).json({ error: "unauthorized" });
+      next();
+    } catch {
+      res.status(503).json({ error: "worker_credential_unavailable" });
+    }
   });
   app.use(async (_req, _res, next) => { try { await catalog.refresh(); next(); } catch (error) { console.error("Workspace config reload rejected", error); next(); } });
   const descriptors = () => catalog.list().map(({ config: entry, reader }) => ({ environmentId: config.environmentId, workspaceId: entry.id, displayName: entry.displayName, root: reader.root, profile: entry.profile, tools: entry.tools, commands: entry.commands }));
@@ -40,14 +57,11 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
     if (!contract) throw new WorkerToolError(404, "tool_not_found", `Tool is not available: ${toolName}`);
     const workspace = catalog.get(workspaceId);
     if (!workspace) throw new WorkerToolError(404, "workspace_not_found", `Workspace is not available: ${workspaceId}`);
-    return {
-      workspaceId,
-      capabilities: new WorkerCoreCapabilities({ toolName, grantedCapabilities: contract.requiredCapabilities, workspace, processes, ...(signal ? { signal } : {}) }),
-      ...(signal ? { signal } : {}),
-    };
+    return { workspaceId, capabilities: new WorkerCoreCapabilities({ toolName, grantedCapabilities: contract.requiredCapabilities, workspace, processes, ...(signal ? { signal } : {}) }), ...(signal ? { signal } : {}) };
   };
 
   app.get("/health", (_req, res) => res.json({ ok: true, service: "queqiao-worker", environmentId: config.environmentId, defaultWorkspaceId: config.defaultWorkspaceId, workspaceCount: catalog.size() }));
+  app.get("/enrollment/identity", (_req, res) => res.json({ workerId: config.workerId, environmentId: config.environmentId, protocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION }));
   app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/hello`, (_req, res) => res.json(hello));
   app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/workspaces`, (_req, res) => res.json({ environmentId: config.environmentId, defaultWorkspaceId: config.defaultWorkspaceId, workspaces: descriptors() }));
   app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/workspaces/:workspaceId`, (req, res) => {
@@ -63,9 +77,8 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
     const abort = new AbortController();
     req.once("aborted", () => abort.abort(new Error("Worker request aborted")));
     res.once("close", () => { if (!res.writableEnded) abort.abort(new Error("Worker response connection closed")); });
-    try {
-      res.json({ result: await toolsFor(workspaceId).execute(req.params.toolName, req.body, contextFor(req.params.toolName, workspaceId, abort.signal)) });
-    } catch (error) {
+    try { res.json({ result: await toolsFor(workspaceId).execute(req.params.toolName, req.body, contextFor(req.params.toolName, workspaceId, abort.signal)) }); }
+    catch (error) {
       if (error instanceof WorkerToolError) return res.status(error.status).json({ error: error.code, message: error.message });
       if (error instanceof ProcessCapacityError) return res.status(429).json({ error: "process_capacity", message: error.message });
       res.status(400).json({ error: "tool_error", message: error instanceof Error ? error.message : "Unknown error" });
