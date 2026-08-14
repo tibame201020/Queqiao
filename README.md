@@ -1,5 +1,7 @@
 # Queqiao
 
+[![Resource Safety Baseline](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml/badge.svg)](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml)
+
 Queqiao builds one secure bridge between AI clients and multiple coding environments.
 
 The public MCP endpoint belongs to a lightweight Gateway. Windows, WSL, Linux, and
@@ -106,6 +108,14 @@ process containment, and the documented adversarial matrix are enforced by requi
 Windows/Linux GitHub checks. See the
 [security gate](docs/security/security-baseline-v1-gate.md) and
 [threat matrix](docs/security/security-baseline-v1-threat-matrix.md).
+
+Resource Safety Baseline v1 separately keeps the long-running Core lightweight. Windows
+and Linux GitHub Actions run the packed npm artifact and bound resident-memory overhead,
+idle CPU/write churn, request-log amplification, residual growth, descriptors/threads,
+and process cleanup. Core PID accounting is intentionally separate from explicitly
+authorized child workloads. See the
+[resource safety contract](docs/resource-safety-baseline-v1.md) and
+[initial stable audit evidence](docs/validation/resource-safety-baseline-v1-2026-08-14.md).
 
 ## CLI baseline
 
