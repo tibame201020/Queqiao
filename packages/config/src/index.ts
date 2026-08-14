@@ -13,6 +13,7 @@ import {
   toolNameSchema,
   toolRiskSchema,
   workspaceIdSchema,
+  workerIdSchema,
 } from "@queqiao/contracts";
 
 export const QUEQIAO_CONFIG_VERSION = 1 as const;
@@ -127,6 +128,7 @@ export const installedExtensionSchema = z.object({
 
 export const workerConfigSchema = z.object({
   version: z.literal(QUEQIAO_CONFIG_VERSION),
+  workerId: workerIdSchema,
   environmentId: environmentIdSchema,
   gatewayUrl: z.url(),
   credentialsFile: z.string().min(1),
@@ -163,6 +165,7 @@ export const runtimeConfigSchema = z.object({
     allowedRedirectOrigins: z.array(z.url()).default(["https://chatgpt.com", "http://127.0.0.1", "http://localhost"]),
   }).optional(),
   worker: z.object({
+    workerId: workerIdSchema.optional(),
     environmentId: environmentIdSchema,
     listen: z.object({ host: z.literal("127.0.0.1").default("127.0.0.1"), port: z.number().int().min(1).max(65535).default(7576) }),
     tokenFile: z.string().min(1), defaultWorkspaceId: workspaceIdSchema,
