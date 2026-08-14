@@ -70,13 +70,22 @@ Required workflow Actions were mutable major tags before v2. Security v2 pins re
 
 No workflow permission expansion is introduced.
 
+## Windows fresh-install ACL hardening
+
+Current stable production ACL metadata was already restricted to SYSTEM/current-user authority at the hardened roots, but the audit reproduced that a fresh pre-v2 `config init` inherited its parent ACL. Under ordinary per-user LocalAppData that included SYSTEM, Administrators and the current user; a deliberately permissive parent propagated an additional writable principal. POSIX-style `chmod(0700/0600)` did not establish an independent Windows ACL boundary.
+
+Security v2 remediation adds setup-only platform hardening:
+
+- runtime/config/secret directories are created with the existing POSIX modes and, on Windows, then have inheritance removed;
+- generated config/secret files likewise have inheritance removed;
+- explicit Windows access is replaced with FullControl for the current logon SID and SYSTEM only;
+- current identity is resolved from the process token via fixed `whoami.exe /user` arguments, and ACLs are applied by fixed `icacls.exe` arguments without a shell;
+- Windows ACL provisioning is fail-closed: an identity/ACL error aborts setup or migration rather than silently leaving inherited access;
+- Linux continues to rely on `0700` directories and `0600` files.
+
+The Windows adversarial regression deliberately places the Queqiao directory under an Everyone-writable inherited parent, hardens a child directory and secret file, then verifies `AreAccessRulesProtected=true`, zero inherited ACEs, and an exact SID set of current-user + SYSTEM.
+
 ## Deferred findings — not claimed fixed
-
-### Windows fresh-install ACL inheritance
-
-Current stable production ACL metadata is restricted to SYSTEM/current-user authority at the hardened roots. A fresh `config init` sandbox demonstrated that Windows file/directory creation still inherits parent ACLs rather than independently creating a protected ACL boundary. Under ordinary per-user LocalAppData the inherited principals were SYSTEM, Administrators and the current user; a deliberately permissive parent also propagated the extra principal.
-
-This is recorded as a **pre-CLI setup blocker**, not as an active demonstrated remote compromise of the current stable installation. Explicit Windows ACL provisioning/doctor verification remains required before setup UX is accepted.
 
 ### Durable redacted audit trail
 
@@ -104,12 +113,21 @@ The incident also reinforced a Security v2 rule for future doctor/audit tooling:
 
 ## Focused implementation validation
 
-After the v2 implementation changes and canonical Worker-schema alignment:
+After the v2 implementation changes, canonical Worker-schema alignment, and Windows ACL remediation:
 
-- build: PASS;
-- focused security/config suites: **16/16 PASS**;
+- typecheck: PASS;
+- Security gate: **100/100 PASS**;
+- full suite: **123/123 PASS**;
+- cluster suite: **16/16 PASS**;
+- production dependency audit: **0 vulnerabilities**;
+- package build: PASS;
+- Resource Safety Baseline v1: PASS with Gateway/Worker idle writes **0/0 bytes** and `failures=[]`;
 - step-up fail-closed regression: PASS;
-- Gateway loopback schema/listener regressions: PASS.
+- Gateway loopback schema/listener regressions: PASS;
+- Windows ACL adversarial regression: PASS;
+- packaged `dist/queqiao.js config init` acceptance beneath an Everyone-writable inherited parent: config/data/secrets roots, `config.yaml`, and all generated secret files were `AreAccessRulesProtected=true`, had no inherited ACEs, and resolved to exactly current-user SID + SYSTEM SID.
+
+The ACL acceptance used only disposable runtime paths and recorded no secret values.
 
 ## Shadow candidate acceptance
 

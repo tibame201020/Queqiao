@@ -1,12 +1,13 @@
-import { access, chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { serializeRuntimeConfig } from "@queqiao/config";
 import type { RuntimeLayout } from "@queqiao/platform-paths";
+import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-paths.js";
 
 type LegacyWorker = { environmentId: string; url: string; token: string };
 function parseEnvironment(text: string): Map<string, string> { const values = new Map<string, string>(); for (const line of text.split(/\r?\n/)) { const match = line.match(/^([^#=]+)=(.*)$/); if (match) values.set(match[1]!, match[2]!); } return values; }
 async function exists(file: string) { try { await access(file); return true; } catch { return false; } }
-async function secureWrite(file: string, value: string) { await writeFile(file, value, { encoding: "utf8", mode: 0o600, flag: "wx" }); await chmod(file, 0o600).catch(() => undefined); }
+async function secureWrite(file: string, value: string) { await writeFile(file, value, { encoding: "utf8", mode: 0o600, flag: "wx" }); await secureRuntimeFile(file); }
 function required(values: Map<string, string>, key: string): string { const value = values.get(key); if (!value) throw new Error(`${key} is missing from legacy environment`); return value; }
 
 export async function migrateFromRepository(repository: string, layout: RuntimeLayout, execute: boolean) {
@@ -17,7 +18,7 @@ export async function migrateFromRepository(repository: string, layout: RuntimeL
   if (await exists(targets.config)) throw new Error(`Migration target already exists: ${targets.config}`);
   const plan = { repository, sources, targets, secretsDir: layout.secretsDir, mode: execute ? "execute" : "dry-run" };
   if (!execute) return plan;
-  await Promise.all([layout.configDir, layout.dataDir, layout.stateDir, layout.logDir, layout.runtimeDir, layout.secretsDir].map((directory) => mkdir(directory, { recursive: true, mode: 0o700 }).then(() => chmod(directory, 0o700).catch(() => undefined))));
+  await Promise.all([layout.configDir, layout.dataDir, layout.stateDir, layout.logDir, layout.runtimeDir, layout.secretsDir].map(secureRuntimeDirectory));
   const legacyEnv = parseEnvironment(await readFile(sources.environment, "utf8"));
   const secretNames = ["OAUTH_APPROVAL_SECRET", "JWT_SIGNING_SECRET", "QUEQIAO_WORKER_TOKEN"] as const;
   const secretFiles = new Map<string, string>();

@@ -10,8 +10,9 @@ Security Baseline v2 is the pre-management-UI hardening gate for Queqiao as a re
 4. **Worker listener remains loopback-only** and Worker endpoints remain protected by the per-environment credential.
 5. **Filesystem, process, Git and extension authority remain bounded** by the existing v1 containment and capability gates.
 6. **Required GitHub Actions use reviewed immutable commit SHAs** and retain least-privilege workflow permissions.
-7. **Resource Safety Baseline v1 remains green.** Security hardening must not introduce idle write churn, material memory pressure, or lifecycle leakage.
-8. **Public MCP contract remains stable** unless a separately reviewed contract change is intentional.
+7. **Fresh Windows runtime provisioning creates an explicit private ACL boundary.** Runtime/config/secret directories and generated config/secret files remove inherited access and grant only the current logon SID plus SYSTEM; ACL hardening failure aborts setup/migration. Linux retains `0700` directories and `0600` files.
+8. **Resource Safety Baseline v1 remains green.** Security hardening must not introduce idle write churn, material memory pressure, or lifecycle leakage.
+9. **Public MCP contract remains stable** unless a separately reviewed contract change is intentional.
 
 ## Required CI
 
@@ -24,13 +25,12 @@ On pull requests and `main`:
 - self-contained package/cluster checks;
 - Resource Safety Baseline on Windows and Ubuntu.
 
-Security v2 specifically adds regression coverage for canonical Workspace-policy parsing, step-up fail-closed enforcement, and the loopback Gateway listener.
+Security v2 specifically adds regression coverage for canonical Workspace-policy parsing, step-up fail-closed enforcement, the loopback Gateway listener, and Windows fresh-provisioning ACL isolation.
 
 ## Accepted residuals / deferred controls
 
 The following are **not** claimed as implemented by Security Baseline v2:
 
-- **Windows fresh-install ACL hardening.** Current production metadata is restricted, but `config init` still relies on parent ACL inheritance. Explicit cross-platform provisioning/doctor verification is required before CLI setup is considered complete.
 - **Durable redacted security audit trail.** HTTP metadata logging exists, but durable auth/policy/config/extension/tool audit events are a Dashboard prerequisite. Adding them must re-run Resource Safety because they change disk-write behavior.
 - **Worker credential rotation without downtime.** This remains part of service-lifecycle/CLI work.
 - **Full step-up approval runtime.** Security v2 deliberately fails closed instead of pretending an approval challenge has been satisfied.
