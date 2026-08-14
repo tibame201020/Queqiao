@@ -21,7 +21,15 @@ Queqiao Gateway
 
 Only the Gateway is publicly exposed. The currently verified Windows/WSL deployment uses loopback HTTP Worker endpoints on the same host. Each native Worker is authoritative for its own Workspace filesystem/process operations and validates delegated requests again.
 
-The Worker boundary is intentionally independent from this current loopback transport. A later persistent/outbound Worker transport may replace the local HTTP wiring without redefining Core tool semantics or the public MCP contract.
+The Worker boundary is intentionally independent from this current loopback transport. ADR-0011 defines the accepted target topology: Worker membership is established explicitly through CLI-driven `worker join`, while logical invocation remains `Client -> Gateway -> Worker -> Gateway -> Client`. Worker runtime startup does not auto-register, and connection lifetime remains a transport concern.
+
+Successful enrollment creates Gateway-owned persistent membership, stored separately from the user-managed main configuration. Persistent membership contains stable Worker identity, unique environment identity, a fixed transport descriptor, and credential references. Runtime reachability, instance identity, Worker Protocol version, optional capabilities, and transport-session state are negotiated live and are not persisted as authoritative membership data.
+
+Enrollment uses an explicit one-time, memory-only join token and an atomic transaction: provisional credential issuance, secure Worker-side storage, confirmation within 30 seconds, and a real Gateway-to-Worker health/protocol handshake must all succeed before membership is committed. Failed transactions roll back membership and provisional credentials; an attempted join token remains consumed.
+
+Gateway-observed liveness is configurable and low-frequency; no Worker lease/heartbeat lease is required. A failed health check marks observed reachability but does not permanently veto a real invocation attempt; a successful invocation can restore reachability. Functional `doctor` diagnostics are a separate optional Worker Protocol capability and are not part of basic liveness.
+
+The transport descriptor is intentionally abstract and is fixed in persistent membership until an explicit management update changes it. Loopback HTTP is the current verified implementation; future bindings such as gRPC may be introduced without redefining Worker Protocol semantics, Gateway routing responsibilities, or Worker-authoritative execution policy.
 
 The current Core contract is **Core Manifest Revision 6**. Core exposes ten typed tools:
 
