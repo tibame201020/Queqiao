@@ -13,4 +13,4 @@ instead of silently rewriting the reason a boundary exists.
 - [ADR-0008: Deterministic extension composition and deployment manifest](0008-extension-composition-and-manifest.md)
 - [ADR-0009: Workspace is an authority boundary; discovery semantics belong outside Core](0009-workspace-authority-and-discovery.md)
 - [ADR-0010: `run` and `shell` support bounded sync and async execution modes](0010-async-execution-modes.md)
-- [ADR-0011: Worker registration, registry, liveness, and transport abstraction](0011-gateway-worker-registration-and-transport.md)
+- [ADR-0011: Worker enrollment, registry, liveness, and transport abstraction](0011-gateway-worker-registration-and-transport.md)
