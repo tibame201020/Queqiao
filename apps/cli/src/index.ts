@@ -1,6 +1,6 @@
 import path from "node:path";
 import { access, readFile, writeFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { AtomicConfigStore } from "./atomic-config-store.js";
 import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig } from "@queqiao/config";
@@ -46,7 +46,7 @@ async function main() {
     await Promise.all([layout.configDir, layout.dataDir, layout.stateDir, layout.logDir, layout.runtimeDir, layout.secretsDir, layout.gatewayStateDir].map(secureRuntimeDirectory));
     const secretFile = async (name: string, bytes: number) => { const file = path.join(layout.secretsDir, `${name}.secret`); await writeFile(file, `${randomBytes(bytes).toString("base64url")}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" }); await secureRuntimeFile(file); return file; };
     const approvalSecretFile = await secretFile("oauth-approval", 24); const jwtSigningSecretFile = await secretFile("jwt-signing", 48); const tokenFile = await secretFile("worker-token", 32);
-    const config = await configStore.initialize(runtimeConfigSchema.parse({ version: 1, gateway: { publicBaseUrl: publicBaseUrl.href, listen: { host: "127.0.0.1", port: 7575 }, trustProxyHops: 1, stateDirectory: layout.gatewayStateDir, approvalSecretFile, jwtSigningSecretFile }, worker: { environmentId, listen: { host: "127.0.0.1", port: 7576 }, tokenFile, defaultWorkspaceId: workspaceId }, environments: [{ environmentId, url: "http://127.0.0.1:7576", tokenFile }], workspaces: [newWorkspace(workspaceId, workspaceId, root)] }));
+    const config = await configStore.initialize(runtimeConfigSchema.parse({ version: 1, gateway: { publicBaseUrl: publicBaseUrl.href, listen: { host: "127.0.0.1", port: 7575 }, trustProxyHops: 1, stateDirectory: layout.gatewayStateDir, approvalSecretFile, jwtSigningSecretFile }, worker: { workerId: randomUUID(), environmentId, listen: { host: "127.0.0.1", port: 7576 }, tokenFile, defaultWorkspaceId: workspaceId }, environments: [{ environmentId, url: "http://127.0.0.1:7576", tokenFile }], workspaces: [newWorkspace(workspaceId, workspaceId, root)] }));
     await secureRuntimeFile(configFile);
     return print({ initialized: true, file: configFile, config: { ...config, gateway: config.gateway && { ...config.gateway, approvalSecretFile: "<secret-file>", jwtSigningSecretFile: "<secret-file>" }, worker: config.worker && { ...config.worker, tokenFile: "<secret-file>" }, environments: config.environments.map((entry) => ({ ...entry, tokenFile: "<secret-file>" })) } });
   }

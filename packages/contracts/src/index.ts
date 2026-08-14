@@ -8,6 +8,7 @@ export const identifierSchema = z
   .max(64)
   .regex(/^[a-z][a-z0-9_-]*$/, "must be a stable lowercase identifier");
 
+export const workerIdSchema = z.uuid().brand<"WorkerId">();
 export const environmentIdSchema = identifierSchema.brand<"EnvironmentId">();
 export const workspaceIdSchema = identifierSchema.brand<"WorkspaceId">();
 
@@ -82,6 +83,7 @@ export const workspaceDescriptorSchema = z.object({
   online: z.boolean(),
 });
 
+export type WorkerId = z.infer<typeof workerIdSchema>;
 export type EnvironmentId = z.infer<typeof environmentIdSchema>;
 export type WorkspaceId = z.infer<typeof workspaceIdSchema>;
 export type PermissionProfile = z.infer<typeof permissionProfileSchema>;
