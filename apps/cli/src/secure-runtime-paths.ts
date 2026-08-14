@@ -1,12 +1,19 @@
 import { execFile } from "node:child_process";
 import { chmod, mkdir } from "node:fs/promises";
+import { win32 as windowsPath } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 let currentWindowsSid: Promise<string> | undefined;
 
+function windowsSystemExecutable(name: string): string {
+  const systemRoot = process.env.SystemRoot || process.env.WINDIR;
+  if (!systemRoot) throw new Error("Windows system root is unavailable");
+  return windowsPath.join(systemRoot, "System32", name);
+}
+
 async function windowsUserSid(): Promise<string> {
-  currentWindowsSid ??= execFileAsync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { windowsHide: true, encoding: "utf8" }).then(({ stdout }) => {
+  currentWindowsSid ??= execFileAsync(windowsSystemExecutable("whoami.exe"), ["/user", "/fo", "csv", "/nh"], { windowsHide: true, encoding: "utf8" }).then(({ stdout }) => {
     const sid = stdout.match(/S-\d-(?:\d+-)+\d+/)?.[0];
     if (!sid) throw new Error("Could not resolve the current Windows user SID");
     return sid;
@@ -17,7 +24,7 @@ async function windowsUserSid(): Promise<string> {
 async function hardenWindowsAcl(target: string, directory: boolean): Promise<void> {
   const userSid = await windowsUserSid();
   const inheritance = directory ? "(OI)(CI)F" : "F";
-  await execFileAsync("icacls.exe", [
+  await execFileAsync(windowsSystemExecutable("icacls.exe"), [
     target,
     "/inheritance:r",
     "/grant:r",

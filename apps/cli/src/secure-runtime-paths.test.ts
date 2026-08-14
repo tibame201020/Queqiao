@@ -8,8 +8,14 @@ import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-path
 let temporary: string | undefined;
 afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); temporary = undefined; });
 
+function windowsSystemExecutable(name: string): string {
+  const systemRoot = process.env.SystemRoot || process.env.WINDIR;
+  if (!systemRoot) throw new Error("Windows system root is unavailable");
+  return path.win32.join(systemRoot, "System32", name);
+}
+
 function currentSid(): string {
-  const output = execFileSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
+  const output = execFileSync(windowsSystemExecutable("whoami.exe"), ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
   const sid = output.match(/S-\d-(?:\d+-)+\d+/)?.[0];
   if (!sid) throw new Error("Could not resolve test user SID");
   return sid;
@@ -22,7 +28,7 @@ function aclState(target: string): { protected: boolean; sids: string[]; inherit
     "$rules=@($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | ForEach-Object { [pscustomobject]@{ sid=$_.IdentityReference.Value; inherited=[bool]$_.IsInherited } })",
     "[pscustomobject]@{ isProtected=[bool]$acl.AreAccessRulesProtected; rules=$rules } | ConvertTo-Json -Compress -Depth 4",
   ].join("; ");
-  const parsed = JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+  const parsed = JSON.parse(execFileSync(path.win32.join(process.env.SystemRoot || process.env.WINDIR || "", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", script], {
     encoding: "utf8",
     windowsHide: true,
     env: { ...process.env, QUEQIAO_ACL_TARGET: target },
@@ -34,7 +40,7 @@ function aclState(target: string): { protected: boolean; sids: string[]; inherit
 describe.skipIf(process.platform !== "win32")("Windows runtime ACL hardening", () => {
   it("removes inherited broad access and keeps only the current user plus SYSTEM", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-acl-security-"));
-    execFileSync("icacls.exe", [temporary, "/grant", "*S-1-1-0:(OI)(CI)M"], { windowsHide: true, stdio: "ignore" });
+    execFileSync(windowsSystemExecutable("icacls.exe"), [temporary, "/grant", "*S-1-1-0:(OI)(CI)M"], { windowsHide: true, stdio: "ignore" });
 
     const directory = path.join(temporary, "private");
     await secureRuntimeDirectory(directory);
@@ -49,5 +55,5 @@ describe.skipIf(process.platform !== "win32")("Windows runtime ACL hardening", (
       expect(state.sids).toEqual(expected);
       expect(state.inherited.every((value) => value === false)).toBe(true);
     }
-  });
+  }, 20_000);
 });
