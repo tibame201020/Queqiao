@@ -1,5 +1,7 @@
+import express from "express";
 import { describe, expect, it } from "vitest";
 import { loadGatewayConfig } from "./config.js";
+import { listenGateway } from "./listen.js";
 
 const base = {
   PUBLIC_BASE_URL: "https://queqiao.example",
@@ -11,10 +13,23 @@ const base = {
 
 describe("Gateway security configuration", () => {
   it("accepts only loopback HTTP Worker endpoints in the verified baseline", () => {
-    expect(loadGatewayConfig({ ...base, QUEQIAO_WORKER_URL: "http://127.0.0.1:7576" }).workers[0]?.url.href).toBe("http://127.0.0.1:7576/");
+    const config = loadGatewayConfig({ ...base, QUEQIAO_WORKER_URL: "http://127.0.0.1:7576" });
+    expect(config.host).toBe("127.0.0.1");
+    expect(config.workers[0]?.url.href).toBe("http://127.0.0.1:7576/");
     expect(() => loadGatewayConfig({ ...base, QUEQIAO_WORKER_URL: "http://attacker.example:7576" })).toThrow(/loopback/);
     expect(() => loadGatewayConfig({ ...base, QUEQIAO_WORKER_URL: "https://127.0.0.1:7576" })).toThrow(/loopback/);
     expect(() => loadGatewayConfig({ ...base, QUEQIAO_WORKER_URL: "http://user:pass@127.0.0.1:7576" })).toThrow(/credentials/);
+  });
+
+  it("binds the verified Gateway runtime to IPv4 loopback", async () => {
+    const server = listenGateway(express(), { host: "127.0.0.1", port: 0 });
+    try {
+      await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+      const address = server.address();
+      expect(address && typeof address === "object" ? address.address : address).toBe("127.0.0.1");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 
   it("rejects short Worker and JWT secrets", () => {

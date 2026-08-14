@@ -2,7 +2,7 @@ version: 1
 gateway:
   publicBaseUrl: https://example.invalid/
   listen:
-    host: 0.0.0.0
+    host: 127.0.0.1
     port: 7575
   trustProxyHops: 1
   stateDirectory: /replace/with/queqiao/data/gateway

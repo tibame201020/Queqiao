@@ -41,6 +41,12 @@ describe("extension config schema", () => {
     expect(() => runtimeConfigSchema.parse({ ...base, extensions: [0, 1].map(() => ({ trusted: true, source: { kind: "local-module", module: "x.mjs" }, manifest })) })).toThrow(/unique/);
   });
 
+  it("keeps the verified Gateway listener loopback-only", () => {
+    const gateway = { publicBaseUrl: "https://queqiao.example/", listen: { host: "127.0.0.1", port: 7575 }, stateDirectory: "state", approvalSecretFile: "approval.secret", jwtSigningSecretFile: "jwt.secret" };
+    expect(runtimeConfigSchema.parse({ ...base, gateway }).gateway?.listen.host).toBe("127.0.0.1");
+    expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, listen: { host: "0.0.0.0", port: 7575 } } })).toThrow();
+  });
+
   it("rejects self-ordering and duplicate register declarations", () => {
     expect(() => runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: true, source: { kind: "local-module", module: "x.mjs" }, manifest: { ...manifest, ordering: { requires: [manifest.id], before: [], after: [] } } }] })).toThrow(/itself/);
     expect(() => runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: true, source: { kind: "local-module", module: "x.mjs" }, manifest: { ...manifest, contributions: [manifest.contributions[0], manifest.contributions[0]] } }] })).toThrow(/more than once/);
