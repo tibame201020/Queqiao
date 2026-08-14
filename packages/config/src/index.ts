@@ -157,7 +157,7 @@ export const runtimeConfigSchema = z.object({
   version: z.literal(QUEQIAO_CONFIG_VERSION),
   gateway: z.object({
     publicBaseUrl: z.url(),
-    listen: z.object({ host: z.string().min(1).default("0.0.0.0"), port: z.number().int().min(1).max(65535).default(7575) }),
+    listen: z.object({ host: z.literal("127.0.0.1").default("127.0.0.1"), port: z.number().int().min(1).max(65535).default(7575) }),
     trustProxyHops: z.number().int().min(0).max(16).default(1),
     stateDirectory: z.string().min(1), approvalSecretFile: z.string().min(1), jwtSigningSecretFile: z.string().min(1),
     allowedRedirectOrigins: z.array(z.url()).default(["https://chatgpt.com", "http://127.0.0.1", "http://localhost"]),

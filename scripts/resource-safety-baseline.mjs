@@ -177,7 +177,7 @@ try {
     version: 1,
     gateway: {
       publicBaseUrl: `http://127.0.0.1:${gatewayPort}/`,
-      listen: { host: "0.0.0.0", port: gatewayPort },
+      listen: { host: "127.0.0.1", port: gatewayPort },
       trustProxyHops: 0,
       stateDirectory: path.join(dataDir, "gateway"),
       approvalSecretFile: approvalFile,

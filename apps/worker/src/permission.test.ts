@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import request from "supertest";
@@ -34,6 +34,19 @@ describe("Worker authoritative permission enforcement", () => {
     expect(denied.body).toMatchObject({ error: "tool_denied" });
     await request(app).post("/v1/tools/write_file").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "editor", path: "allowed.txt", content: "before" }).expect(200);
     await request(app).post("/v1/tools/edit_file").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "editor", path: "allowed.txt", oldText: "before", newText: "after" }).expect(200);
+  });
+
+  it("fails closed when a Workspace step-up rule matches but no approval runtime is available", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-step-up-"));
+    const target = path.join(temporary, "blocked.txt");
+    const app = await createWorkerApp({ environmentId: "windows", defaultWorkspaceId: "guarded", workerToken: "worker-secret", workspaces: [{
+      id: "guarded", displayName: "Guarded", root: temporary, profile: "editor",
+      tools: { allow: ["write_file"], deny: [], explicit: [] }, commands: { allow: [] },
+      stepUp: [{ tools: ["write_file"], methods: ["local"], ttlSeconds: 60, maxAttempts: 3 }],
+    }] });
+    const response = await request(app).post("/v1/tools/write_file").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "guarded", path: "blocked.txt", content: "must-not-write" }).expect(403);
+    expect(response.body).toMatchObject({ error: "step_up_required" });
+    await expect(access(target)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("runs only allowlisted executables in coding workspaces without exposing a shell", async () => {

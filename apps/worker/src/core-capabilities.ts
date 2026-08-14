@@ -1,6 +1,6 @@
 import type { ProcessExecutionMode, ToolCapability } from "@queqiao/contracts";
 import type { ProcessRunner } from "@queqiao/process-runtime";
-import { workspaceAllowsTool, type WorkspaceEntry } from "./workspace-catalog.js";
+import { workspaceAllowsTool, workspaceRequiresStepUp, type WorkspaceEntry } from "./workspace-catalog.js";
 import { WorkerToolError } from "./tool-errors.js";
 
 export type NativeShellName = "default" | "bash" | "powershell" | "cmd" | "git-bash";
@@ -44,6 +44,9 @@ export class WorkerCoreCapabilities {
     }
     if (requestedWorkspaceId !== this.#workspace.config.id) {
       throw new WorkerToolError(403, "workspace_mismatch", "Tool invocation is bound to a different Workspace");
+    }
+    if (workspaceRequiresStepUp(this.#workspace.config, toolName)) {
+      throw new WorkerToolError(403, "step_up_required", "Step-up approval is required, but approval grants are not available in the verified runtime");
     }
     if (!workspaceAllowsTool(this.#workspace.config, toolName, requiredCapabilities)) {
       throw new WorkerToolError(403, "tool_denied", `${toolName} is denied by Workspace policy or profile`);

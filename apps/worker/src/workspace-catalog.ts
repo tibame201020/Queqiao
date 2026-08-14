@@ -2,18 +2,12 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { parse } from "yaml";
+import { workspaceConfigSchema, type WorkspaceConfig } from "@queqiao/config";
 import { SafeWorkspace } from "@queqiao/workspace";
-import { toolNameSchema, type ToolCapability } from "@queqiao/contracts";
+import type { ToolCapability } from "@queqiao/contracts";
 
-export const workerWorkspaceConfigSchema = z.object({
-  id: z.string().min(1).max(64).regex(/^[a-z][a-z0-9_-]*$/),
-  displayName: z.string().min(1).max(128),
-  root: z.string().min(1),
-  profile: z.enum(["read-only", "editor", "coding"]).default("read-only"),
-  tools: z.object({ allow: z.array(toolNameSchema).default([]), deny: z.array(toolNameSchema).default([]), explicit: z.array(toolNameSchema).default([]) }).default({ allow: [], deny: [], explicit: [] }),
-  commands: z.object({ allow: z.array(z.string().min(1).max(128)).default([]) }).default({ allow: [] }),
-});
-export type WorkerWorkspaceConfig = z.infer<typeof workerWorkspaceConfigSchema>;
+export const workerWorkspaceConfigSchema = workspaceConfigSchema;
+export type WorkerWorkspaceConfig = WorkspaceConfig;
 const workspaceFileSchema = z.array(workerWorkspaceConfigSchema).min(1);
 
 export type WorkspaceEntry = { config: WorkerWorkspaceConfig; reader: SafeWorkspace };
@@ -78,11 +72,16 @@ const legacyToolCapabilities = new Map<string, readonly ToolCapability[]>([
   ["shell", ["workspace:exec"]],
 ]);
 
+export function workspaceRequiresStepUp(config: WorkerWorkspaceConfig, tool: string): boolean {
+  return config.stepUp.some((rule) => rule.tools.some((candidate) => candidate === tool));
+}
+
 export function workspaceAllowsTool(config: WorkerWorkspaceConfig, tool: string, capabilities?: readonly ToolCapability[]): boolean {
   const effectiveCapabilities = capabilities ?? legacyToolCapabilities.get(tool) ?? ["workspace:read"];
   if (effectiveCapabilities.includes("workspace:exec") && config.profile !== "coding") return false;
   if (effectiveCapabilities.includes("workspace:write") && config.profile === "read-only") return false;
   if (config.tools.deny.some((denied) => denied === tool)) return false;
+  if (workspaceRequiresStepUp(config, tool)) return false;
   if (tool === "shell" && !config.tools.explicit.some((explicit) => explicit === "shell")) return false;
   return config.tools.allow.length === 0 || config.tools.allow.some((allowed) => allowed === tool);
 }

@@ -29,7 +29,7 @@ export async function migrateFromRepository(repository: string, layout: RuntimeL
     version: 1 as const,
     gateway: {
       publicBaseUrl: required(legacyEnv, "PUBLIC_BASE_URL"),
-      listen: { host: "0.0.0.0", port: Number(legacyEnv.get("PORT") || 7575) },
+      listen: { host: "127.0.0.1", port: Number(legacyEnv.get("PORT") || 7575) },
       trustProxyHops: Number(legacyEnv.get("TRUST_PROXY_HOPS") || 1),
       stateDirectory: layout.gatewayStateDir,
       approvalSecretFile: secretFiles.get("OAUTH_APPROVAL_SECRET")!, jwtSigningSecretFile: secretFiles.get("JWT_SIGNING_SECRET")!,
@@ -53,7 +53,7 @@ export async function migrateRuntimeLayoutV1(layout: RuntimeLayout, execute: boo
   const env = parseEnvironment(await readFile(environmentFile, "utf8")); const workspaces = JSON.parse(await readFile(workspacesFile, "utf8"));
   const environments = await exists(workersFile) ? JSON.parse(await readFile(workersFile, "utf8")) : [];
   const approvalSecretFile = env.get("OAUTH_APPROVAL_SECRET_FILE"); const jwtSigningSecretFile = env.get("JWT_SIGNING_SECRET_FILE"); const workerTokenFile = env.get("QUEQIAO_WORKER_TOKEN_FILE");
-  const gateway = approvalSecretFile && jwtSigningSecretFile && env.get("PUBLIC_BASE_URL") ? { publicBaseUrl: env.get("PUBLIC_BASE_URL"), listen: { host: "0.0.0.0", port: Number(env.get("PORT") || 7575) }, trustProxyHops: Number(env.get("TRUST_PROXY_HOPS") || 1), stateDirectory: env.get("QUEQIAO_STATE_DIR") || layout.gatewayStateDir, approvalSecretFile, jwtSigningSecretFile, allowedRedirectOrigins: (env.get("OAUTH_ALLOWED_REDIRECT_ORIGINS") || "https://chatgpt.com,http://127.0.0.1,http://localhost").split(",") } : undefined;
+  const gateway = approvalSecretFile && jwtSigningSecretFile && env.get("PUBLIC_BASE_URL") ? { publicBaseUrl: env.get("PUBLIC_BASE_URL"), listen: { host: "127.0.0.1", port: Number(env.get("PORT") || 7575) }, trustProxyHops: Number(env.get("TRUST_PROXY_HOPS") || 1), stateDirectory: env.get("QUEQIAO_STATE_DIR") || layout.gatewayStateDir, approvalSecretFile, jwtSigningSecretFile, allowedRedirectOrigins: (env.get("OAUTH_ALLOWED_REDIRECT_ORIGINS") || "https://chatgpt.com,http://127.0.0.1,http://localhost").split(",") } : undefined;
   const worker = workerTokenFile ? { environmentId: env.get("QUEQIAO_ENVIRONMENT_ID") || "local", listen: { host: "127.0.0.1" as const, port: Number(env.get("QUEQIAO_WORKER_PORT") || 7576) }, tokenFile: workerTokenFile, defaultWorkspaceId: env.get("QUEQIAO_WORKSPACE_ID") || workspaces[0]?.id || "default" } : undefined;
   await secureWrite(layout.configFile, serializeRuntimeConfig({ version: 1, ...(gateway ? { gateway } : {}), ...(worker ? { worker } : {}), environments, workspaces }));
   return plan;
