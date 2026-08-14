@@ -31,7 +31,7 @@ cat > "$test_root/home/.config/queqiao/config.yaml" <<EOF
 version: 1
 gateway:
   publicBaseUrl: http://127.0.0.1:17575/
-  listen: { host: 0.0.0.0, port: 17575 }
+  listen: { host: 127.0.0.1, port: 17575 }
   trustProxyHops: 0
   stateDirectory: $test_root/data/gateway
   approvalSecretFile: $test_root/data/secrets/approval.secret

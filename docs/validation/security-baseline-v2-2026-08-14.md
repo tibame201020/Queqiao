@@ -142,4 +142,8 @@ Because the Shadow JWT signing key had been rotated during credential-exposure c
 
 The one-time OAuth validation client entry was removed afterward and the candidate Gateway was restarted; read-back confirmed zero validation-client residue, loopback binding, health 200, and both environments still online. The user-facing ChatGPT Shadow connector still requires reauthorization because retaining the old signing key would violate the containment decision.
 
-Full GitHub-hosted Windows/Ubuntu CI and stable release acceptance remain subsequent release gates and must pass before Security Baseline v2 is frozen.
+## Pull-request CI fixture correction
+
+The first hosted pull-request run passed Security Baseline and Resource Safety on both Windows and Ubuntu, but the Linux packaged Gateway/Worker handshake failed because its integration fixture still declared `gateway.listen.host: 0.0.0.0`. The new canonical schema correctly rejected that stale fixture. The fixture was changed to `127.0.0.1`, and the same packed-tarball Linux integration was run locally through WSL and passed before the correction was pushed.
+
+Full GitHub-hosted Windows/Ubuntu CI after that fixture correction and stable release acceptance remain subsequent release gates and must pass before Security Baseline v2 is frozen.
