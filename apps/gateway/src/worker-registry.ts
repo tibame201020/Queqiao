@@ -1,5 +1,4 @@
-import { WorkerClient } from "./worker-client.js";
-import type { WorkerEndpointConfig } from "./config.js";
+import { WorkerClient, type WorkerClientConfig } from "./worker-client.js";
 import { QueqiaoError } from "./errors.js";
 
 export type WorkspaceRoute = { environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] }; online: true };
@@ -7,7 +6,7 @@ export type EnvironmentState = { environmentId: string; online: boolean; default
 
 export class WorkerRegistry {
   private readonly workers: WorkerClient[];
-  constructor(configs: readonly WorkerEndpointConfig[]) { this.workers = configs.map((config) => new WorkerClient(config)); }
+  constructor(configs: readonly WorkerClientConfig[]) { this.workers = configs.map((config) => new WorkerClient(config)); }
   configuredEnvironmentIds(): string[] { return this.workers.map((worker) => worker.environmentId); }
 
   async listEnvironments(): Promise<EnvironmentState[]> {

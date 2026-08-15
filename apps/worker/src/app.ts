@@ -5,7 +5,7 @@ import { WorkspaceCatalog, type WorkerWorkspaceConfig, workspaceAllowsTool } fro
 import { createWorkerToolRuntime, createWorkerToolRuntimeForWorkspace, WorkerToolError, type WorkerToolContext } from "./core-tools.js";
 import { WorkerCoreCapabilities, type WorkerProcessExecutor } from "./core-capabilities.js";
 import { ProcessCapacityError, ProcessRunner } from "@queqiao/process-runtime";
-import { QUEQIAO_WORKER_CAPABILITIES, QUEQIAO_WORKER_HTTP_API_PREFIX, QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
+import { QUEQIAO_WORKER_HTTP_API_PREFIX, QUEQIAO_WORKER_LEGACY_CAPABILITIES, QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION, QUEQIAO_WORKER_OPTIONAL_CAPABILITIES, QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import type { ExtensionHost, ToolRuntime } from "@queqiao/tool-runtime";
 
 export type WorkerAppConfig = {
@@ -36,7 +36,11 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
     const runtime = createWorkerToolRuntimeForWorkspace(config.extensionHost, workspaceId); toolRuntimes.set(workspaceId, runtime); return runtime;
   };
   const processes = config.processes ?? new ProcessRunner();
-  const hello = { protocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, environmentId: config.environmentId, instanceId: randomUUID(), platform: process.platform === "win32" ? "windows" as const : process.platform === "darwin" ? "darwin" as const : "linux" as const, capabilities: [...QUEQIAO_WORKER_CAPABILITIES] };
+  const instanceId = randomUUID();
+  const platform = process.platform === "win32" ? "windows" as const : process.platform === "darwin" ? "darwin" as const : "linux" as const;
+  const hello = config.workerId
+    ? { protocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, workerId: config.workerId, environmentId: config.environmentId, instanceId, platform, capabilities: [...QUEQIAO_WORKER_OPTIONAL_CAPABILITIES] }
+    : { protocolVersion: QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION, environmentId: config.environmentId, instanceId, platform, capabilities: [...QUEQIAO_WORKER_LEGACY_CAPABILITIES] };
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "6mb" }));
@@ -61,7 +65,7 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   };
 
   app.get("/health", (_req, res) => res.json({ ok: true, service: "queqiao-worker", environmentId: config.environmentId, defaultWorkspaceId: config.defaultWorkspaceId, workspaceCount: catalog.size() }));
-  app.get("/enrollment/identity", (_req, res) => res.json({ workerId: config.workerId, environmentId: config.environmentId, protocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION }));
+  app.get("/enrollment/identity", (_req, res) => res.json({ workerId: config.workerId, environmentId: config.environmentId, protocolVersion: config.workerId ? QUEQIAO_WORKER_PROTOCOL_VERSION : QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION }));
   app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/hello`, (_req, res) => res.json(hello));
   app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/workspaces`, (_req, res) => res.json({ environmentId: config.environmentId, defaultWorkspaceId: config.defaultWorkspaceId, workspaces: descriptors() }));
   app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/workspaces/:workspaceId`, (req, res) => {

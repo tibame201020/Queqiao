@@ -17,6 +17,15 @@ describe("Worker authoritative permission enforcement", () => {
     expect(response.body).toMatchObject({ protocolVersion: "2.0", environmentId: "linux", capabilities: expect.arrayContaining(["workspace-routing", "tool-invocation", "async-process-v1"]) });
     expect(response.body.instanceId).toMatch(/^[0-9a-f-]{36}$/);
   });
+
+  it("exposes Worker Protocol 3.0 with stable workerId after Worker setup", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-handshake-v3-"));
+    const workerId = "11111111-1111-4111-8111-111111111111";
+    const app = await createWorkerApp({ workerId, environmentId: "windows", defaultWorkspaceId: "one", workerToken: "worker-secret", workspaces: [{ id: "one", displayName: "One", root: temporary }] });
+    const response = await request(app).get("/v1/hello").set("x-queqiao-worker-token", "worker-secret").expect(200);
+    expect(response.body).toMatchObject({ protocolVersion: "3.0", workerId, environmentId: "windows", capabilities: [] });
+    expect(response.body.instanceId).toMatch(/^[0-9a-f-]{36}$/);
+  });
   it("denies read_file even when called directly with a valid Worker credential", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-permission-"));
     await writeFile(path.join(temporary, "fixture.txt"), "secret\n");
