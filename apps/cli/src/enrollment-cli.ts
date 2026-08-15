@@ -166,7 +166,7 @@ export async function setupGateway(configFile: string, args: string[], stateDire
   await secureRuntimeDirectory(path.dirname(configFile));
   await secureRuntimeDirectory(stateDirectoryDefault);
   await secureRuntimeDirectory(secretsDirectory);
-  let current: any = { version: 1, environments: [], workspaces: [] };
+  let current: any = { version: 1, workspaces: [] };
   try { current = await readRuntimeConfig(configFile); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   if (current.gateway) throw new Error("Gateway is already setup in this configuration");
   const createSecret = async (name: string, bytes: number) => {
@@ -188,7 +188,7 @@ export async function setupGateway(configFile: string, args: string[], stateDire
 export async function setupWorker(configFile: string, args: string[], secretsDirectory: string): Promise<unknown> {
   await secureRuntimeDirectory(path.dirname(configFile));
   await secureRuntimeDirectory(secretsDirectory);
-  let current: any = { version: 1, environments: [], workspaces: [] };
+  let current: any = { version: 1, workspaces: [] };
   try { current = await readRuntimeConfig(configFile); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   if (current.worker) throw new Error("Worker is already setup in this configuration");
   const environmentId = option(args, "environment-id") || (process.platform === "win32" ? "windows" : "linux");

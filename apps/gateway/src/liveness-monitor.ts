@@ -1,4 +1,4 @@
-import type { ReloadableWorkerRegistry } from "./worker-registry-config.js";
+import type { MembershipWorkerRegistry } from "./worker-membership-registry.js";
 import type { WorkerLivenessState } from "./worker-registry.js";
 
 export class GatewayLivenessMonitor {
@@ -6,7 +6,7 @@ export class GatewayLivenessMonitor {
   private probing: Promise<void> | undefined;
 
   constructor(
-    private readonly source: ReloadableWorkerRegistry,
+    private readonly source: MembershipWorkerRegistry,
     private readonly intervalMs: number,
   ) {}
 

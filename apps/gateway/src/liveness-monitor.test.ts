@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GatewayLivenessMonitor } from "./liveness-monitor.js";
-import type { ReloadableWorkerRegistry } from "./worker-registry-config.js";
+import type { MembershipWorkerRegistry } from "./worker-membership-registry.js";
 
 afterEach(() => vi.useRealTimers());
 
@@ -9,7 +9,7 @@ describe("GatewayLivenessMonitor", () => {
     vi.useFakeTimers();
     const probeLiveness = vi.fn(async () => [{ environmentId: "windows", reachable: true }]);
     const livenessSnapshot = vi.fn(() => [{ environmentId: "windows", reachable: true, checkedAt: "2026-08-15T00:00:00.000Z" }]);
-    const source = { current: vi.fn(async () => ({ probeLiveness, livenessSnapshot })) } as unknown as ReloadableWorkerRegistry;
+    const source = { current: vi.fn(async () => ({ probeLiveness, livenessSnapshot })) } as unknown as MembershipWorkerRegistry;
     const monitor = new GatewayLivenessMonitor(source, 30_000);
 
     await monitor.start();
@@ -28,7 +28,7 @@ describe("GatewayLivenessMonitor", () => {
     let release!: () => void;
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const probeLiveness = vi.fn(async () => pending);
-    const source = { current: vi.fn(async () => ({ probeLiveness, livenessSnapshot: () => [] })) } as unknown as ReloadableWorkerRegistry;
+    const source = { current: vi.fn(async () => ({ probeLiveness, livenessSnapshot: () => [] })) } as unknown as MembershipWorkerRegistry;
     const monitor = new GatewayLivenessMonitor(source, 30_000);
 
     const first = monitor.probeNow();

@@ -1,8 +1,9 @@
 param(
-  [Parameter(Mandatory = $true)][string] $WslTokenFile,
-  [string] $WslUrl = "http://127.0.0.1:7577"
+  [Parameter(Mandatory = $true)][string] $JoinToken,
+  [string] $Gateway = "http://127.0.0.1:7574",
+  [string] $WorkerEndpoint = "http://127.0.0.1:7577"
 )
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
-& node (Join-Path $projectRoot "dist\queqiao.js") environment add --id wsl --url $WslUrl --token-file $WslTokenFile
-if ($LASTEXITCODE -ne 0) { throw "WSL environment registration failed" }
+& node (Join-Path $projectRoot "dist\queqiao.js") worker join --gateway $Gateway --token $JoinToken --endpoint $WorkerEndpoint
+if ($LASTEXITCODE -ne 0) { throw "WSL Worker enrollment failed" }

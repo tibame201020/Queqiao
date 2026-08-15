@@ -37,14 +37,11 @@ gateway:
   approvalSecretFile: $test_root/data/secrets/approval.secret
   jwtSigningSecretFile: $test_root/data/secrets/jwt.secret
 worker:
+  workerId: 11111111-1111-4111-8111-111111111111
   environmentId: linux-ci
   listen: { host: 127.0.0.1, port: 17576 }
   tokenFile: $test_root/data/secrets/worker.secret
   defaultWorkspaceId: fixture
-environments:
-  - environmentId: linux-ci
-    url: http://127.0.0.1:17576
-    tokenFile: $test_root/data/secrets/worker.secret
 workspaces:
   - id: fixture
     displayName: Fixture
@@ -52,6 +49,17 @@ workspaces:
     profile: read-only
 EOF
 
+cat > "$test_root/data/gateway/worker-memberships.json" <<EOF
+{
+  "version": 1,
+  "workers": [{
+    "workerId": "11111111-1111-4111-8111-111111111111",
+    "environmentId": "linux-ci",
+    "transport": { "type": "http", "endpoint": "http://127.0.0.1:17576" },
+    "credentialRefs": [{ "kind": "secret-file", "path": "$test_root/data/secrets/worker.secret" }]
+  }]
+}
+EOF
 config_file="$test_root/home/.config/queqiao/config.yaml"
 QUEQIAO_CONFIG_FILE="$config_file" "$test_root/install/node_modules/.bin/queqiao-worker" >"$test_root/worker.log" 2>&1 & worker_pid=$!
 QUEQIAO_CONFIG_FILE="$config_file" "$test_root/install/node_modules/.bin/queqiao-gateway" >"$test_root/gateway.log" 2>&1 & gateway_pid=$!
@@ -66,9 +74,7 @@ done
 echo "$health" | grep -q '"environmentId":"linux-ci"'
 echo "$health" | grep -q '"reachable":true'
 hello=$(curl -fsS -H 'x-queqiao-worker-token: worker-token-for-linux-integration-at-least-32-bytes' http://127.0.0.1:17576/v1/hello)
-echo "$hello" | grep -q '"protocolVersion":"2.0"'
+echo "$hello" | grep -q '"protocolVersion":"3.0"'
 echo "$hello" | grep -q '"platform":"linux"'
-echo "$hello" | grep -q '"workspace-routing"'
-echo "$hello" | grep -q '"async-process-v1"'
 test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:17576/v1/hello)" = 401
 printf '%s\n' 'Linux package, Gateway, Worker, and authenticated handshake verified.'

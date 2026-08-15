@@ -168,6 +168,7 @@ try {
   const jwtFile = path.join(secretsDir, "jwt.secret");
   const tokenFile = path.join(secretsDir, "worker.secret");
   const configFile = path.join(temporary, "config.yaml");
+  const workerId = "11111111-1111-4111-8111-111111111111";
   const workerToken = "resource-baseline-worker-token-at-least-thirty-two-bytes";
   await writeFile(approvalFile, "resource-baseline-approval-secret\n");
   await writeFile(jwtFile, "resource-baseline-jwt-secret-at-least-thirty-two-bytes\n");
@@ -185,12 +186,13 @@ try {
       jwtSigningSecretFile: jwtFile,
       allowedRedirectOrigins: ["https://chatgpt.com", "http://127.0.0.1", "http://localhost"],
     },
-    worker: { environmentId: "resource-ci", listen: { host: "127.0.0.1", port: workerPort }, tokenFile, defaultWorkspaceId: "fixture" },
-    environments: [{ environmentId: "resource-ci", url: `http://127.0.0.1:${workerPort}`, tokenFile }],
+    worker: { workerId, environmentId: "resource-ci", listen: { host: "127.0.0.1", port: workerPort }, tokenFile, defaultWorkspaceId: "fixture" },
     discovery: { roots: [], maxDepth: 4, exclude: ["node_modules", ".cache", ".config", ".local", ".ssh", ".gnupg"] },
     workspaces: [{ id: "fixture", displayName: "Fixture", root: workspaceDir, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] }, stepUp: [] }],
   };
   await writeFile(configFile, `${JSON.stringify(config, null, 2)}\n`);
+  await mkdir(path.join(dataDir, "gateway"), { recursive: true });
+  await writeFile(path.join(dataDir, "gateway", "worker-memberships.json"), `${JSON.stringify({ version: 1, workers: [{ workerId, environmentId: "resource-ci", transport: { type: "http", endpoint: `http://127.0.0.1:${workerPort}` }, credentialRefs: [{ kind: "secret-file", path: tokenFile }] }] }, null, 2)}\n`);
 
   const workerLog = path.join(temporary, "worker.stdout.log");
   const workerErr = path.join(temporary, "worker.stderr.log");

@@ -129,9 +129,13 @@ queqiao workspace remove --id <id>
 queqiao discovery list
 queqiao discovery add --root <path>
 queqiao discovery remove --root <path>
-queqiao environment list
-queqiao environment add --id <id> --url <loopback-url> --token-file <path>
-queqiao environment remove --id <id>
+queqiao gateway setup --public-base-url <url>
+queqiao gateway join-token [--expires <seconds>]
+queqiao worker setup --workspace-id <id> --workspace-root <path>
+queqiao worker join --gateway <management-url> --token <join-token> --endpoint <loopback-worker-url>
+queqiao worker list
+queqiao worker update --worker-id <id> --endpoint <loopback-worker-url>
+queqiao worker remove --worker-id <id>
 queqiao profile set --workspace <id> --profile read-only|editor|coding
 queqiao tool allow --workspace <id> --tool <tool>
 queqiao tool deny --workspace <id> --tool <tool>
@@ -169,25 +173,23 @@ The bundled CLI resolves the platform layout and reports it with:
 npm run queqiao -- config paths
 ```
 
-Installed from npm, initialize the external YAML config and run the native services:
+Installed from npm, set up the Gateway and Worker roles explicitly, then enroll the Worker with a one-time join token:
 
 ```shell
 npm install --global @tibame201020/queqiao
-queqiao config init --public-base-url https://example.invalid --workspace-root /path/to/project --workspace-id project
-queqiao-worker
+queqiao gateway setup --public-base-url https://example.invalid
+queqiao worker setup --workspace-root /path/to/project --workspace-id project
 queqiao-gateway
+queqiao-worker
+queqiao gateway join-token
+queqiao worker join --gateway http://127.0.0.1:7574 --token <join-token> --endpoint http://127.0.0.1:7576
 ```
 
 The package is self-contained and exposes three independent process roles. Installing
 it does not start either service: a Gateway host runs `queqiao-gateway`, while every
-coding environment runs its own `queqiao-worker`. Before a Worker is considered online
-or receives a tool call, the Gateway performs an authenticated handshake and verifies
-its configured environment identity, protocol version, process instance ID, platform,
-and required capabilities.
+coding environment runs its own `queqiao-worker`. Gateway routing comes only from its persistent membership registry. A Worker joins explicitly with a one-time token; the Gateway then verifies authenticated Worker identity, environment identity, protocol version, process instance ID, platform, and required capabilities before committing membership. Worker startup never auto-registers or edits Gateway state.
 
-The frozen cluster baseline permits only loopback Worker endpoints. The shared token
-and handshake protect local Gateway-to-Worker routing; remote-host Workers require a
-future mutually authenticated transport and are not covered by this baseline.
+The frozen HTTP transport baseline permits only loopback Worker endpoints. The persistent Worker credential and authenticated handshake protect Gateway-to-Worker routing; remote-host Workers require a future mutually authenticated transport and are not covered by this baseline.
 
 On Windows, configuration is stored under `%LOCALAPPDATA%\Queqiao`; on Linux and
 WSL it follows the XDG config, data, state, and runtime directories. Secrets are

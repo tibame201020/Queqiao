@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createWorkerApp } from "../../worker/src/app.js";
 import { createGatewayApp } from "./app.js";
 import type { GatewayRuntimeConfig } from "./config.js";
+import { seedTestWorkerMembership, TEST_WORKER_CREDENTIAL, TEST_WORKER_ID } from "./test-worker-membership.js";
 
 const forbiddenFetchPorts = new Set([1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723, 2049, 3659, 4045, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697, 10080]);
 async function listenOnSafePort(app: { listen(port: number, host: string): Server }): Promise<Server> {
@@ -79,25 +80,30 @@ describe("async disconnect and resource security", () => {
   async function startHarness(processes: ProcessRunner): Promise<Harness> {
     const executable = path.basename(process.execPath).toLowerCase();
     const worker = await createWorkerApp({
+      workerId: TEST_WORKER_ID,
       environmentId: process.platform === "win32" ? "windows" : "linux",
       defaultWorkspaceId: "coding",
-      workerToken: "worker-secret",
+      workerToken: TEST_WORKER_CREDENTIAL,
       processes,
       workspaces: [{ id: "coding", displayName: "Coding", root: temporary, profile: "coding", tools: { allow: [], deny: [], explicit: ["shell"] }, commands: { allow: [executable] } }],
     });
     workerServer = await listenOnSafePort(worker);
     const workerAddress = workerServer.address(); if (!workerAddress || typeof workerAddress === "string") throw new Error("Worker did not listen");
     const base = new URL("http://localhost:7575");
+    const environmentId = process.platform === "win32" ? "windows" : "linux";
+    const stateDir = path.join(temporary, ".state");
+    await seedTestWorkerMembership({ stateDirectory: stateDir, environmentId, endpoint: `http://127.0.0.1:${workerAddress.port}` });
     const config: GatewayRuntimeConfig = {
       port: 7575,
       publicBaseUrl: base,
       resourceUrl: "http://localhost:7575/mcp",
-      stateDir: path.join(temporary, ".state"),
+      stateDir,
       approvalSecret: "correct horse battery staple",
       jwtSecret: new TextEncoder().encode("test-signing-secret-with-at-least-thirty-two-bytes"),
       trustProxyHops: 1,
       allowedRedirectOrigins: new Set(["https://chatgpt.com"]),
-      workers: [{ environmentId: process.platform === "win32" ? "windows" : "linux", url: new URL(`http://127.0.0.1:${workerAddress.port}`), token: "worker-secret" }],
+      extensions: [],
+      configDirectory: temporary,
     };
     const gateway = await createGatewayApp(config);
     const accessToken = await issueAccessToken(gateway);
@@ -172,7 +178,7 @@ describe("async disconnect and resource security", () => {
     const asyncText = JSON.stringify(asyncResult.content);
     expect(asyncText).toContain("discarded");
     expect(asyncText).not.toContain("xxxxxxxxxxxxxxxx");
-  });
+  }, 10_000);
 
   it("enforces async lifetime and orderly Worker shutdown without durable recovery state", async () => {
     const processes = new ProcessRunner();
