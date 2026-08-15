@@ -16,15 +16,15 @@ describe("Worker routing security", () => {
       return Promise.resolve(new Response(JSON.stringify(String(url).includes("/v1/hello") ? hello(environmentId) : state(environmentId)), { status: 200, headers: { "content-type": "application/json" } }));
     }));
     const registry = new WorkerRegistry([
-      { environmentId: "windows", url: new URL("http://127.0.0.1:7576"), token: "a" },
-      { environmentId: "wsl", url: new URL("http://127.0.0.1:7577"), token: "b" },
+      { environmentId: "windows", transport: { type: "http", endpoint: "http://127.0.0.1:7576" }, token: "a" },
+      { environmentId: "wsl", transport: { type: "http", endpoint: "http://127.0.0.1:7577" }, token: "b" },
     ]);
     await expect(registry.route("shared")).rejects.toThrow(/ambiguous/);
   });
 
   it("marks a Worker offline when its claimed environment identity differs", async () => {
     vi.stubGlobal("fetch", vi.fn((url: URL | string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("/v1/hello") ? hello("attacker") : state("attacker")), { status: 200, headers: { "content-type": "application/json" } }))));
-    const registry = new WorkerRegistry([{ environmentId: "windows", url: new URL("http://127.0.0.1:7576"), token: "secret" }]);
+    const registry = new WorkerRegistry([{ environmentId: "windows", transport: { type: "http", endpoint: "http://127.0.0.1:7576" }, token: "secret" }]);
     await expect(registry.listEnvironments()).resolves.toEqual([{ environmentId: "windows", online: false, workspaces: [] }]);
     await expect(registry.route("shared")).rejects.toThrow(/not available/);
   });

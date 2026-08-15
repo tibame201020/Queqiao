@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkerClient } from "./worker-client.js";
 import { QUEQIAO_WORKER_LEGACY_CAPABILITIES, QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION, QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 
-const legacyConfig = { environmentId: "windows", url: new URL("http://worker.local"), token: "secret" };
+const legacyConfig = { environmentId: "windows", transport: { type: "http" as const, endpoint: "http://worker.local" }, token: "secret" };
 const membershipConfig = {
   workerId: "11111111-1111-4111-8111-111111111111",
   environmentId: "windows",

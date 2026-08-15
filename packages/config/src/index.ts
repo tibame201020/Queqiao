@@ -154,7 +154,6 @@ export type ExtensionContribution = z.infer<typeof extensionContributionSchema>;
 export type ExtensionManifestConfig = z.infer<typeof extensionManifestSchema>;
 export type InstalledExtensionConfig = z.infer<typeof installedExtensionSchema>;
 
-const environmentSchema = z.object({ environmentId: environmentIdSchema, url: z.url(), tokenFile: z.string().min(1) });
 export const runtimeConfigSchema = z.object({
   version: z.literal(QUEQIAO_CONFIG_VERSION),
   gateway: z.object({
@@ -172,7 +171,6 @@ export const runtimeConfigSchema = z.object({
     listen: z.object({ host: z.literal("127.0.0.1").default("127.0.0.1"), port: z.number().int().min(1).max(65535).default(7576) }),
     tokenFile: z.string().min(1), defaultWorkspaceId: workspaceIdSchema,
   }).optional(),
-  environments: z.array(environmentSchema).default([]),
   extensions: z.array(installedExtensionSchema).default([]),
   discovery: z.object({
     roots: z.array(z.string().min(1)).default([]),
@@ -191,12 +189,6 @@ export const runtimeConfigSchema = z.object({
     const id = extension.manifest.id;
     if (ids.has(id)) ctx.addIssue({ code: "custom", path: ["extensions", index, "manifest", "id"], message: "extension id must be unique" });
     ids.add(id);
-    if (extension.manifest.host.kind === "worker") {
-      const environmentId = extension.manifest.host.environmentId;
-      if (environmentId && !config.environments.some((entry) => entry.environmentId === environmentId)) {
-        ctx.addIssue({ code: "custom", path: ["extensions", index, "manifest", "host", "environmentId"], message: "worker extension host must reference a configured environment" });
-      }
-    }
     if (extension.activation.kind === "workspaces") {
       for (const workspaceId of extension.activation.workspaceIds) {
         if (!config.workspaces.some((workspace) => workspace.id === workspaceId)) {

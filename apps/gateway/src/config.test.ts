@@ -7,18 +7,14 @@ const base = {
   PUBLIC_BASE_URL: "https://queqiao.example",
   OAUTH_APPROVAL_SECRET: "approval-secret-long-enough",
   JWT_SIGNING_SECRET: "signing-secret-with-at-least-thirty-two-bytes",
-  QUEQIAO_WORKER_TOKEN: "worker-token-with-at-least-thirty-two-bytes",
   QUEQIAO_STATE_DIR: "/tmp/queqiao-gateway-test",
 };
 
 describe("Gateway security configuration", () => {
-  it("accepts only loopback HTTP Worker endpoints in the verified baseline", () => {
-    const config = loadGatewayConfig({ ...base, QUEQIAO_WORKER_URL: "http://127.0.0.1:7576" });
+  it("does not accept static Worker endpoint settings as Gateway routing state", () => {
+    const config = loadGatewayConfig(base);
     expect(config.host).toBe("127.0.0.1");
-    expect(config.workers[0]?.url.href).toBe("http://127.0.0.1:7576/");
-    expect(() => loadGatewayConfig({ ...base, QUEQIAO_WORKER_URL: "http://attacker.example:7576" })).toThrow(/loopback/);
-    expect(() => loadGatewayConfig({ ...base, QUEQIAO_WORKER_URL: "https://127.0.0.1:7576" })).toThrow(/loopback/);
-    expect(() => loadGatewayConfig({ ...base, QUEQIAO_WORKER_URL: "http://user:pass@127.0.0.1:7576" })).toThrow(/credentials/);
+    expect(config).not.toHaveProperty("workers");
   });
 
   it("binds the verified Gateway runtime to IPv4 loopback", async () => {
@@ -32,8 +28,7 @@ describe("Gateway security configuration", () => {
     }
   });
 
-  it("rejects short Worker and JWT secrets", () => {
-    expect(() => loadGatewayConfig({ ...base, QUEQIAO_WORKER_TOKEN: "short" })).toThrow(/32 bytes/);
+  it("rejects short Gateway JWT secrets", () => {
     expect(() => loadGatewayConfig({ ...base, JWT_SIGNING_SECRET: "short" })).toThrow(/32 bytes/);
   });
 

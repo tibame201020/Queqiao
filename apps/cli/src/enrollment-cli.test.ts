@@ -56,12 +56,12 @@ describe("role setup CLI", () => {
     let runtime = await readRuntimeConfig(configFile);
     expect(runtime.gateway).toBeDefined();
     expect(runtime.worker).toBeUndefined();
-    expect(runtime.environments).toEqual([]);
+    expect(runtime).not.toHaveProperty("environments");
     expect((await readFile(path.join(stateDirectory, "management.secret"), "utf8")).trim().length).toBeGreaterThanOrEqual(32);
     await setupWorker(configFile, ["worker", "setup", "--workspace-id", "default", "--workspace-root", workspaceRoot], secretsDirectory);
     runtime = await readRuntimeConfig(configFile);
     expect(runtime.worker?.workerId).toMatch(/^[0-9a-f-]{36}$/i);
-    expect(runtime.environments).toEqual([]);
+    expect(runtime).not.toHaveProperty("environments");
     expect((await readFile(runtime.worker!.tokenFile, "utf8")).trim().length).toBeGreaterThanOrEqual(32);
   });
 });

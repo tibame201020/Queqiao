@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createWorkerApp } from "../../worker/src/app.js";
 import { createGatewayApp } from "./app.js";
 import type { GatewayRuntimeConfig } from "./config.js";
+import { seedTestWorkerMembership, TEST_WORKER_CREDENTIAL, TEST_WORKER_ID } from "./test-worker-membership.js";
 import { QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES } from "./mcp.js";
 import { CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core-manifest";
 import { buildDeploymentManifest, canonicalJson, deploymentManifestFingerprint } from "@queqiao/operations";
@@ -30,10 +31,12 @@ describe("Queqiao v0 vertical slice", () => {
     const secondary = path.join(temporary, "secondary");
     await mkdir(secondary);
     await writeFile(path.join(secondary, "fixture.txt"), "hello from secondary workspace\n", "utf8");
-    const worker = await createWorkerApp({ environmentId: "windows", defaultWorkspaceId: "fixture", workspaces: [{ id: "fixture", displayName: "Fixture", root: temporary }, { id: "secondary", displayName: "Secondary", root: secondary, profile: "coding", commands: { allow: [path.basename(process.execPath).toLowerCase()] } }], workerToken: "worker-secret" });
+    const worker = await createWorkerApp({ workerId: TEST_WORKER_ID, environmentId: "windows", defaultWorkspaceId: "fixture", workspaces: [{ id: "fixture", displayName: "Fixture", root: temporary }, { id: "secondary", displayName: "Secondary", root: secondary, profile: "coding", commands: { allow: [path.basename(process.execPath).toLowerCase()] } }], workerToken: TEST_WORKER_CREDENTIAL });
     workerServer = await listenOnSafePort(worker);
     const address = workerServer.address(); if (!address || typeof address === "string") throw new Error("Worker did not listen");
-    const config: GatewayRuntimeConfig = { port: 7575, publicBaseUrl: base, resourceUrl: "http://localhost:7575/mcp", stateDir: path.join(temporary, ".state"), approvalSecret: "correct horse battery staple", jwtSecret: new TextEncoder().encode("test-signing-secret-with-at-least-thirty-two-bytes"), trustProxyHops: 1, allowedRedirectOrigins: new Set(["https://chatgpt.com"]), workers: [{ environmentId: "windows", url: new URL(`http://127.0.0.1:${address.port}`), token: "worker-secret" }] };
+    const stateDir = path.join(temporary, ".state");
+    await seedTestWorkerMembership({ stateDirectory: stateDir, environmentId: "windows", endpoint: `http://127.0.0.1:${address.port}` });
+    const config: GatewayRuntimeConfig = { port: 7575, publicBaseUrl: base, resourceUrl: "http://localhost:7575/mcp", stateDir, approvalSecret: "correct horse battery staple", jwtSecret: new TextEncoder().encode("test-signing-secret-with-at-least-thirty-two-bytes"), trustProxyHops: 1, allowedRedirectOrigins: new Set(["https://chatgpt.com"]), extensions: [], configDirectory: temporary };
     gateway = await createGatewayApp(config);
   });
 

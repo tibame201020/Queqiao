@@ -1,6 +1,25 @@
-import type { RuntimeConfig } from "@queqiao/config";
-import { workerIdSchema } from "@queqiao/contracts";
+import { readFile } from "node:fs/promises";
+import { parse } from "yaml";
+import { z } from "zod";
+import { environmentIdSchema, workerIdSchema } from "@queqiao/contracts";
 import { WorkerMembershipStore, workerMembershipRegistrySchema, type WorkerMembership, type WorkerMembershipRegistry } from "./worker-membership-store.js";
+
+const legacyStaticEnvironmentSchema = z.object({
+  environmentId: environmentIdSchema,
+  url: z.url(),
+  tokenFile: z.string().min(1),
+});
+
+const legacyStaticConfigSchema = z.object({
+  worker: z.object({ workerId: workerIdSchema.optional(), environmentId: environmentIdSchema }).optional(),
+  environments: z.array(legacyStaticEnvironmentSchema).default([]),
+}).passthrough();
+
+export type LegacyStaticConfig = z.infer<typeof legacyStaticConfigSchema>;
+
+export async function readLegacyStaticConfig(file: string): Promise<LegacyStaticConfig> {
+  return legacyStaticConfigSchema.parse(parse(await readFile(file, "utf8")));
+}
 
 export type StaticMembershipMigrationPlan = {
   additions: WorkerMembership[];
@@ -9,12 +28,12 @@ export type StaticMembershipMigrationPlan = {
 };
 
 /**
- * Prepare a fail-closed migration from already-trusted static environment entries.
- * The planner never mutates config or membership state. External environments require
- * an explicitly supplied stable workerId; only the local Worker can inherit config.worker.workerId.
+ * Compatibility-only migration from already-trusted static environment entries.
+ * Normal Gateway runtime never reads these entries. The planner does not mutate
+ * the main config and fails closed when a stable workerId cannot be established.
  */
 export function planStaticMembershipMigration(
-  config: RuntimeConfig,
+  config: LegacyStaticConfig,
   current: WorkerMembershipRegistry,
   suppliedWorkerIds: Readonly<Record<string, string>> = {},
 ): StaticMembershipMigrationPlan {
@@ -42,24 +61,19 @@ export function planStaticMembershipMigration(
     });
   }
 
-  const next = workerMembershipRegistrySchema.parse({
-    version: 1,
-    workers: [...validatedCurrent.workers, ...additions],
-  });
+  const next = workerMembershipRegistrySchema.parse({ version: 1, workers: [...validatedCurrent.workers, ...additions] });
   return { additions, unresolvedEnvironmentIds, next };
 }
 
 export async function migrateStaticMemberships(
   store: WorkerMembershipStore,
-  config: RuntimeConfig,
+  config: LegacyStaticConfig,
   suppliedWorkerIds: Readonly<Record<string, string>> = {},
   execute = false,
 ): Promise<StaticMembershipMigrationPlan> {
   const plan = planStaticMembershipMigration(config, await store.read(), suppliedWorkerIds);
   if (execute) {
-    if (plan.unresolvedEnvironmentIds.length) {
-      throw new Error(`Static membership migration requires stable workerId for: ${plan.unresolvedEnvironmentIds.join(", ")}`);
-    }
+    if (plan.unresolvedEnvironmentIds.length) throw new Error(`Static membership migration requires stable workerId for: ${plan.unresolvedEnvironmentIds.join(", ")}`);
     await store.replace(plan.next);
   }
   return plan;

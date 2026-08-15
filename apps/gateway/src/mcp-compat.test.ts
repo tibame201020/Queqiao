@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createWorkerApp } from "../../worker/src/app.js";
 import { createGatewayApp } from "./app.js";
 import type { GatewayRuntimeConfig } from "./config.js";
+import { seedTestWorkerMembership, TEST_WORKER_CREDENTIAL, TEST_WORKER_ID } from "./test-worker-membership.js";
 import { QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES } from "./mcp.js";
 import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "./mcp-compat.js";
 
@@ -72,21 +73,24 @@ describe("bounded MCP compatibility window", () => {
   beforeEach(async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-mcp-compat-"));
     await writeFile(path.join(temporary, "fixture.txt"), "compatibility fixture\n", "utf8");
-    const worker = await createWorkerApp({ environmentId: "windows", defaultWorkspaceId: "fixture", workspaces: [{ id: "fixture", displayName: "Fixture", root: temporary }], workerToken: "worker-secret" });
+    const worker = await createWorkerApp({ workerId: TEST_WORKER_ID, environmentId: "windows", defaultWorkspaceId: "fixture", workspaces: [{ id: "fixture", displayName: "Fixture", root: temporary }], workerToken: TEST_WORKER_CREDENTIAL });
     workerServer = await listenOnSafePort(worker);
     const workerAddress = workerServer.address();
     if (!workerAddress || typeof workerAddress === "string") throw new Error("Worker did not listen");
     const base = new URL("http://localhost:7575");
+    const stateDir = path.join(temporary, ".state");
+    await seedTestWorkerMembership({ stateDirectory: stateDir, environmentId: "windows", endpoint: `http://127.0.0.1:${workerAddress.port}` });
     const config: GatewayRuntimeConfig = {
       port: 7575,
       publicBaseUrl: base,
       resourceUrl: "http://localhost:7575/mcp",
-      stateDir: path.join(temporary, ".state"),
+      stateDir,
       approvalSecret: "correct horse battery staple",
       jwtSecret: new TextEncoder().encode("test-signing-secret-with-at-least-thirty-two-bytes"),
       trustProxyHops: 1,
       allowedRedirectOrigins: new Set(["https://chatgpt.com"]),
-      workers: [{ environmentId: "windows", url: new URL(`http://127.0.0.1:${workerAddress.port}`), token: "worker-secret" }],
+      extensions: [],
+      configDirectory: temporary,
     };
     gateway = await createGatewayApp(config);
     token = await issueAccessToken(gateway);

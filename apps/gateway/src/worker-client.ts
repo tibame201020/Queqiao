@@ -1,4 +1,3 @@
-import type { WorkerEndpointConfig } from "./config.js";
 import { WorkerHttpError } from "./errors.js";
 import { HttpWorkerTransport } from "./http-worker-transport.js";
 import type { WorkerTransport, WorkerTransportDescriptor, WorkerTransportRequest } from "./worker-transport.js";
@@ -15,25 +14,18 @@ import {
   type WorkerToolInvocationResponse,
 } from "@queqiao/worker-protocol";
 
-export type MembershipWorkerClientConfig = {
-  workerId: string;
+export type WorkerClientConfig = {
+  workerId?: string;
   environmentId: string;
   transport: WorkerTransportDescriptor;
   token: string;
 };
 
-export type WorkerClientConfig = WorkerEndpointConfig | MembershipWorkerClientConfig;
-
-function isMembershipConfig(config: WorkerClientConfig): config is MembershipWorkerClientConfig {
-  return "workerId" in config;
-}
+export type MembershipWorkerClientConfig = WorkerClientConfig & { workerId: string };
 
 function createDefaultTransport(config: WorkerClientConfig): WorkerTransport {
-  const descriptor: WorkerTransportDescriptor = isMembershipConfig(config)
-    ? config.transport
-    : { type: "http", endpoint: config.url.href };
-  if (descriptor.type !== "http") throw new Error(`Unsupported Worker transport: ${(descriptor as { type: string }).type}`);
-  return new HttpWorkerTransport({ descriptor, token: config.token });
+  if (config.transport.type !== "http") throw new Error(`Unsupported Worker transport: ${(config.transport as { type: string }).type}`);
+  return new HttpWorkerTransport({ descriptor: config.transport, token: config.token });
 }
 
 export class WorkerClient {
@@ -47,7 +39,7 @@ export class WorkerClient {
     private readonly reportReachability: (reachable: boolean) => void = () => {},
   ) {
     this.environmentId = config.environmentId;
-    this.workerId = isMembershipConfig(config) ? config.workerId : undefined;
+    this.workerId = config.workerId;
   }
 
   private async executeTracked<T>(request: WorkerTransportRequest, signal?: AbortSignal): Promise<T> {

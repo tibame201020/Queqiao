@@ -2,7 +2,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runtimeConfigSchema } from "@queqiao/config";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
 import { migrateStaticMemberships, planStaticMembershipMigration } from "./static-membership-migration.js";
 
@@ -15,7 +14,7 @@ afterEach(async () => {
 });
 
 function config() {
-  return runtimeConfigSchema.parse({
+  return {
     version: 1,
     worker: {
       workerId: localWorkerId,
@@ -29,7 +28,7 @@ function config() {
       { environmentId: "linux", url: "http://127.0.0.1:7577", tokenFile: "C:/secure/linux.secret" },
     ],
     workspaces: [{ id: "default", displayName: "Default", root: "C:/workspace" }],
-  });
+  };
 }
 
 describe("static Worker membership migration planning", () => {

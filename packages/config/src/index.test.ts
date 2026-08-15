@@ -3,7 +3,6 @@ import { runtimeConfigSchema } from "./index.js";
 
 const base = {
   version: 1 as const,
-  environments: [{ environmentId: "windows", url: "http://127.0.0.1:7576", tokenFile: "worker.secret" }],
   workspaces: [{ id: "alpha", displayName: "Alpha", root: "C:/workspace", profile: "coding" as const }],
 };
 
@@ -32,11 +31,11 @@ describe("extension config schema", () => {
     expect(parsed.extensions[0]?.manifest.id).toBe("dev.queqiao.git");
   });
 
-  it("fails closed for untrusted, unknown Worker hosts, unknown Workspaces and duplicate ids", () => {
+  it("fails closed for untrusted extensions, unknown Workspaces and duplicate ids while Worker host routing remains runtime-negotiated", () => {
     expect(() => runtimeConfigSchema.parse({ ...base, workspaces: [base.workspaces[0], base.workspaces[0]] })).toThrow(/Workspace id must be unique/);
     expect(() => runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: false, source: { kind: "local-module", module: "x.mjs" }, manifest }] })).toThrow();
     expect(() => runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: true, source: { kind: "local-module", module: "x.mjs" }, manifest: { ...manifest, host: { kind: "worker" } } }] })).not.toThrow();
-    expect(() => runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: true, source: { kind: "local-module", module: "x.mjs" }, manifest: { ...manifest, host: { kind: "worker", environmentId: "missing" } } }] })).toThrow(/configured environment/);
+    expect(() => runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: true, source: { kind: "local-module", module: "x.mjs" }, manifest: { ...manifest, host: { kind: "worker", environmentId: "missing" } } }] })).not.toThrow();
     expect(() => runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: true, source: { kind: "local-module", module: "x.mjs" }, activation: { kind: "workspaces", workspaceIds: ["missing"] }, manifest }] })).toThrow(/unknown Workspace/);
     expect(() => runtimeConfigSchema.parse({ ...base, extensions: [0, 1].map(() => ({ trusted: true, source: { kind: "local-module", module: "x.mjs" }, manifest })) })).toThrow(/unique/);
   });

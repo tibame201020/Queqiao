@@ -4,7 +4,7 @@ import path from "node:path";
 import type { Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWorkerApp } from "../../worker/src/app.js";
-import { ReloadableWorkerRegistry } from "./worker-registry-config.js";
+import { MembershipWorkerRegistry } from "./worker-membership-registry.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
 
 let temporary: string | undefined;
@@ -46,9 +46,8 @@ describe("membership-backed Worker routing", () => {
       credentialRefs: [{ kind: "secret-file", path: credentialFile }],
     });
 
-    const source = new ReloadableWorkerRegistry({ memberships });
+    const source = new MembershipWorkerRegistry(memberships);
     await source.initialize();
-    expect(source.isMembershipAuthoritative()).toBe(true);
     const registry = await source.current();
     expect(registry.configuredEnvironmentIds()).toEqual(["windows"]);
     await expect(registry.listWorkspaces()).resolves.toMatchObject({

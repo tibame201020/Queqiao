@@ -1,6 +1,4 @@
 import path from "node:path";
-import { access, readFile, writeFile } from "node:fs/promises";
-import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { AtomicConfigStore } from "./atomic-config-store.js";
 import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig } from "@queqiao/config";
@@ -12,7 +10,6 @@ import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import { resolveRuntimeLayout } from "@queqiao/platform-paths";
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
-import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-paths.js";
 import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, setupGateway, setupWorker, updateJoinedWorkerTransport } from "./enrollment-cli.js";
 import { doctorGateway } from "./doctor.js";
 
@@ -48,21 +45,11 @@ async function main() {
   if (domain === "worker" && action === "list") return print(await listJoinedWorkers(configFile));
   if (domain === "worker" && action === "update") return print(await updateJoinedWorkerTransport(configFile, requiredOption(args, "worker-id"), requiredOption(args, "endpoint")));
   if (domain === "worker" && action === "remove") return print(await removeJoinedWorker(configFile, requiredOption(args, "worker-id")));
-  if (domain === "config" && action === "init") {
-    try { await access(configFile); throw new Error(`Configuration already exists: ${configFile}`); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    const publicBaseUrl = new URL(requiredOption(args, "public-base-url")); const root = await resolveWorkspaceAuthorityRoot(requiredOption(args, "workspace-root"));
-    const environmentId = option(args, "environment-id") || (process.platform === "win32" ? "windows" : "linux"); const workspaceId = option(args, "workspace-id") || "default";
-    await Promise.all([layout.configDir, layout.dataDir, layout.stateDir, layout.logDir, layout.runtimeDir, layout.secretsDir, layout.gatewayStateDir].map(secureRuntimeDirectory));
-    const secretFile = async (name: string, bytes: number) => { const file = path.join(layout.secretsDir, `${name}.secret`); await writeFile(file, `${randomBytes(bytes).toString("base64url")}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" }); await secureRuntimeFile(file); return file; };
-    const approvalSecretFile = await secretFile("oauth-approval", 24); const jwtSigningSecretFile = await secretFile("jwt-signing", 48); const tokenFile = await secretFile("worker-token", 32);
-    const config = await configStore.initialize(runtimeConfigSchema.parse({ version: 1, gateway: { publicBaseUrl: publicBaseUrl.href, listen: { host: "127.0.0.1", port: 7575 }, trustProxyHops: 1, stateDirectory: layout.gatewayStateDir, approvalSecretFile, jwtSigningSecretFile }, worker: { workerId: randomUUID(), environmentId, listen: { host: "127.0.0.1", port: 7576 }, tokenFile, defaultWorkspaceId: workspaceId }, environments: [{ environmentId, url: "http://127.0.0.1:7576", tokenFile }], workspaces: [newWorkspace(workspaceId, workspaceId, root)] }));
-    await secureRuntimeFile(configFile);
-    return print({ initialized: true, file: configFile, config: { ...config, gateway: config.gateway && { ...config.gateway, approvalSecretFile: "<secret-file>", jwtSigningSecretFile: "<secret-file>" }, worker: config.worker && { ...config.worker, tokenFile: "<secret-file>" }, environments: config.environments.map((entry) => ({ ...entry, tokenFile: "<secret-file>" })) } });
-  }
+  if (domain === "config" && action === "init") throw new Error("config init is deprecated: use gateway setup and/or worker setup explicitly");
   if (domain === "workspace" && action === "list") return print({ ...(await configStore.metadata()), workspaces: (await configStore.read()).workspaces });
   if (domain === "workspace" && action === "init") {
     const id = requiredOption(args, "id"); const displayName = option(args, "name") || id; const root = await resolveWorkspaceAuthorityRoot(requiredOption(args, "root"));
-    const config = await configStore.initialize(runtimeConfigSchema.parse({ version: 1, environments: [], workspaces: [newWorkspace(id, displayName, root)] }));
+    const config = await configStore.initialize(runtimeConfigSchema.parse({ version: 1, workspaces: [newWorkspace(id, displayName, root)] }));
     return print({ initialized: true, file: configFile, workspaces: config.workspaces });
   }
   if (domain === "workspace" && action === "add") {
@@ -98,10 +85,7 @@ async function main() {
     if (!found) throw new Error(`Workspace not found: ${id}`);
     return print({ changed: true, workspaceId: id, command, decision: action, policy: workspaces.find((entry) => entry.id === id)?.commands });
   }
-  if (domain === "environment" && action === "list") {
-    const environments = (await configStore.read()).environments;
-    return print({ ...(await configStore.metadata()), environments });
-  }
+  if (domain === "environment") throw new Error("environment commands are deprecated: use worker join|list|update|remove for Gateway membership management");
   if (domain === "discovery" && action === "list") {
     const discovery = (await configStore.read()).discovery;
     return print({ ...(await configStore.metadata()), discovery, note: "Discovery roots are read-only resource search scopes. They never create or broaden Workspace authority." });
@@ -110,21 +94,6 @@ async function main() {
     const root = await realpathDirectory(requiredOption(args, "root"));
     const config = await configStore.update((current) => ({ ...current, discovery: { ...current.discovery, roots: action === "add" ? unique([...current.discovery.roots, root]) : current.discovery.roots.filter((entry) => path.resolve(entry) !== root) } }));
     return print({ changed: true, decision: action, root, discovery: config.discovery, note: "Discovery roots are read-only resource search scopes. They never create or broaden Workspace authority." });
-  }
-  if (domain === "environment" && action === "add") {
-    const environmentId = requiredOption(args, "id");
-    const url = new URL(requiredOption(args, "url"));
-    if (url.protocol !== "http:" || !["127.0.0.1", "localhost", "::1"].includes(url.hostname)) throw new Error("Worker URL must be loopback HTTP in the verified baseline");
-    const tokenFile = path.resolve(requiredOption(args, "token-file"));
-    const token = (await readFile(tokenFile, "utf8")).trim();
-    if (token.length < 32) throw new Error("Worker token file must contain at least 32 characters");
-    const config = await configStore.update((current) => { if (current.environments.some((entry) => entry.environmentId === environmentId)) throw new Error(`Environment already exists: ${environmentId}`); return runtimeConfigSchema.parse({ ...current, environments: [...current.environments, { environmentId, url: url.href, tokenFile }] }); }); const environments = config.environments;
-    return print({ changed: true, environmentId, environments });
-  }
-  if (domain === "environment" && action === "remove") {
-    const environmentId = requiredOption(args, "id");
-    const config = await configStore.update((current) => { const next = current.environments.filter((entry) => entry.environmentId !== environmentId); if (next.length === current.environments.length) throw new Error(`Environment not found: ${environmentId}`); return { ...current, environments: next }; }); const environments = config.environments;
-    return print({ changed: true, removed: environmentId, environments });
   }
   if (domain === "permissions" && action === "show") {
     const config = await configStore.read(); const id = option(args, "workspace"); const selected = id ? config.workspaces.filter((entry) => entry.id === id) : config.workspaces; if (id && !selected.length) throw new Error(`Workspace not found: ${id}`);
@@ -147,7 +116,7 @@ async function main() {
   if (domain === "config" && action === "paths") return print(layout);
   if (domain === "migrate" && action === "from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));
   if (domain === "migrate" && action === "runtime-v1") return print(await migrateRuntimeLayoutV1(layout, args.includes("--execute")));
-  throw new Error("Usage: queqiao gateway setup|join-token, worker setup|join|list|update|remove, config init|paths, workspace init|list|add|remove, discovery list|add|remove, environment list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor");
+  throw new Error("Usage: queqiao gateway setup|join-token, worker setup|join|list|update|remove, config paths, workspace init|list|add|remove, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor");
 }
 
 async function realpathDirectory(value: string): Promise<string> {
