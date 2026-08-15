@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Server } from "node:http";
@@ -88,6 +88,20 @@ describe("Worker enrollment transaction", () => {
     expect(registry.workers[0]?.transport).toEqual({ type: "http", endpoint });
     const persisted = (await readFile(registry.workers[0]!.credentialRefs[0]!.path, "utf8")).trim();
     expect(persisted).toBe(started.credential);
+  });
+
+  it("rolls back the persisted daily credential when membership commit fails", async () => {
+    const { directory, service, store } = await tempStore();
+    const workerId = crypto.randomUUID();
+    const credential = { value: "bootstrap" };
+    const endpoint = await workerServer(workerId, "windows", credential);
+    const started = await service.startJoin({ token: service.createJoinToken().token, workerId, environmentId: "windows", transport: { type: "http", endpoint } });
+    credential.value = started.credential;
+    vi.spyOn(store, "add").mockRejectedValueOnce(new Error("injected membership persistence failure"));
+    await expect(service.confirmJoin(started.transactionId, started.credential)).rejects.toThrow("injected membership persistence failure");
+    expect((await store.read()).workers).toEqual([]);
+    expect(await readdir(path.join(directory, "worker-credentials"))).toEqual([]);
+    await expect(service.confirmJoin(started.transactionId, started.credential)).rejects.toMatchObject({ code: "join_transaction_expired" });
   });
 
   it("invalidates a provisional transaction after a bad confirmation credential", async () => {
