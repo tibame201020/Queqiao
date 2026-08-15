@@ -12,6 +12,7 @@ import type { GatewayRuntimeConfig } from "./config.js";
 import { QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES } from "./mcp.js";
 import { CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core-manifest";
 import { buildDeploymentManifest, canonicalJson, deploymentManifestFingerprint } from "@queqiao/operations";
+import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 
 const forbiddenFetchPorts = new Set([1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723, 2049, 3659, 4045, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697, 10080]);
 async function listenOnSafePort(app: { listen(port: number, host: string): Server }): Promise<Server> { for (;;) { const server = app.listen(0, "127.0.0.1"); await new Promise<void>((resolve) => server.once("listening", resolve)); const address = server.address(); if (!address || typeof address === "string") throw new Error("Server did not listen"); if (!forbiddenFetchPorts.has(address.port)) return server; await new Promise<void>((resolve) => server.close(() => resolve())); } }
@@ -91,7 +92,7 @@ describe("Queqiao v0 vertical slice", () => {
       expect(listedPayload.deployment.coreManifestRevision).toBe(QUEQIAO_CORE_MANIFEST_REVISION);
       expect(listedPayload.deployment.deploymentManifestFingerprint).toBe(deploymentManifestFingerprint(expectedManifest));
       expect(listedPayload.deployment.publicToolCount).toBe(10);
-      expect(listedPayload.deployment.workerProtocolVersion).toBe("2.0");
+      expect(listedPayload.deployment.workerProtocolVersion).toBe(QUEQIAO_WORKER_PROTOCOL_VERSION);
       expect(listedPayload.deployment.supportedMcpProtocolVersions).toContain("2026-07-28");
       const explicitInfo = await client.callTool({ name: "workspace_info", arguments: { workspaceId: "secondary" } });
       expect(explicitInfo.isError).not.toBe(true);

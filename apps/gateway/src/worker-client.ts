@@ -1,25 +1,71 @@
 import type { WorkerEndpointConfig } from "./config.js";
 import { WorkerHttpError } from "./errors.js";
 import { HttpWorkerTransport } from "./http-worker-transport.js";
-import type { WorkerTransport } from "./worker-transport.js";
-import { QUEQIAO_WORKER_CAPABILITIES, workerHelloSchema, workerRunResultSchema, workerShellResultSchema, type WorkerHello, type WorkerRunResult, type WorkerShellResult, type WorkerToolInvocationResponse } from "@queqiao/worker-protocol";
+import type { WorkerTransport, WorkerTransportDescriptor } from "./worker-transport.js";
+import {
+  QUEQIAO_WORKER_LEGACY_CAPABILITIES,
+  QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION,
+  QUEQIAO_WORKER_PROTOCOL_VERSION,
+  workerHelloSchema,
+  workerRunResultSchema,
+  workerShellResultSchema,
+  type WorkerHello,
+  type WorkerRunResult,
+  type WorkerShellResult,
+  type WorkerToolInvocationResponse,
+} from "@queqiao/worker-protocol";
+
+export type MembershipWorkerClientConfig = {
+  workerId: string;
+  environmentId: string;
+  transport: WorkerTransportDescriptor;
+  token: string;
+};
+
+export type WorkerClientConfig = WorkerEndpointConfig | MembershipWorkerClientConfig;
+
+function isMembershipConfig(config: WorkerClientConfig): config is MembershipWorkerClientConfig {
+  return "workerId" in config;
+}
+
+function createDefaultTransport(config: WorkerClientConfig): WorkerTransport {
+  const descriptor: WorkerTransportDescriptor = isMembershipConfig(config)
+    ? config.transport
+    : { type: "http", endpoint: config.url.href };
+  if (descriptor.type !== "http") throw new Error(`Unsupported Worker transport: ${(descriptor as { type: string }).type}`);
+  return new HttpWorkerTransport({ descriptor, token: config.token });
+}
 
 export class WorkerClient {
   readonly environmentId: string;
+  readonly workerId: string | undefined;
   private handshakePromise: Promise<WorkerHello> | undefined;
 
   constructor(
-    private readonly config: WorkerEndpointConfig,
-    private readonly transport: WorkerTransport = new HttpWorkerTransport({ descriptor: { type: "http", endpoint: config.url.href }, token: config.token }),
+    private readonly config: WorkerClientConfig,
+    private readonly transport: WorkerTransport = createDefaultTransport(config),
   ) {
     this.environmentId = config.environmentId;
+    this.workerId = isMembershipConfig(config) ? config.workerId : undefined;
   }
 
-  handshake(): Promise<WorkerHello> {
+  handshake(force = false): Promise<WorkerHello> {
+    if (force) this.handshakePromise = undefined;
     this.handshakePromise ??= this.transport.execute<unknown>({ operation: "hello" }).then((value) => {
       const hello = workerHelloSchema.parse(value);
-      if (hello.environmentId !== this.environmentId) throw new Error("Worker identity mismatch");
-      for (const capability of QUEQIAO_WORKER_CAPABILITIES) if (!hello.capabilities.includes(capability)) throw new Error(`Worker capability missing: ${capability}`);
+      if (hello.environmentId !== this.environmentId) throw new Error("Worker environment identity mismatch");
+
+      if (this.workerId) {
+        if (hello.protocolVersion !== QUEQIAO_WORKER_PROTOCOL_VERSION) {
+          throw new Error(`Worker Protocol ${QUEQIAO_WORKER_PROTOCOL_VERSION} is required for enrolled membership routing`);
+        }
+        if (hello.workerId !== this.workerId) throw new Error("Worker stable identity mismatch");
+      } else if (hello.protocolVersion === QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION) {
+        for (const capability of QUEQIAO_WORKER_LEGACY_CAPABILITIES) {
+          if (!hello.capabilities.includes(capability)) throw new Error(`Worker capability missing: ${capability}`);
+        }
+      }
+
       return hello;
     }).catch((error) => { this.handshakePromise = undefined; throw error; });
     return this.handshakePromise;

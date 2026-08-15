@@ -8,10 +8,13 @@ import { OAuthService, type AccessClaims } from "./oauth.js";
 import { ReloadableWorkerRegistry } from "./worker-registry-config.js";
 import { ClientRequestBudget } from "./request-budget.js";
 import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
+import { WorkerMembershipStore } from "./worker-membership-store.js";
 
 export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService): Promise<Express> {
   const oauth = new OAuthService(config); await oauth.initialize();
-  const workerSource = new ReloadableWorkerRegistry(config.workersFile ? { file: config.workersFile } : { workers: config.workers });
+  const memberships = enrollment?.memberships ?? new WorkerMembershipStore(config.stateDir);
+  const legacyWorkers = config.workersFile ? { file: config.workersFile } as const : { workers: config.workers } as const;
+  const workerSource = new ReloadableWorkerRegistry({ memberships, legacy: legacyWorkers });
   await workerSource.initialize();
   const allowedOriginHostnames = [...new Set([config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]", ...[...config.allowedRedirectOrigins].map((origin) => new URL(origin).hostname)])];
   const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts: [config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]"], jsonLimit: "6mb" });

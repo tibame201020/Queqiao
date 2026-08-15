@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { open, readFile, rename, rm } from "node:fs/promises";
+import { open, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { environmentIdSchema, workerIdSchema } from "@queqiao/contracts";
@@ -53,9 +53,18 @@ const EMPTY_REGISTRY: WorkerMembershipRegistry = { version: 1, workers: [] };
 export class WorkerMembershipStore {
   readonly file: string;
   private mutationTail: Promise<void> = Promise.resolve();
+  private cached: WorkerMembershipRegistry | undefined;
+  private revisionValue = 0;
 
   constructor(readonly directory: string, filename = "worker-memberships.json") {
     this.file = path.join(directory, filename);
+  }
+
+  get revision(): number { return this.revisionValue; }
+
+  async exists(): Promise<boolean> {
+    try { await stat(this.file); return true; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
   }
 
   async read(): Promise<WorkerMembershipRegistry> {
@@ -65,6 +74,11 @@ export class WorkerMembershipStore {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ...EMPTY_REGISTRY, workers: [] };
       throw error;
     }
+  }
+
+  async current(): Promise<WorkerMembershipRegistry> {
+    this.cached ??= await this.read();
+    return this.cached;
   }
 
   private serialize<T>(operation: () => Promise<T>): Promise<T> {
@@ -91,6 +105,8 @@ export class WorkerMembershipStore {
         const directoryHandle = await open(this.directory, "r");
         try { await directoryHandle.sync(); } finally { await directoryHandle.close(); }
       }
+      this.cached = validated;
+      this.revisionValue += 1;
       return validated;
     } catch (error) {
       if (handle) await handle.close().catch(() => undefined);

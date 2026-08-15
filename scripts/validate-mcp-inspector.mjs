@@ -133,7 +133,7 @@ try {
   const listed = textPayload(listResult, "list_workspaces");
   if (listed?.deployment?.coreManifestRevision !== 6) throw new Error(`expected Core Manifest Revision 6, observed ${listed?.deployment?.coreManifestRevision}`);
   if (listed?.deployment?.publicToolCount !== 17) throw new Error(`expected publicToolCount 17, observed ${listed?.deployment?.publicToolCount}`);
-  if (listed?.deployment?.workerProtocolVersion !== "2.0") throw new Error(`expected Worker Protocol 2.0, observed ${listed?.deployment?.workerProtocolVersion}`);
+  if (listed?.deployment?.workerProtocolVersion !== "3.0") throw new Error(`expected Worker Protocol 3.0, observed ${listed?.deployment?.workerProtocolVersion}`);
   if (!/^sha256:[0-9a-f]{64}$/.test(listed?.deployment?.deploymentManifestFingerprint || "")) throw new Error("deployment fingerprint is missing or malformed");
   const expectedMcpVersions = ["2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"];
   if (JSON.stringify([...(listed?.deployment?.supportedMcpProtocolVersions || [])].sort()) !== JSON.stringify([...expectedMcpVersions].sort())) throw new Error("supported MCP revision attestation does not match the bounded compatibility window");

@@ -2,10 +2,17 @@ export * from "@queqiao/contracts";
 export {
   QUEQIAO_WORKER_CAPABILITIES,
   QUEQIAO_WORKER_HTTP_API_PREFIX,
+  QUEQIAO_WORKER_LEGACY_CAPABILITIES,
+  QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION,
+  QUEQIAO_WORKER_OPTIONAL_CAPABILITIES,
   QUEQIAO_WORKER_PROTOCOL_VERSION,
   workerHelloSchema,
+  workerHelloV2Schema,
+  workerHelloV3Schema,
   workerToolInvocationResponseSchema,
   type WorkerHello,
+  type WorkerHelloV2,
+  type WorkerHelloV3,
   type WorkerToolInvocationResponse,
 } from "@queqiao/worker-protocol";
 

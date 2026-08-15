@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { open, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
+import { QUEQIAO_WORKER_PROTOCOL_VERSION, workerHelloV3Schema } from "@queqiao/worker-protocol";
 import { secureRuntimeDirectory, secureRuntimeFile } from "@queqiao/platform-paths";
 import { WorkerMembershipStore, workerMembershipSchema, workerTransportDescriptorSchema, type WorkerMembership, type WorkerTransportDescriptor } from "./worker-membership-store.js";
 
@@ -136,8 +136,8 @@ export class EnrollmentService {
       if (identity.protocolVersion !== QUEQIAO_WORKER_PROTOCOL_VERSION) throw new EnrollmentError(409, "worker_protocol_mismatch", "Worker Protocol is incompatible with this Gateway");
       const helloResponse = await fetch(new URL("v1/hello", endpoint), { headers, signal: controller.signal });
       if (!helloResponse.ok) throw new EnrollmentError(502, "worker_handshake_failed", `Worker handshake failed with HTTP ${helloResponse.status}`);
-      const hello = z.object({ protocolVersion: z.string(), environmentId: z.string() }).parse(await helloResponse.json());
-      if (hello.protocolVersion !== QUEQIAO_WORKER_PROTOCOL_VERSION || hello.environmentId !== join.environmentId) throw new EnrollmentError(409, "worker_handshake_mismatch", "Worker handshake does not match the enrollment transaction");
+      const hello = workerHelloV3Schema.parse(await helloResponse.json());
+      if (hello.workerId !== join.workerId || hello.environmentId !== join.environmentId) throw new EnrollmentError(409, "worker_handshake_mismatch", "Worker handshake does not match the enrollment transaction");
     } catch (error) {
       if (error instanceof EnrollmentError) throw error;
       throw new EnrollmentError(502, "worker_unreachable", error instanceof Error ? error.message : "Worker enrollment probe failed");

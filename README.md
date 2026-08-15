@@ -30,7 +30,7 @@ See [Architecture](docs/architecture.md) and the [architecture decisions](docs/a
 ## Project status
 
 Queqiao is under active development. The current Secure Agent Substrate candidate uses
-**Core Manifest Revision 6** and **Worker Protocol 2.0**. Core exposes ten typed tools:
+**Core Manifest Revision 6** and **Worker Protocol 3.0**. Core exposes ten typed tools:
 `workspace_info`, `list_workspaces`, `open_workspace`, `read_file`, `write_file`,
 `edit_file`, `list_directory`, `search_text`, `run`, and `shell`. The candidate also
 enables the first-party Git extension with seven named typed tools, for a deterministic
