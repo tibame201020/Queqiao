@@ -12,6 +12,7 @@ import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migrati
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
 import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, setupGateway, setupWorker, updateJoinedWorkerTransport } from "./enrollment-cli.js";
 import { doctorGateway } from "./doctor.js";
+import { installService, serviceStatus, startService, stopService, uninstallService } from "./service-lifecycle.js";
 
 const managedToolSchema = toolNameSchema;
 const workspaceSchema = z.object({
@@ -109,6 +110,11 @@ async function main() {
   if (domain === "tool" && action === "explain") {
     const toolName = toolNameSchema.parse(args[2] || option(args, "tool")); const state = operations(await configStore.read()); const explanation = explainTool(state, toolName); if (!explanation) throw new Error(`Tool not found in effective composition: ${toolName}`); return print({ ...explanation, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint });
   }
+  if (domain === "service" && action === "install") return print(await installService(configFile, layout, requiredOption(args, "role"), option(args, "instance") || "default"));
+  if (domain === "service" && action === "start") return print(await startService(configFile, layout, requiredOption(args, "role"), option(args, "instance") || "default"));
+  if (domain === "service" && action === "stop") return print(await stopService(layout, requiredOption(args, "role"), option(args, "instance") || "default"));
+  if (domain === "service" && action === "status") return print(await serviceStatus(configFile, layout, requiredOption(args, "role"), option(args, "instance") || "default"));
+  if (domain === "service" && action === "uninstall") return print(await uninstallService(layout, requiredOption(args, "role"), option(args, "instance") || "default"));
   if (domain === "doctor") {
     const config = await configStore.read(); const state = operations(config); const doctor = await doctorGateway(config);
     return print({ ...state, ...doctor, ok: state.ok && doctor.ok });
@@ -116,7 +122,7 @@ async function main() {
   if (domain === "config" && action === "paths") return print(layout);
   if (domain === "migrate" && action === "from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));
   if (domain === "migrate" && action === "runtime-v1") return print(await migrateRuntimeLayoutV1(layout, args.includes("--execute")));
-  throw new Error("Usage: queqiao gateway setup|join-token, worker setup|join|list|update|remove, config paths, workspace init|list|add|remove, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor");
+  throw new Error("Usage: queqiao gateway setup|join-token, worker setup|join|list|update|remove, service install|start|stop|status|uninstall --role gateway|worker [--instance id], config paths, workspace init|list|add|remove, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor");
 }
 
 async function realpathDirectory(value: string): Promise<string> {

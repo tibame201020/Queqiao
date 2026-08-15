@@ -136,6 +136,11 @@ queqiao worker join --gateway <management-url> --token <join-token> --endpoint <
 queqiao worker list
 queqiao worker update --worker-id <id> --endpoint <loopback-worker-url>
 queqiao worker remove --worker-id <id>
+queqiao service install --role gateway|worker [--instance <id>]
+queqiao service start --role gateway|worker [--instance <id>]
+queqiao service stop --role gateway|worker [--instance <id>]
+queqiao service status --role gateway|worker [--instance <id>]
+queqiao service uninstall --role gateway|worker [--instance <id>]
 queqiao profile set --workspace <id> --profile read-only|editor|coding
 queqiao tool allow --workspace <id> --tool <tool>
 queqiao tool deny --workspace <id> --tool <tool>
@@ -203,12 +208,18 @@ npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao
 npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao --execute
 ```
 
-After CLI-managed configuration exists, start the two processes in separate terminals:
+After CLI-managed configuration exists, install and control each local role with the native user-scope service manager:
 
-```powershell
-npm run start:worker
-npm run start:gateway
+```shell
+queqiao service install --role worker --instance stable
+queqiao service install --role gateway --instance stable
+queqiao service start --role worker --instance stable
+queqiao service start --role gateway --instance stable
+queqiao service status --role worker --instance stable
+queqiao service status --role gateway --instance stable
 ```
+
+Windows uses the current-user Run key for login startup and user-scope start/stop control; it does not install an administrator service. Linux and WSL use `systemd --user`. The `--instance` value isolates service-manager identities such as `stable` and `shadow`; it does not create a separate configuration model. Non-default runtime lanes should use the existing `QUEQIAO_CONFIG_DIR`, `QUEQIAO_DATA_DIR`, `QUEQIAO_STATE_HOME`, and `QUEQIAO_RUNTIME_DIR` layout overrides. `--file` overrides only the config file and does not relocate state, data, or runtime directories. Direct `queqiao-gateway` / `queqiao-worker` entry points remain available for foreground debugging.
 
 The Worker listens only on `127.0.0.1:7576`. The public tunnel must point only to the
 Gateway on port `7575`. Configure ChatGPT with the public `/mcp` URL.
