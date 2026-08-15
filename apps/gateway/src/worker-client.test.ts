@@ -64,4 +64,20 @@ describe("WorkerClient rolling upgrade", () => {
     vi.stubGlobal("fetch", fetch);
     await expect(new WorkerClient(membershipConfig).run({ workspaceId: "one", executable: "node", args: [], cwd: ".", timeoutMs: 1000, mode: "async" })).resolves.toEqual(asyncResult);
   });
+  it("treats liveness as advisory and restores reachability after a real invocation succeeds", async () => {
+    const states: boolean[] = [];
+    const transport = {
+      execute: vi.fn(async (request: { operation: string }) => {
+        if (request.operation === "health") throw new Error("temporary liveness failure");
+        if (request.operation === "hello") return membershipHello;
+        if (request.operation === "list-workspaces") return { environmentId: "windows", defaultWorkspaceId: "one", workspaces: [] };
+        throw new Error(`unexpected operation: ${request.operation}`);
+      }),
+    };
+    const client = new WorkerClient(membershipConfig, transport, (reachable) => states.push(reachable));
+    await expect(client.probeLiveness()).resolves.toBe(false);
+    expect(states.at(-1)).toBe(false);
+    await expect(client.listWorkspaces()).resolves.toMatchObject({ environmentId: "windows" });
+    expect(states.at(-1)).toBe(true);
+  });
 });

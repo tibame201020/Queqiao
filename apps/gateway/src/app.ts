@@ -9,6 +9,7 @@ import { ReloadableWorkerRegistry } from "./worker-registry-config.js";
 import { ClientRequestBudget } from "./request-budget.js";
 import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
+import { GatewayLivenessMonitor } from "./liveness-monitor.js";
 
 export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService): Promise<Express> {
   const oauth = new OAuthService(config); await oauth.initialize();
@@ -34,6 +35,9 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
   app.post("/oauth/authorize", rateLimit({ windowMs: 60_000, limit: 10, keyGenerator: () => "global-approval-secret", standardHeaders: "draft-8", legacyHeaders: false }));
   app.use(oauth.router);
 
+  const liveness = new GatewayLivenessMonitor(workerSource, config.livenessIntervalMs ?? 30_000);
+  await liveness.start();
+
   if (enrollment) {
     const enrollmentLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false });
     app.post("/enrollment/join/start", enrollmentLimiter, async (req, res) => {
@@ -46,21 +50,17 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
         const credential = req.header("x-queqiao-worker-token") || "";
         if (!transactionId || !credential) throw new EnrollmentError(400, "invalid_confirmation", "transactionId and provisional credential are required");
         const membership = await enrollment.confirmJoin(transactionId, credential);
+        await liveness.probeNow().catch(() => undefined);
         res.json({ joined: true, workerId: membership.workerId, environmentId: membership.environmentId });
       } catch (error) { const failure = error instanceof EnrollmentError ? error : new EnrollmentError(400, "join_confirmation_failed", error instanceof Error ? error.message : "Join confirmation failed"); res.status(failure.status).json({ error: failure.code, message: failure.message }); }
     });
   }
 
-  let healthLoading: Promise<Array<{ environmentId: string; online: boolean; workspaceCount: number }>> | undefined;
-  let healthCache: { expiresAt: number; environments: Array<{ environmentId: string; online: boolean; workspaceCount: number }> } | undefined;
-  const health = async () => {
-    if (healthCache && healthCache.expiresAt > Date.now()) return healthCache.environments;
-    healthLoading ??= (await workerSource.current()).listEnvironments().then((environments) => environments.map(({ environmentId, online, workspaces }) => ({ environmentId, online, workspaceCount: workspaces.length }))).finally(() => { healthLoading = undefined; });
-    const environments = await healthLoading;
-    healthCache = { expiresAt: Date.now() + 5000, environments };
-    return environments;
-  };
-  app.get("/health", rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false }), async (_req, res) => { const environments = await health(); const ok = environments.some((environment) => environment.online); res.status(ok ? 200 : 503).json({ ok, service: "queqiao-gateway", environments }); });
+  app.get("/health", rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false }), async (_req, res) => {
+    const environments = await liveness.snapshot();
+    const ok = environments.some((environment) => environment.reachable);
+    res.status(ok ? 200 : 503).json({ ok, service: "queqiao-gateway", environments });
+  });
   app.use("/mcp", originValidation(allowedOriginHostnames));
   app.use("/mcp", oauth.authenticate);
   const clientBudget = new ClientRequestBudget();

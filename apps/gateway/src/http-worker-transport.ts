@@ -1,4 +1,4 @@
-import { WorkerHttpError } from "./errors.js";
+﻿import { WorkerHttpError } from "./errors.js";
 import type { WorkerHttpTransportDescriptor, WorkerTransport, WorkerTransportRequest } from "./worker-transport.js";
 import { QUEQIAO_WORKER_HTTP_API_PREFIX } from "@queqiao/worker-protocol";
 
@@ -36,6 +36,8 @@ export class HttpWorkerTransport implements WorkerTransport {
 
   private toHttpRequest(request: WorkerTransportRequest): { pathname: string; init?: RequestInit } {
     switch (request.operation) {
+      case "health":
+        return { pathname: "/health" };
       case "hello":
         return { pathname: `${QUEQIAO_WORKER_HTTP_API_PREFIX}/hello` };
       case "list-workspaces":

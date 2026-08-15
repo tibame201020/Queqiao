@@ -1,7 +1,7 @@
 import type { WorkerEndpointConfig } from "./config.js";
 import { WorkerHttpError } from "./errors.js";
 import { HttpWorkerTransport } from "./http-worker-transport.js";
-import type { WorkerTransport, WorkerTransportDescriptor } from "./worker-transport.js";
+import type { WorkerTransport, WorkerTransportDescriptor, WorkerTransportRequest } from "./worker-transport.js";
 import {
   QUEQIAO_WORKER_LEGACY_CAPABILITIES,
   QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION,
@@ -44,14 +44,27 @@ export class WorkerClient {
   constructor(
     private readonly config: WorkerClientConfig,
     private readonly transport: WorkerTransport = createDefaultTransport(config),
+    private readonly reportReachability: (reachable: boolean) => void = () => {},
   ) {
     this.environmentId = config.environmentId;
     this.workerId = isMembershipConfig(config) ? config.workerId : undefined;
   }
 
+  private async executeTracked<T>(request: WorkerTransportRequest, signal?: AbortSignal): Promise<T> {
+    try {
+      const result = await this.transport.execute<T>(request, signal);
+      this.reportReachability(true);
+      return result;
+    } catch (error) {
+      if (error instanceof WorkerHttpError) this.reportReachability(true);
+      else this.reportReachability(false);
+      throw error;
+    }
+  }
+
   handshake(force = false): Promise<WorkerHello> {
     if (force) this.handshakePromise = undefined;
-    this.handshakePromise ??= this.transport.execute<unknown>({ operation: "hello" }).then((value) => {
+    this.handshakePromise ??= this.executeTracked<unknown>({ operation: "hello" }).then((value) => {
       const hello = workerHelloSchema.parse(value);
       if (hello.environmentId !== this.environmentId) throw new Error("Worker environment identity mismatch");
 
@@ -66,24 +79,43 @@ export class WorkerClient {
         }
       }
 
+      this.reportReachability(true);
       return hello;
-    }).catch((error) => { this.handshakePromise = undefined; throw error; });
+    }).catch((error) => {
+      this.handshakePromise = undefined;
+      this.reportReachability(false);
+      throw error;
+    });
     return this.handshakePromise;
+  }
+
+  async probeLiveness(timeoutMs = 3_000): Promise<boolean> {
+    try {
+      const health = await this.transport.execute<{ ok?: unknown }>({ operation: "health" }, AbortSignal.timeout(timeoutMs));
+      if (health.ok !== true) throw new Error("Worker health probe did not report ok");
+      await this.handshake(true);
+      this.reportReachability(true);
+      return true;
+    } catch {
+      this.handshakePromise = undefined;
+      this.reportReachability(false);
+      return false;
+    }
   }
 
   async listWorkspaces() {
     await this.handshake();
-    return this.transport.execute<{ environmentId: string; defaultWorkspaceId: string; workspaces: Array<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] } }> }>({ operation: "list-workspaces" });
+    return this.executeTracked<{ environmentId: string; defaultWorkspaceId: string; workspaces: Array<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] } }> }>({ operation: "list-workspaces" });
   }
 
   async workspaceInfo(workspaceId: string, tool: "workspace_info" | "open_workspace" = "open_workspace") {
     await this.handshake();
-    return this.transport.execute<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] } }>({ operation: "workspace-info", workspaceId, tool });
+    return this.executeTracked<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] } }>({ operation: "workspace-info", workspaceId, tool });
   }
 
   async invokeTool<T>(toolName: string, input: unknown, signal?: AbortSignal) {
     await this.handshake();
-    return this.transport.execute<WorkerToolInvocationResponse<T>>({ operation: "invoke-tool", toolName, input }, signal).then(({ result }) => result);
+    return this.executeTracked<WorkerToolInvocationResponse<T>>({ operation: "invoke-tool", toolName, input }, signal).then(({ result }) => result);
   }
 
   async readFile(input: { workspaceId: string; path: string; offset: number; limit: number }) {
@@ -91,7 +123,7 @@ export class WorkerClient {
       return await this.invokeTool<{ path: string; startLine: number; endLine: number; totalLines: number; text: string }>("read_file", input);
     } catch (error) {
       if (!(error instanceof WorkerHttpError) || error.status !== 404) throw error;
-      return this.transport.execute<{ path: string; startLine: number; endLine: number; totalLines: number; text: string }>({ operation: "legacy-read-file", input });
+      return this.executeTracked<{ path: string; startLine: number; endLine: number; totalLines: number; text: string }>({ operation: "legacy-read-file", input });
     }
   }
 

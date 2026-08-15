@@ -3,11 +3,42 @@ import { QueqiaoError } from "./errors.js";
 
 export type WorkspaceRoute = { environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] }; online: true };
 export type EnvironmentState = { environmentId: string; online: boolean; defaultWorkspaceId?: string; workspaces: WorkspaceRoute[] };
+export type WorkerLivenessState = { environmentId: string; reachable: boolean; checkedAt?: string; lastSuccessAt?: string };
+
+type ReachabilityRecord = { reachable: boolean; checkedAt?: string; lastSuccessAt?: string };
 
 export class WorkerRegistry {
   private readonly workers: WorkerClient[];
-  constructor(configs: readonly WorkerClientConfig[]) { this.workers = configs.map((config) => new WorkerClient(config)); }
+  private readonly reachability = new Map<string, ReachabilityRecord>();
+
+  constructor(configs: readonly WorkerClientConfig[]) {
+    this.workers = configs.map((config) => new WorkerClient(config, undefined, (reachable) => this.recordReachability(config.environmentId, reachable)));
+    for (const config of configs) this.reachability.set(config.environmentId, { reachable: false });
+  }
+
+  private recordReachability(environmentId: string, reachable: boolean): void {
+    const now = new Date().toISOString();
+    const previous = this.reachability.get(environmentId);
+    this.reachability.set(environmentId, {
+      reachable,
+      checkedAt: now,
+      ...(reachable ? { lastSuccessAt: now } : previous?.lastSuccessAt ? { lastSuccessAt: previous.lastSuccessAt } : {}),
+    });
+  }
+
   configuredEnvironmentIds(): string[] { return this.workers.map((worker) => worker.environmentId); }
+
+  livenessSnapshot(): WorkerLivenessState[] {
+    return this.workers.map((worker) => {
+      const state = this.reachability.get(worker.environmentId) ?? { reachable: false };
+      return { environmentId: worker.environmentId, ...state };
+    });
+  }
+
+  async probeLiveness(): Promise<WorkerLivenessState[]> {
+    await Promise.all(this.workers.map((worker) => worker.probeLiveness()));
+    return this.livenessSnapshot();
+  }
 
   async listEnvironments(): Promise<EnvironmentState[]> {
     return Promise.all(this.workers.map(async (worker) => {
@@ -26,7 +57,7 @@ export class WorkerRegistry {
 
   async defaultRoute(): Promise<{ worker: WorkerClient; workspaceId: string }> {
     for (const worker of this.workers) {
-      try { const state = await worker.listWorkspaces(); if (state.environmentId === worker.environmentId) return { worker, workspaceId: state.defaultWorkspaceId }; } catch { /* try next */ }
+      try { const state = await worker.listWorkspaces(); if (state.environmentId === worker.environmentId) return { worker, workspaceId: state.defaultWorkspaceId }; } catch { /* advisory liveness never vetoes a real route attempt */ }
     }
     throw new QueqiaoError("worker_unavailable", "No Queqiao Worker is online", "gateway", true);
   }
@@ -34,7 +65,7 @@ export class WorkerRegistry {
   async route(workspaceId: string): Promise<WorkerClient> {
     const matches: WorkerClient[] = [];
     for (const worker of this.workers) {
-      try { const state = await worker.listWorkspaces(); if (state.environmentId === worker.environmentId && state.workspaces.some((workspace) => workspace.workspaceId === workspaceId)) matches.push(worker); } catch { /* offline */ }
+      try { const state = await worker.listWorkspaces(); if (state.environmentId === worker.environmentId && state.workspaces.some((workspace) => workspace.workspaceId === workspaceId)) matches.push(worker); } catch { /* advisory liveness never vetoes a real route attempt */ }
     }
     if (!matches.length) throw new QueqiaoError("workspace_not_found", `Workspace is not available: ${workspaceId}`);
     if (matches.length > 1) throw new QueqiaoError("workspace_ambiguous", `Workspace ID is ambiguous across environments: ${workspaceId}`);
