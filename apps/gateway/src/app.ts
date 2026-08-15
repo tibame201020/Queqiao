@@ -7,8 +7,9 @@ import { McpCancellationRegistry } from "./cancellation-registry.js";
 import { OAuthService, type AccessClaims } from "./oauth.js";
 import { ReloadableWorkerRegistry } from "./worker-registry-config.js";
 import { ClientRequestBudget } from "./request-budget.js";
+import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 
-export async function createGatewayApp(config: GatewayRuntimeConfig): Promise<Express> {
+export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService): Promise<Express> {
   const oauth = new OAuthService(config); await oauth.initialize();
   const workerSource = new ReloadableWorkerRegistry(config.workersFile ? { file: config.workersFile } : { workers: config.workers });
   await workerSource.initialize();
@@ -29,6 +30,24 @@ export async function createGatewayApp(config: GatewayRuntimeConfig): Promise<Ex
   app.use(["/oauth/authorize", "/oauth/token", "/oauth/register"], rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false }));
   app.post("/oauth/authorize", rateLimit({ windowMs: 60_000, limit: 10, keyGenerator: () => "global-approval-secret", standardHeaders: "draft-8", legacyHeaders: false }));
   app.use(oauth.router);
+
+  if (enrollment) {
+    const enrollmentLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false });
+    app.post("/enrollment/join/start", enrollmentLimiter, async (req, res) => {
+      try { res.status(201).json(await enrollment.startJoin(req.body)); }
+      catch (error) { const failure = error instanceof EnrollmentError ? error : new EnrollmentError(400, "invalid_join_request", error instanceof Error ? error.message : "Invalid join request"); res.status(failure.status).json({ error: failure.code, message: failure.message }); }
+    });
+    app.post("/enrollment/join/confirm", enrollmentLimiter, async (req, res) => {
+      try {
+        const transactionId = typeof req.body?.transactionId === "string" ? req.body.transactionId : "";
+        const credential = req.header("x-queqiao-worker-token") || "";
+        if (!transactionId || !credential) throw new EnrollmentError(400, "invalid_confirmation", "transactionId and provisional credential are required");
+        const membership = await enrollment.confirmJoin(transactionId, credential);
+        res.json({ joined: true, workerId: membership.workerId, environmentId: membership.environmentId });
+      } catch (error) { const failure = error instanceof EnrollmentError ? error : new EnrollmentError(400, "join_confirmation_failed", error instanceof Error ? error.message : "Join confirmation failed"); res.status(failure.status).json({ error: failure.code, message: failure.message }); }
+    });
+  }
+
   let healthLoading: Promise<Array<{ environmentId: string; online: boolean; workspaceCount: number }>> | undefined;
   let healthCache: { expiresAt: number; environments: Array<{ environmentId: string; online: boolean; workspaceCount: number }> } | undefined;
   const health = async () => {

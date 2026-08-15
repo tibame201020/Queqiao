@@ -14,7 +14,7 @@ export const workerEndpointSchema = z.object({
   token: z.string().min(32).optional(),
   tokenFile: z.string().min(1).optional(),
 }).refine((entry) => Boolean(entry.token) !== Boolean(entry.tokenFile), "Configure exactly one Worker token source");
-const workerFileSchema = z.array(workerEndpointSchema).min(1);
+const workerFileSchema = z.array(workerEndpointSchema);
 
 export class ReloadableWorkerRegistry {
   private registry: WorkerRegistry;
@@ -42,7 +42,7 @@ export class ReloadableWorkerRegistry {
       if (!force && info.mtimeMs === this.loadedMtimeMs) return;
       mtimeMs = info.mtimeMs;
       const document = parse(await readFile(this.source.file, "utf8")) as { environments?: unknown };
-      endpoints = await Promise.all(workerFileSchema.parse(document.environments).map(async (entry) => ({ environmentId: entry.environmentId, url: new URL(entry.url), token: entry.token || (await readFile(path.resolve(entry.tokenFile!), "utf8")).trim() })));
+      endpoints = await Promise.all(workerFileSchema.parse(document.environments ?? []).map(async (entry) => ({ environmentId: entry.environmentId, url: new URL(entry.url), token: entry.token || (await readFile(path.resolve(entry.tokenFile!), "utf8")).trim() })));
     } else {
       if (!force) return;
       endpoints = this.source.workers;
