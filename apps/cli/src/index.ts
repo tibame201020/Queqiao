@@ -14,6 +14,7 @@ import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migrati
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
 import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-paths.js";
 import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, setupGateway, setupWorker, updateJoinedWorkerTransport } from "./enrollment-cli.js";
+import { doctorGateway } from "./doctor.js";
 
 const managedToolSchema = toolNameSchema;
 const workspaceSchema = z.object({
@@ -140,9 +141,8 @@ async function main() {
     const toolName = toolNameSchema.parse(args[2] || option(args, "tool")); const state = operations(await configStore.read()); const explanation = explainTool(state, toolName); if (!explanation) throw new Error(`Tool not found in effective composition: ${toolName}`); return print({ ...explanation, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint });
   }
   if (domain === "doctor") {
-    const config = await configStore.read(); const state = operations(config);
-    const environments = await Promise.all(config.environments.map(async (entry) => { try { const response = await fetch(new URL("/health", entry.url), { signal: AbortSignal.timeout(3000) }); return { environmentId: entry.environmentId, online: response.ok, status: response.status }; } catch (error) { return { environmentId: entry.environmentId, online: false, error: error instanceof Error ? error.message : "Unknown error" }; } }));
-    return print({ ...state, ok: state.ok && environments.some((entry) => entry.online), environments });
+    const config = await configStore.read(); const state = operations(config); const doctor = await doctorGateway(config);
+    return print({ ...state, ...doctor, ok: state.ok && doctor.ok });
   }
   if (domain === "config" && action === "paths") return print(layout);
   if (domain === "migrate" && action === "from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));

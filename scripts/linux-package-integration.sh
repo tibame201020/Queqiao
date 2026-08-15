@@ -60,11 +60,11 @@ for attempt in $(seq 1 120); do
   kill -0 "$worker_pid" 2>/dev/null || exit 1
   kill -0 "$gateway_pid" 2>/dev/null || exit 1
   health=$(curl -fsS http://127.0.0.1:17575/health 2>/dev/null || true)
-  echo "$health" | grep -q '"online":true' && break
+  echo "$health" | grep -q '"reachable":true' && break
   sleep 0.5
 done
 echo "$health" | grep -q '"environmentId":"linux-ci"'
-echo "$health" | grep -q '"online":true'
+echo "$health" | grep -q '"reachable":true'
 hello=$(curl -fsS -H 'x-queqiao-worker-token: worker-token-for-linux-integration-at-least-32-bytes' http://127.0.0.1:17576/v1/hello)
 echo "$hello" | grep -q '"protocolVersion":"2.0"'
 echo "$hello" | grep -q '"platform":"linux"'

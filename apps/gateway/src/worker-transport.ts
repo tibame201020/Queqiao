@@ -6,6 +6,7 @@ export type WorkerHttpTransportDescriptor = {
 export type WorkerTransportDescriptor = WorkerHttpTransportDescriptor;
 
 export type WorkerTransportRequest =
+  | { operation: "health" }
   | { operation: "hello" }
   | { operation: "list-workspaces" }
   | { operation: "workspace-info"; workspaceId: string; tool: "workspace_info" | "open_workspace" }

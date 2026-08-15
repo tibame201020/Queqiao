@@ -45,7 +45,10 @@ describe("Queqiao v0 vertical slice", () => {
 
   it("reports worker health and challenges unauthenticated MCP", async () => {
     const health = await request(gateway).get("/health").set("Host", "localhost").expect(200);
-    expect(health.body.environments[0]).toEqual({ online: true, environmentId: "windows", workspaceCount: 2 });
+    expect(health.body.environments[0]).toMatchObject({ reachable: true, environmentId: "windows" });
+    expect(health.body.environments[0].checkedAt).toEqual(expect.any(String));
+    expect(health.body.environments[0].lastSuccessAt).toEqual(expect.any(String));
+    expect(health.body.environments[0]).not.toHaveProperty("workspaceCount");
     expect(JSON.stringify(health.body)).not.toContain(temporary);
     const challenge = await request(gateway).post("/mcp").set("Host", "localhost").send({}).expect(401);
     expect(challenge.headers["www-authenticate"]).toContain("resource_metadata=");

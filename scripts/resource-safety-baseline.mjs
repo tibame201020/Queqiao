@@ -199,7 +199,7 @@ try {
   const worker = spawnNode(path.join(packageRoot, "dist", "queqiao-worker.js"), configFile, workerLog, workerErr);
   await waitFor(`http://127.0.0.1:${workerPort}/health`, "\"ok\":true");
   const gateway = spawnNode(path.join(packageRoot, "dist", "queqiao-gateway.js"), configFile, gatewayLog, gatewayErr);
-  await waitFor(`http://127.0.0.1:${gatewayPort}/health`, "\"online\":true");
+  await waitFor(`http://127.0.0.1:${gatewayPort}/health`, "\"reachable\":true");
   await delay(1500);
 
   const idleStart = { gateway: await sampleProcess(gateway.pid), worker: await sampleProcess(worker.pid), gatewayLog: statSync(gatewayLog).size, workerLog: statSync(workerLog).size };
