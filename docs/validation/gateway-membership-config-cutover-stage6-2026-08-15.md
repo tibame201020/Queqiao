@@ -56,3 +56,11 @@ Outside explicit migration compatibility code/tests and historical documentation
 ## Acceptance
 
 Stage 6 is acceptable for PR review when repository hygiene is clean and hosted Windows/Ubuntu package, security, cluster, and Resource Safety checks pass. Stage 7 production acceptance/promotion remains a separate user-approved stage.
+## Hosted CI regression fixes
+
+The first PR #20 hosted run exposed two test-fixture/harness regressions, not runtime gate failures:
+
+- Linux packaged cluster: the persistent membership fixture had a fixed `workerId`, while the Worker config omitted that same identity. The Gateway correctly rejected the handshake as unreachable. The fixture now pins the identical Worker identity in config and membership.
+- Windows self-contained package: `npm pack` runs `prepack -> check`, causing the async-security suite to execute again under a loaded hosted runner. The runtime process deadlines remained 2s/1s, but Vitest's default 5s outer test ceiling expired. Only that test-harness ceiling is now 10s; Queqiao process/security/resource deadlines are unchanged. A local Windows `npm pack` with the complete prepack/check path passes after the adjustment.
+
+Neither fix relaxes a runtime security or resource budget.

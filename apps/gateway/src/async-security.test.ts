@@ -178,7 +178,7 @@ describe("async disconnect and resource security", () => {
     const asyncText = JSON.stringify(asyncResult.content);
     expect(asyncText).toContain("discarded");
     expect(asyncText).not.toContain("xxxxxxxxxxxxxxxx");
-  });
+  }, 10_000);
 
   it("enforces async lifetime and orderly Worker shutdown without durable recovery state", async () => {
     const processes = new ProcessRunner();

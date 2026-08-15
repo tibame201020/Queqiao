@@ -37,6 +37,7 @@ gateway:
   approvalSecretFile: $test_root/data/secrets/approval.secret
   jwtSigningSecretFile: $test_root/data/secrets/jwt.secret
 worker:
+  workerId: 11111111-1111-4111-8111-111111111111
   environmentId: linux-ci
   listen: { host: 127.0.0.1, port: 17576 }
   tokenFile: $test_root/data/secrets/worker.secret
