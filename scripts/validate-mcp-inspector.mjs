@@ -61,6 +61,8 @@ if (!base.pathname.endsWith("/")) base.pathname += "/";
 const approvalSecretFile = path.resolve(requiredOption("--approval-secret-file"));
 const windowsWorkspace = requiredOption("--windows-workspace");
 const wslWorkspace = requiredOption("--wsl-workspace");
+const windowsEnvironment = option("--windows-environment", "windows");
+const wslEnvironment = option("--wsl-environment", "wsl");
 const packageName = option("--inspector-package", "@modelcontextprotocol/inspector@2.2.0");
 const callbackUrl = option("--callback-url", "http://127.0.0.1:6276/oauth/callback");
 const resource = new URL("mcp", base).href;
@@ -141,8 +143,8 @@ try {
   const workspaceCall = (workspaceId) => inspector(packageName, configPath, "tools/call", ["--tool-name", "workspace_info", "--tool-args-json", JSON.stringify({ workspaceId })]);
   const windowsInfo = textPayload(workspaceCall(windowsWorkspace), "workspace_info Windows");
   const wslInfo = textPayload(workspaceCall(wslWorkspace), "workspace_info WSL");
-  if (windowsInfo.workspaceId !== windowsWorkspace || windowsInfo.environmentId !== "windows") throw new Error("Windows workspace_info routing mismatch");
-  if (wslInfo.workspaceId !== wslWorkspace || wslInfo.environmentId !== "wsl") throw new Error("WSL workspace_info routing mismatch");
+  if (windowsInfo.workspaceId !== windowsWorkspace || windowsInfo.environmentId !== windowsEnvironment) throw new Error("Windows workspace_info routing mismatch");
+  if (wslInfo.workspaceId !== wslWorkspace || wslInfo.environmentId !== wslEnvironment) throw new Error("WSL workspace_info routing mismatch");
 
   const gitStatus = (workspaceId) => textPayload(inspector(packageName, configPath, "tools/call", ["--tool-name", "git_status", "--tool-args-json", JSON.stringify({ workspaceId, repositoryPath: "." })]), `git_status ${workspaceId}`);
   const windowsGit = gitStatus(windowsWorkspace);
