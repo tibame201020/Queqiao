@@ -48,7 +48,7 @@ Covered behaviors include:
   - Gateway/Worker idle log growth: 0/0 bytes
   - failures: none
 
-The first Resource Safety attempt failed only because the harness still waited for the removed legacy health field `online:true`. Updating the harness assertion to the Stage 5 liveness contract `reachable:true` made the unchanged resource budgets pass; no resource limit was relaxed.
+The first Resource Safety attempt failed only because the harness still waited for the removed legacy health field `online:true`. Updating the harness assertion to the Stage 5 liveness contract `reachable:true` made the unchanged resource budgets pass; no resource limit was relaxed. The hosted Linux package integration required the same readiness-assertion update; its legacy static Worker hello intentionally remains Protocol 2.0 to preserve the Stage 4 rolling-upgrade compatibility check.
 
 ## Acceptance
 
