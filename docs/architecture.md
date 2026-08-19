@@ -21,7 +21,7 @@ Queqiao Gateway
 
 Only the Gateway is publicly exposed. The currently verified Windows/WSL deployment uses loopback HTTP Worker endpoints on the same host. Each native Worker is authoritative for its own Workspace filesystem/process operations and validates delegated requests again.
 
-The Worker boundary is intentionally independent from this current loopback transport. ADR-0011 defines the accepted target topology: Worker membership is established explicitly through CLI-driven `worker join`, while logical invocation remains `Client -> Gateway -> Worker -> Gateway -> Client`. Worker runtime startup does not auto-register, and connection lifetime remains a transport concern.
+The Worker boundary is intentionally independent from this current loopback transport. ADR-0011 now governs the implemented membership model: Worker membership is established explicitly through CLI-driven `worker join`, while logical invocation remains `Client -> Gateway -> Worker -> Gateway -> Client`. Worker runtime startup does not auto-register, and connection lifetime remains a transport concern.
 
 Successful enrollment creates Gateway-owned persistent membership, stored separately from the user-managed main configuration. Persistent membership contains stable Worker identity, unique environment identity, a fixed transport descriptor, and credential references. Runtime reachability, instance identity, Worker Protocol version, optional capabilities, and transport-session state are negotiated live and are not persisted as authoritative membership data.
 
@@ -44,7 +44,7 @@ The current Core contract is **Core Manifest Revision 6**. Core exposes ten type
 - `run`
 - `shell`
 
-The current candidate deployment additionally enables the first-party Git extension with seven named public tools: `git_repositories`, `git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and `git_worktree_remove`, yielding an effective 17-tool Deployment Manifest. `workspace_info` accepts an optional Workspace ID for explicit cross-environment inspection, and `list_workspaces` returns a safe deployment-attestation projection.
+The accepted production-like deployment composition additionally enables the first-party Git extension with seven named public tools: `git_repositories`, `git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and `git_worktree_remove`, yielding an effective 17-tool Deployment Manifest. `workspace_info` accepts an optional Workspace ID for explicit cross-environment inspection, and `list_workspaces` returns a safe deployment-attestation projection.
 
 Historical Revision 4 and Revision 5 validation evidence remains authoritative for those contracts and is not rewritten by later revisions.
 
@@ -78,7 +78,7 @@ The current loopback HTTP API is the deployed Worker transport, not the permanen
 
 ### `apps/cli`
 
-Administrative interface for validated/atomic configuration changes, migrations, diagnostics, local runtime/service lifecycle, Workspace authority management, and permission inspection.
+Administrative interface for validated/atomic configuration changes, migrations, diagnostics, explicit named runtime lifecycle (`serve [--bg]` / `stop` / `status`), Worker enrollment, Workspace authority management, and permission inspection. It does not install or manage OS services or autostart.
 
 CLI/config changes do not by themselves mutate a client's cached public MCP tool schema.
 
@@ -231,9 +231,10 @@ Repository-level production checks for relevant slices include:
 ```text
 npm run typecheck
 npm test
+npm run test:cli-setup
 npm run test:security
 npm run build:package
 git diff --check
 ```
 
-Security/release slices additionally run the applicable security gate, cluster/interoperability tests, and real-client Windows/WSL acceptance required by their tickets.
+Security/release slices additionally run the applicable security gate, cluster/interoperability tests, and real-client Windows/WSL acceptance required by their tickets. The first-time CLI setup flow has dedicated Ubuntu/Windows GitHub Actions jobs and both checks are required by `main` branch protection.

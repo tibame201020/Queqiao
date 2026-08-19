@@ -103,12 +103,13 @@ Required repository checks remain:
 ```text
 npm run typecheck
 npm test
+npm run test:cli-setup
 npm run test:security
 npm run build:package
 git diff --check
 ```
 
-Run additional slice-specific gates such as `npm run security:gate`, cluster tests, protocol compatibility tests, or adversarial extension/process tests as required by TICKETS.md.
+Run additional slice-specific gates such as `npm run security:gate`, cluster tests, protocol compatibility tests, or adversarial extension/process tests as required by TICKETS.md. For CLI lifecycle/setup changes, the dedicated Ubuntu/Windows `CLI setup flow` jobs are required branch-protection checks and must pass independently of the full suite.
 
 ### Gate C — candidate shadow runtime
 

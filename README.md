@@ -12,8 +12,9 @@ always executes inside the native environment.
 
 - **Gateway** owns the public MCP endpoint, OAuth, stable tool schemas, routing, and
   worker health. It cannot read files or spawn workspace processes.
-- **Worker** connects outbound to the Gateway and executes only against locally
-  configured workspaces. It is not exposed to the public internet.
+- **Worker** owns native execution and exposes only its environment-local Worker
+  transport to the Gateway. The verified transport is loopback HTTP; Workers do not
+  auto-register, maintain an idle registration connection, or expose a public MCP endpoint.
 - **CLI** manages gateway, worker, workspace, tool, and command policy.
 - **Protocol** contains versioned wire contracts and stable public tool names.
 - **Security** owns identities, step-up challenges, approval grants, secret boundaries,
@@ -159,6 +160,32 @@ rename. A Worker validates every new root before replacing its in-memory catalog
 rejected update leaves the last-known-good catalog active.
 
 The same compiled CLI runs inside WSL with Linux-native XDG paths and explicit `serve`/`stop` lifecycle. Queqiao does not require or install a systemd user service for the Worker.
+
+### First-time setup contract
+
+There is deliberately no generic `queqiao setup`. Gateway, Worker, Workspace authority,
+and enrollment are separate operations so no command silently broadens execution authority:
+
+```text
+queqiao gateway setup --name <gateway> --public-base-url <url>
+queqiao worker setup --name <worker>
+queqiao workspace add --worker <worker>
+queqiao worker serve --name <worker> --bg
+queqiao gateway serve --name <gateway> --bg
+queqiao gateway join-token --name <gateway> --copy
+queqiao worker join --name <worker>
+```
+
+`gateway setup` and `worker setup` create role-local state only. `workspace add` is the
+separate authority grant for an existing directory. `worker join` is the separate atomic
+membership transaction. `--bg` means a background process managed by Queqiao's explicit
+PID-aware lifecycle; it is not an OS service, autostart entry, Run key, or systemd unit.
+
+The mocked first-time setup flow and cross-platform Workspace-ID behavior are protected by
+dedicated required GitHub checks on both Ubuntu and Windows:
+`CLI setup flow (ubuntu-latest)` and `CLI setup flow (windows-latest)`. They run only after
+the monorepo packages are typechecked/built, matching the dependency order required by the
+workspace package graph.
 
 ## Runtime configuration
 

@@ -533,3 +533,11 @@ Final frozen candidate:
 Release evidence is recorded in `docs/validation/candidate-public-manifest-final-freeze-2026-08-13.md`, `docs/validation/final-package-security-verification-2026-08-13.md`, `docs/validation/generic-mcp-client-interoperability-2026-08-13.md`, and `docs/validation/final-chatgpt-shadow-acceptance-2026-08-13.md`.
 
 No remaining Wayfinder implementation ticket is open in this release slice. Promotion from the accepted Shadow candidate to the stable runtime is an operational release action, not an implementation ticket, and requires an explicit stable-runtime change decision.
+
+---
+
+## Follow-on lifecycle closure ? 2026-08-19
+
+The 2026-08-13 release closure above is historical and intentionally remains on Worker Protocol 2.0. Subsequent ADR-0011 implementation changed private Gateway/Worker membership and handshake semantics and intentionally bumped the Worker Protocol to **3.0** without changing the frozen Core Manifest Revision 6 public MCP schema.
+
+The follow-on CLI/enrollment candidate adds named role-local setup/lifecycle, explicit `workspace add`, one-time `qjq1:` enrollment, persistent Gateway membership, bounded liveness, and dedicated cross-platform CLI setup-flow branch protection. Current acceptance evidence is recorded in `docs/validation/cli-lifecycle-enrollment-shadow-acceptance-2026-08-19.md`.

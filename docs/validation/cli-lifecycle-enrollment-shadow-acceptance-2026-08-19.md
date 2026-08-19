@@ -57,8 +57,10 @@ Observed after topology repair:
 Final branch validation after lifecycle/enrollment and documentation cleanup:
 
 - TypeScript typecheck: PASS.
-- Full test suite: 184/184 PASS.
-- Security/adversarial suite: 159/159 PASS.
+- Full test suite: 185/185 PASS.
+- Security/adversarial suite: 160/160 PASS.
+- Dedicated CLI setup flow: 12/12 PASS locally; Ubuntu and Windows GitHub Actions PASS.
+- `main` branch protection requires both `CLI setup flow (ubuntu-latest)` and `CLI setup flow (windows-latest)`.
 - Cluster suite: 28/28 PASS.
 - Build: PASS.
 - Self-contained package build: PASS.
@@ -66,6 +68,19 @@ Final branch validation after lifecycle/enrollment and documentation cleanup:
 - Resource gate: PASS; idle Gateway/Worker CPU 0, write bytes 0, log bytes 0.
 - `git diff --check`: PASS.
 - `npm pack` package acceptance: PASS; generated archive inspected and removed from the worktree after validation.
+
+## Deployment composition re-check
+
+After restoring the explicitly configured first-party Git extension in the Shadow runtime,
+`list_workspaces` deployment attestation again reported the frozen production composition:
+
+- Core Manifest Revision: `6`;
+- public tool count: `17` (`10` Core + `7` Git extension);
+- Worker Protocol: `3.0`;
+- Deployment Manifest Fingerprint: `sha256:68eac0d73d8efea95cfde694b33d44220049fb6180b60657b3d8b6ee0a9d59ad`.
+
+The earlier 10-tool observation was a valid Core-only runtime composition caused by
+`extensions: []`, not a stale candidate bundle or MCP schema regression.
 
 ## Contract impact
 

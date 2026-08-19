@@ -12,4 +12,6 @@ This directory is the local-markdown Wayfinder handoff for the Queqiao secure-ag
 
 ## Current state
 
-Architecture decision work is resolved for the current destination. Implementation has not started on this branch. The next action is to choose the first implementation slice from TICKETS.md and execute it without silently broadening scope.
+The original Secure Agent Substrate implementation map was completed and accepted in the 2026-08-13 release slice. Follow-on Gateway/Worker enrollment, membership, liveness, and named CLI lifecycle work was then implemented under ADR-0011 and validated through the 2026-08-15/19 Shadow acceptance records. The current branch candidate uses Core Manifest Revision 6, Worker Protocol 3.0, and the accepted 17-tool production-like composition when the first-party Git extension is explicitly enabled.
+
+Historical planning and validation files remain intentionally append-only. Use `docs/architecture.md` and `docs/validation/cli-lifecycle-enrollment-shadow-acceptance-2026-08-19.md` for current shipped/candidate behavior; use this Wayfinder pack to understand how the architecture and earlier release slice were derived.

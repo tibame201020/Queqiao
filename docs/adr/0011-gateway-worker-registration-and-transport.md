@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-14
-- Amended: 2026-08-15
+- Amended: 2026-08-15, 2026-08-19
 - Supersedes: ADR-0002 only for Worker connection/registration direction and channel-lifetime assumptions
 - Refines: ADR-0007
 
@@ -12,7 +12,7 @@ Queqiao is intended to expose one public Gateway for a logical cluster while nat
 
 The verified runtime currently uses Gateway-initiated loopback HTTP requests to statically configured Worker endpoints. ADR-0007 already established that this HTTP binding is an implementation of the Worker Protocol rather than the protocol boundary itself.
 
-Before CLI setup, service lifecycle, and Dashboard management are expanded, the target Gateway/Worker relationship needs a stable contract that does not hard-code HTTP, gRPC, persistent TCP sessions, polling, or platform-specific setup shortcuts into routing and authority semantics.
+As CLI setup and explicit runtime lifecycle are implemented, the Gateway/Worker relationship remains governed by a stable contract that does not hard-code HTTP, gRPC, persistent TCP sessions, polling, or platform-specific setup shortcuts into routing and authority semantics.
 
 ## Decision
 
@@ -45,7 +45,7 @@ queqiao gateway join-token
 queqiao worker join
 ```
 
-`gateway setup` initializes the Gateway. `worker setup` initializes a Worker environment. Neither command implicitly enrolls another environment.
+`gateway setup` initializes the Gateway. `worker setup` initializes Worker identity/listener state. Neither command implicitly enrolls another environment or grants Workspace authority. Workspace authority is created separately with `queqiao workspace add --worker <name>` against an existing directory.
 
 `worker join` is the explicit operation that adds a Worker to a Gateway. Worker runtime startup does not auto-register, re-register, poll for registration, or maintain a registration lease.
 

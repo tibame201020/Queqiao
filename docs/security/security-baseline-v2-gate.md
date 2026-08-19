@@ -20,6 +20,7 @@ On pull requests and `main`:
 
 - typecheck;
 - full test suite;
+- dedicated CLI setup-flow suite on Windows and Ubuntu;
 - adversarial `test:security` suite on Windows and Ubuntu;
 - production dependency audit;
 - self-contained package/cluster checks;
@@ -32,11 +33,11 @@ Security v2 specifically adds regression coverage for canonical Workspace-policy
 The following are **not** claimed as implemented by Security Baseline v2:
 
 - **Durable redacted security audit trail.** HTTP metadata logging exists, but durable auth/policy/config/extension/tool audit events are a Dashboard prerequisite. Adding them must re-run Resource Safety because they change disk-write behavior.
-- **Worker credential rotation without downtime.** This remains part of service-lifecycle/CLI work.
+- **Worker credential rotation without downtime.** Named CLI setup/lifecycle and atomic enrollment are implemented, but automatic or zero-downtime credential rotation remains a separate future control.
 - **Full step-up approval runtime.** Security v2 deliberately fails closed instead of pretending an approval challenge has been satisfied.
 - **Bearer-token theft before expiry/revocation.** Access tokens remain bearer credentials; compromise is bounded by token lifetime and authorization revision/revocation controls.
 - **Untrusted extensions.** Extensions are explicit trusted local modules; provenance/sandboxing is a separate future product boundary.
 
 ## Release rule
 
-Any future CLI setup/service lifecycle or Dashboard work must preserve this gate. A change that weakens one of these invariants requires an explicit security review and updated adversarial evidence rather than a silent exception.
+Any future CLI lifecycle/enrollment or Dashboard work must preserve this gate. A change that weakens one of these invariants requires an explicit security review and updated adversarial evidence rather than a silent exception.
