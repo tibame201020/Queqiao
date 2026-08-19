@@ -10,6 +10,14 @@ The public MCP endpoint belongs to a lightweight Gateway. Windows, WSL, Linux, a
 future remote environments each run their own Worker, so filesystem and process work
 always executes inside the native environment.
 
+## Quick CLI demo
+
+![Queqiao packed CLI first-run demo](docs/assets/queqiao-cli-demo.gif)
+
+The demo is rendered from commands executed against the packed `0.7.0` npm artifact in
+an isolated Windows demo runtime. Generated worker IDs and process IDs are redacted;
+the command results themselves come from the real CLI execution.
+
 ## Production architecture
 
 - **Gateway** owns the public MCP endpoint, OAuth, stable tool schemas, routing, and
