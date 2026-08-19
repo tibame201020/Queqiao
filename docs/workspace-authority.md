@@ -7,13 +7,12 @@ A Queqiao Workspace is an explicit filesystem/process **authority boundary**. It
 Create or add authority only with an explicit directory:
 
 ```text
-queqiao workspace init --id <id> --root <directory>
-queqiao workspace add --id <id> --root <directory>
-queqiao workspace remove --id <id>
+queqiao workspace add --worker <worker> [--id <id>] [--root <directory>] [--name <display-name>] [--profile read-only|editor|coding]
+queqiao workspace list --worker <worker>
+queqiao workspace remove --worker <worker> --id <id>
 ```
 
-`workspace init` and `workspace add` canonicalize the selected existing directory and reject files or missing paths. A `.git` marker is neither required nor interpreted.
-
+`workspace add` canonicalizes the selected existing directory and rejects files or missing paths. A `.git` marker is neither required nor interpreted. `workspace init` is deprecated; Worker setup creates identity/listener state only, and the first explicit `workspace add` establishes authority and becomes the default Workspace.
 Existing Workspace roots are never widened because another directory, repository, project marker, or discovery result exists nearby.
 
 ## Deprecated repository-coupled commands

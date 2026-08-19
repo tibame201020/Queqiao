@@ -104,6 +104,20 @@ describe("Worker enrollment transaction", () => {
     await expect(service.confirmJoin(started.transactionId, started.credential)).rejects.toMatchObject({ code: "join_transaction_expired" });
   });
 
+  it("rejects a second Worker that proposes an already enrolled Gateway-visible transport endpoint", async () => {
+    const { service, store } = await tempStore();
+    const firstWorkerId = crypto.randomUUID();
+    const credential = { value: "bootstrap" };
+    const endpoint = await workerServer(firstWorkerId, "windows", credential);
+    const first = await service.startJoin({ token: service.createJoinToken().token, workerId: firstWorkerId, environmentId: "windows", transport: { type: "http", endpoint } });
+    credential.value = first.credential;
+    await service.confirmJoin(first.transactionId, first.credential);
+
+    const secondToken = service.createJoinToken().token;
+    await expect(service.startJoin({ token: secondToken, workerId: crypto.randomUUID(), environmentId: "linux", transport: { type: "http", endpoint } })).rejects.toMatchObject({ status: 409, code: "worker_transport_conflict" });
+    expect((await store.read()).workers).toHaveLength(1);
+  });
+
   it("invalidates a provisional transaction after a bad confirmation credential", async () => {
     const { service } = await tempStore();
     const issued = service.createJoinToken();
@@ -131,6 +145,16 @@ describe("Worker enrollment transaction", () => {
     const updated = await service.updateTransport(workerId, { type: "http", endpoint: secondEndpoint });
     expect(updated.transport).toEqual({ type: "http", endpoint: secondEndpoint });
     expect((await store.read()).workers[0]?.transport).toEqual({ type: "http", endpoint: secondEndpoint });
+  });
+
+  it("rejects an explicit transport update that collides with another enrolled Worker", async () => {
+    const { service, store } = await tempStore();
+    const firstWorkerId = crypto.randomUUID();
+    const secondWorkerId = crypto.randomUUID();
+    await store.add({ workerId: firstWorkerId, environmentId: "windows", transport: { type: "http", endpoint: "http://127.0.0.1:7576/" }, credentialRefs: [{ kind: "secret-file", path: path.join("secrets", "first.secret") }] });
+    await store.add({ workerId: secondWorkerId, environmentId: "linux", transport: { type: "http", endpoint: "http://127.0.0.1:7577/" }, credentialRefs: [{ kind: "secret-file", path: path.join("secrets", "second.secret") }] });
+    await expect(service.updateTransport(firstWorkerId, { type: "http", endpoint: "http://localhost:7577/" })).rejects.toMatchObject({ status: 409, code: "worker_transport_conflict" });
+    expect((await store.read()).workers.find((worker) => worker.workerId === firstWorkerId)?.transport.endpoint).toBe("http://127.0.0.1:7576/");
   });
 
   it("keeps the prior transport when an explicit update points at the wrong Worker identity", async () => {

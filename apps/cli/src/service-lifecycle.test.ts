@@ -1,120 +1,50 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { serializeRuntimeConfig } from "@queqiao/config";
-import type { RuntimeLayout } from "@queqiao/platform-paths";
-import { installService, serviceLifecycleInternals, serviceStatus, startService, stopService, uninstallService } from "./service-lifecycle.js";
-
-const cleanup: string[] = [];
-afterEach(async () => { await Promise.all(cleanup.splice(0).map((entry) => rm(entry, { recursive: true, force: true }))); });
+import { describe, expect, it } from "vitest";
+import { resolveRuntimeLayout } from "@queqiao/platform-paths";
+import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 
 async function fixture() {
-  const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-service-test-")); cleanup.push(root);
-  const layout: RuntimeLayout = {
-    configDir: path.join(root, "config"), dataDir: path.join(root, "data"), stateDir: path.join(root, "state"), logDir: path.join(root, "state", "logs"), runtimeDir: path.join(root, "runtime"), secretsDir: path.join(root, "data", "secrets"), configFile: path.join(root, "config", "config.yaml"), gatewayStateDir: path.join(root, "data", "gateway"),
-  };
-  await import("node:fs/promises").then(({ mkdir }) => mkdir(layout.configDir, { recursive: true }));
-  await writeFile(layout.configFile, serializeRuntimeConfig({
-    version: 1,
-    gateway: { publicBaseUrl: "https://queqiao.example/stable/", listen: { host: "127.0.0.1", port: 7775 }, managementListen: { host: "127.0.0.1", port: 7774 }, stateDirectory: layout.gatewayStateDir, approvalSecretFile: path.join(layout.secretsDir, "approval.secret"), jwtSigningSecretFile: path.join(layout.secretsDir, "jwt.secret") },
-    worker: { workerId: "11111111-1111-4111-8111-111111111111", environmentId: "windows", listen: { host: "127.0.0.1", port: 7776 }, tokenFile: path.join(layout.secretsDir, "worker.secret"), defaultWorkspaceId: "test" },
-    workspaces: [{ id: "test", displayName: "Test", root, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }],
-  }), "utf8");
-  const nodePath = path.join(root, "node.exe"); const gateway = path.join(root, "queqiao-gateway.js"); const worker = path.join(root, "queqiao-worker.js");
-  await Promise.all([writeFile(nodePath, "node"), writeFile(gateway, "gateway"), writeFile(worker, "worker")]);
-  return { root, layout, nodePath, gateway, worker };
+  const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-runtime-lifecycle-")); const layout = resolveRuntimeLayout({ LOCALAPPDATA: root, TEMP: root, USERPROFILE: root }, "win32"); await import("node:fs/promises").then(({ mkdir }) => mkdir(layout.configDir, { recursive: true }));
+  const config = { version: 1, gateway: { publicBaseUrl: "https://example.invalid/shadow/", listen: { host: "127.0.0.1", port: 7675 }, managementListen: { host: "127.0.0.1", port: 7674 }, trustProxyHops: 1, stateDirectory: path.join(root,"state"), approvalSecretFile: path.join(root,"a"), jwtSigningSecretFile: path.join(root,"j") }, workspaces: [], discovery: { roots: [] }, extensions: [] };
+  await writeFile(layout.configFile, JSON.stringify(config), "utf8"); return { root, layout };
 }
 
-describe("CLI service lifecycle", () => {
-  it("installs isolated Windows HKCU Run entries and a one-shot launcher without embedding secrets", async () => {
-    const { layout, nodePath, gateway, worker } = await fixture();
-    const calls: Array<{ file: string; args: readonly string[] }> = [];
-    const execFile = async (file: string, args: readonly string[]) => {
-      calls.push({ file, args });
-      if (file.endsWith("powershell.exe") && args.some((arg) => arg.includes("Start-Process"))) return { stdout: "1234", stderr: "" };
-      return { stdout: "", stderr: "" };
+describe("runtime lifecycle", () => {
+  it("starts directly without an install step and records the managed PID", async () => {
+    const { layout } = await fixture(); const gateway = "C:\\pkg\\queqiao-gateway.js"; const calls: any[] = [];
+    const execFile = async (file: string, args: readonly string[]) => { calls.push({file,args}); if (file.endsWith("powershell.exe") && args.some(a=>a.includes("Start-Process"))) return { stdout: "1234", stderr: "" }; return { stdout: "", stderr: "" }; };
+    const result = await startRuntime(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, fetchImpl: async()=>{ throw new Error("offline"); }, entryPoints: { gateway } });
+    expect(result).toMatchObject({ started: true, pid: 1234 }); const pidFile = path.join(layout.stateDir,"processes","gateway.pid.json"); expect(JSON.parse(await readFile(pidFile,"utf8"))).toMatchObject({pid:1234});
+  });
+  it("does not duplicate a reachable unmanaged runtime", async () => { const { layout } = await fixture(); const result = await startRuntime(layout.configFile, layout, "gateway", "shadow", { platform:"win32", env:{SystemRoot:"C:\\Windows"}, execFile: async()=>({stdout:"",stderr:""}), fetchImpl: async()=>new Response("{}",{status:200}), entryPoints:{gateway:"C:\\pkg\\queqiao-gateway.js"} }); expect(result).toMatchObject({started:false,alreadyRunning:true,managed:false}); });
+  it("reports health without an installed-service concept", async () => { const { layout } = await fixture(); const status = await runtimeStatus(layout.configFile, layout, "gateway", "shadow", { fetchImpl: async()=>new Response("{}",{status:200}) }); expect(status).toMatchObject({active:true,managed:false,health:{reachable:true,healthy:true,status:200}}); expect(status).not.toHaveProperty("installed"); });
+  it("reconciles a stale or reused PID without killing the unrelated process", async () => { const { layout } = await fixture(); const dir=path.join(layout.stateDir,"processes"); await import("node:fs/promises").then(({mkdir})=>mkdir(dir,{recursive:true})); const pidFile=path.join(dir,"gateway.pid.json"); await writeFile(pidFile,JSON.stringify({pid:4321}),"utf8"); const execFile=async(file:string)=>file.endsWith("powershell.exe")?{stdout:"node.exe C:\\other\\server.js",stderr:""}:{stdout:"",stderr:""}; const stopped=await stopRuntime(layout,"gateway","shadow",{platform:"win32",env:{SystemRoot:"C:\\Windows"},execFile,entryPoints:{gateway:"C:\\pkg\\queqiao-gateway.js"}}); expect(stopped).toMatchObject({stopped:false}); await expect(readFile(pidFile,"utf8")).rejects.toMatchObject({code:"ENOENT"}); });
+  it("does not report a dead managed PID after status reconciliation", async () => { const { layout } = await fixture(); const dir=path.join(layout.stateDir,"processes"); await import("node:fs/promises").then(({mkdir})=>mkdir(dir,{recursive:true})); const pidFile=path.join(dir,"gateway.pid.json"); await writeFile(pidFile,JSON.stringify({pid:4321}),"utf8"); const status=await runtimeStatus(layout.configFile,layout,"gateway","shadow",{platform:"win32",env:{SystemRoot:"C:\\Windows"},execFile:async()=>({stdout:"",stderr:""}),fetchImpl:async()=>{throw new Error("offline")},entryPoints:{gateway:"C:\\pkg\\queqiao-gateway.js"}}); expect(status).toMatchObject({active:false,managed:false}); expect(status).not.toHaveProperty("pid"); await expect(readFile(pidFile,"utf8")).rejects.toMatchObject({code:"ENOENT"}); });
+  it("does not treat a different Worker on the same port as the named Worker", async () => {
+    const { root, layout } = await fixture();
+    const workerId = "11111111-1111-4111-8111-111111111111";
+    await writeFile(path.join(root,"worker.secret"), "w".repeat(43), "utf8");
+    await writeFile(layout.configFile, JSON.stringify({ version: 1, worker: { workerId, environmentId: "windows", listen: { host: "127.0.0.1", port: 7576 }, tokenFile: path.join(root,"worker.secret"), defaultWorkspaceId: "one" }, workspaces: [{ id: "one", displayName: "One", root }], discovery: { roots: [] }, extensions: [] }), "utf8");
+    const fetchImpl = async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith("/health")) return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      expect(new Headers(init?.headers).get("x-queqiao-worker-token")).toBe("w".repeat(43));
+      return new Response(JSON.stringify({ workerId: "22222222-2222-4222-8222-222222222222", environmentId: "windows" }), { status: 200 });
     };
-    const result = await installService(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, nodePath, entryPoints: { gateway, worker } });
-    expect(result.manager).toBe("windows-run-key");
-    expect(result.serviceName).toBe("Queqiao shadow Gateway");
-    const create = calls.at(-1)!;
-    expect(create.file).toBe("C:\\Windows\\System32\\reg.exe");
-    expect(create.args).toEqual(expect.arrayContaining(["ADD", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "Queqiao shadow Gateway", "/t", "REG_SZ", "/f"]));
-    const launcher = await readFile(result.launcher, "utf8");
-    expect(launcher).toContain("QUEQIAO_CONFIG_FILE");
-    expect(launcher).toContain("detached:true");
-    expect(launcher).toContain("queqiao-gateway.js");
-    expect(launcher).not.toContain("approval.secret");
-    expect(launcher).not.toContain("worker.secret");
-    expect(serviceLifecycleInternals.windowsRunValueName("stable", "gateway")).not.toBe(serviceLifecycleInternals.windowsRunValueName("shadow", "gateway"));
-
-    const paths = serviceLifecycleInternals.servicePaths(layout, "shadow", "gateway", "win32");
-    await startService(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, fetchImpl: async () => { throw new Error("offline"); }, nodePath, entryPoints: { gateway, worker } });
-    expect(calls.some(({ file, args }) => file.endsWith("powershell.exe") && args.some((arg) => arg.includes("Start-Process")))).toBe(true);
-    expect(JSON.parse(await readFile(paths.pidFile, "utf8"))).toMatchObject({ pid: 1234 });
-    const status = await serviceStatus(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, fetchImpl: async () => new Response("{}", { status: 200 }) });
-    expect(status).toMatchObject({ installed: true, active: true, health: { reachable: true, healthy: true, status: 200 } });
-
-    await writeFile(paths.pidFile, JSON.stringify({ pid: 1234 }), "utf8");
-    const stopExec = async (file: string, args: readonly string[]) => {
-      calls.push({ file, args });
-      if (file.endsWith("powershell.exe")) return { stdout: `\"${nodePath}\" \"${gateway}\"`, stderr: "" };
-      return { stdout: "", stderr: "" };
-    };
-    const stopped = await stopService(layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile: stopExec, entryPoints: { gateway } });
-    expect(stopped.stopped).toBe(true);
-    expect(calls.some(({ file, args }) => file.endsWith("taskkill.exe") && args.includes("1234"))).toBe(true);
-    await uninstallService(layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile: stopExec, entryPoints: { gateway } });
-    expect(calls.some(({ file, args }) => file.endsWith("reg.exe") && args.includes("DELETE"))).toBe(true);
+    const status = await runtimeStatus(layout.configFile, layout, "worker", "windows", { fetchImpl: fetchImpl as typeof fetch });
+    expect(status).toMatchObject({ active: false, health: { reachable: true, healthy: false, identityMatches: false, error: "Worker identity does not match this configuration" } });
   });
-
-  it("refuses to kill a stale Windows PID that belongs to another process", async () => {
-    const { layout, gateway } = await fixture();
-    const paths = serviceLifecycleInternals.servicePaths(layout, "stable", "gateway", "win32");
-    await import("node:fs/promises").then(({ mkdir }) => mkdir(paths.serviceDir, { recursive: true }));
-    await writeFile(paths.pidFile, JSON.stringify({ pid: 4321 }), "utf8");
-    const execFile = async (file: string, _args: readonly string[]) => file.endsWith("powershell.exe") ? { stdout: "node.exe C:\\unrelated\\server.js", stderr: "" } : { stdout: "", stderr: "" };
-    await expect(stopService(layout, "gateway", "stable", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, entryPoints: { gateway } })).rejects.toThrow(/Refusing to stop PID/);
+  it("refuses to serve or background-start when another Worker owns the configured port", async () => {
+    const { root, layout } = await fixture();
+    const workerId = "11111111-1111-4111-8111-111111111111";
+    await writeFile(path.join(root,"worker.secret"), "w".repeat(43), "utf8");
+    await writeFile(layout.configFile, JSON.stringify({ version: 1, worker: { workerId, environmentId: "windows", listen: { host: "127.0.0.1", port: 7576 }, tokenFile: path.join(root,"worker.secret"), defaultWorkspaceId: "one" }, workspaces: [{ id: "one", displayName: "One", root }], discovery: { roots: [] }, extensions: [] }), "utf8");
+    const fetchImpl = async (input: string | URL | Request) => String(input).endsWith("/health")
+      ? new Response(JSON.stringify({ ok: true }), { status: 200 })
+      : new Response(JSON.stringify({ workerId: "22222222-2222-4222-8222-222222222222", environmentId: "windows" }), { status: 200 });
+    await expect(serveRuntime(layout.configFile, "worker", "windows", { fetchImpl: fetchImpl as typeof fetch })).rejects.toThrow(/port is already occupied by another runtime/);
+    await expect(startRuntime(layout.configFile, layout, "worker", "windows", { platform:"win32", env:{SystemRoot:"C:\\Windows"}, execFile: async()=>({stdout:"",stderr:""}), fetchImpl: fetchImpl as typeof fetch, entryPoints:{worker:"C:\\pkg\\queqiao-worker.js"} })).rejects.toThrow(/port is already occupied by another runtime/);
   });
-
-  it("installs a hardened user systemd unit and keeps instance names isolated", async () => {
-    const { root, layout, nodePath, gateway, worker } = await fixture();
-    const calls: Array<{ file: string; args: readonly string[] }> = [];
-    const execFile = async (file: string, args: readonly string[]) => { calls.push({ file, args }); return { stdout: "", stderr: "" }; };
-    const systemdUserDirectory = path.join(root, "systemd-user");
-    const result = await installService(layout.configFile, layout, "worker", "shadow", { platform: "linux", execFile, nodePath, entryPoints: { gateway, worker }, systemdUserDirectory });
-    expect(result.manager).toBe("systemd-user");
-    expect(result.serviceName).toBe("queqiao-shadow-worker.service");
-    const unit = await readFile(path.join(systemdUserDirectory, result.serviceName), "utf8");
-    expect(unit).toContain("NoNewPrivileges=true");
-    expect(unit).toContain("PrivateTmp=true");
-    expect(unit).toContain("ExecStart=/bin/sh");
-    expect(calls).toContainEqual({ file: "systemctl", args: ["--user", "enable", "queqiao-shadow-worker.service"] });
-    expect(serviceLifecycleInternals.systemdUnitName("stable", "worker")).not.toBe(serviceLifecycleInternals.systemdUnitName("shadow", "worker"));
-
-    await startService(layout.configFile, layout, "worker", "shadow", { platform: "linux", execFile });
-    const status = await serviceStatus(layout.configFile, layout, "worker", "shadow", { platform: "linux", execFile, fetchImpl: async () => new Response("{}", { status: 200 }) });
-    expect(status).toMatchObject({ installed: true, active: true, health: { reachable: true, healthy: true } });
-    await stopService(layout, "worker", "shadow", { platform: "linux", execFile });
-    await uninstallService(layout, "worker", "shadow", { platform: "linux", execFile, systemdUserDirectory });
-    await expect(readFile(path.join(systemdUserDirectory, result.serviceName), "utf8")).rejects.toThrow();
-  });
-
-  it("does not duplicate-start a reachable Windows role when no managed PID exists", async () => {
-    const { layout, nodePath, gateway, worker } = await fixture();
-    const calls: Array<{ file: string; args: readonly string[] }> = [];
-    const execFile = async (file: string, args: readonly string[]) => { calls.push({ file, args }); return { stdout: "", stderr: "" }; };
-    const paths = serviceLifecycleInternals.servicePaths(layout, "shadow", "gateway", "win32");
-    await import("node:fs/promises").then(({ mkdir }) => mkdir(paths.serviceDir, { recursive: true }));
-    await writeFile(paths.launcher, "launcher", "utf8");
-    const result = await startService(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, fetchImpl: async () => new Response("{}", { status: 200 }), nodePath, entryPoints: { gateway, worker } });
-    expect(result).toMatchObject({ started: false, alreadyRunning: true, managed: false });
-    expect(calls.some(({ file, args }) => file.endsWith("powershell.exe") && args.some((arg) => arg.includes("Start-Process")))).toBe(false);
-  });
-
-  it("rejects unsafe service instance identifiers before touching the OS manager", async () => {
-    const { layout } = await fixture();
-    await expect(installService(layout.configFile, layout, "gateway", "../shadow", { platform: "linux", execFile: async () => ({ stdout: "", stderr: "" }) })).rejects.toThrow(/Service instance/);
-  });
+  it("rejects unsafe runtime names", async () => { const { layout } = await fixture(); await expect(runtimeStatus(layout.configFile,layout,"gateway","../bad",{fetchImpl:async()=>new Response("{}",{status:200})})).rejects.toThrow(/Name must match/); });
 });

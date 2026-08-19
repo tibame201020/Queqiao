@@ -67,6 +67,11 @@ A join token:
 - is distinct from the Worker's long-lived operating credential.
 
 Join-token values are never written to durable audit history. Temporary observability may use debug/trace logging only and must not log the token itself.
+For human-operated CLI enrollment, Queqiao may wrap the Gateway public base URL and one-time join token in a single versioned **join code** envelope. The current envelope is `qjq1:` plus base64url-encoded JSON containing `v`, `gateway`, `token`, and optional `expiresAt`. This is encoding, not encryption; the whole join code is bearer-secret material and must be handled like the token itself.
+
+`gateway join-token --copy` copies the join code rather than the raw token and avoids echoing the raw token in normal stdout. Interactive `worker join` accepts one join code and derives the enrollment Gateway URL plus one-time token from it. Scripted `--gateway` + `--token` remains available for automation compatibility.
+
+The join code carries only the **Worker CLI -> Gateway enrollment destination**. It does not carry, publish, or authorize the Gateway -> Worker runtime transport. The Worker continues to propose its own loopback-only transport descriptor independently, and the Gateway must still validate that transport before committing membership.
 
 ### Atomic Worker join transaction
 

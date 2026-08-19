@@ -169,7 +169,7 @@ export const runtimeConfigSchema = z.object({
     workerId: workerIdSchema.optional(),
     environmentId: environmentIdSchema,
     listen: z.object({ host: z.literal("127.0.0.1").default("127.0.0.1"), port: z.number().int().min(1).max(65535).default(7576) }),
-    tokenFile: z.string().min(1), defaultWorkspaceId: workspaceIdSchema,
+    tokenFile: z.string().min(1), defaultWorkspaceId: workspaceIdSchema.optional(),
   }).optional(),
   extensions: z.array(installedExtensionSchema).default([]),
   discovery: z.object({
@@ -179,6 +179,9 @@ export const runtimeConfigSchema = z.object({
   }).default({ roots: [], maxDepth: 4, exclude: ["node_modules", ".cache", ".config", ".local", ".ssh", ".gnupg", ".aws", ".azure", ".npm", ".nvm"] }),
   workspaces: z.array(workspaceConfigSchema).default([]),
 }).superRefine((config, ctx) => {
+  if (config.worker?.defaultWorkspaceId && !config.workspaces.some((workspace) => workspace.id === config.worker?.defaultWorkspaceId)) {
+    ctx.addIssue({ code: "custom", path: ["worker", "defaultWorkspaceId"], message: "Default workspace must exist in workspaces" });
+  }
   const workspaceIds = new Set<string>();
   for (const [index, workspace] of config.workspaces.entries()) {
     if (workspaceIds.has(workspace.id)) ctx.addIssue({ code: "custom", path: ["workspaces", index, "id"], message: "Workspace id must be unique" });

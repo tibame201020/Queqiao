@@ -1,6 +1,8 @@
 import { access, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { randomBytes, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import path from "node:path";
+import { cancel, group, intro, isCancel, outro, password, text } from "@clack/prompts";
 import { runtimeConfigSchema, readRuntimeConfig, type RuntimeConfig } from "@queqiao/config";
 import { AtomicConfigStore } from "./atomic-config-store.js";
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
@@ -8,6 +10,113 @@ import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-path
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
+export type JoinPrompt = (field: "code" | "gateway" | "token", message: string) => Promise<string>;
+export type WorkerSetupPrompt = (field: "port", message: string, initialValue: string) => Promise<string>;
+
+type JoinCodeEnvelope = {
+  v: 1;
+  gateway: string;
+  token: string;
+  expiresAt?: string;
+};
+
+const JOIN_CODE_PREFIX = "qjq1:";
+
+export function encodeJoinCode(envelope: JoinCodeEnvelope): string {
+  const gatewayError = validateGatewayUrl(envelope.gateway);
+  if (gatewayError) throw new Error(gatewayError);
+  if (!envelope.token.trim()) throw new Error("Join token is required");
+  return `${JOIN_CODE_PREFIX}${Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url")}`;
+}
+
+export function decodeJoinCode(value: string): JoinCodeEnvelope {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith(JOIN_CODE_PREFIX)) throw new Error("Invalid join code");
+  try {
+    const parsed = JSON.parse(Buffer.from(trimmed.slice(JOIN_CODE_PREFIX.length), "base64url").toString("utf8")) as Partial<JoinCodeEnvelope>;
+    if (parsed.v !== 1 || typeof parsed.gateway !== "string" || typeof parsed.token !== "string") throw new Error("Invalid join code");
+    const gatewayError = validateGatewayUrl(parsed.gateway);
+    if (gatewayError || !parsed.token.trim()) throw new Error("Invalid join code");
+    return { v: 1, gateway: new URL(parsed.gateway).href, token: parsed.token, ...(typeof parsed.expiresAt === "string" ? { expiresAt: parsed.expiresAt } : {}) };
+  } catch (error) {
+    if (error instanceof Error && error.message === "Invalid join code") throw error;
+    throw new Error("Invalid join code");
+  }
+}
+
+function assertJoinNotCancelled<T>(value: T | symbol): T {
+  if (!isCancel(value)) return value as T;
+  cancel("Worker join cancelled");
+  throw new Error("Worker join cancelled");
+}
+
+function validateGatewayUrl(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? undefined : "Gateway URL must use http or https";
+  } catch {
+    return "Enter a valid Gateway URL";
+  }
+}
+
+function validatePort(value: string): string | undefined {
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? undefined : "Worker port must be an integer from 1 to 65535";
+}
+
+async function resolveJoinInputs(args: string[], prompt?: JoinPrompt): Promise<{ gateway: string; token: string; interactive: boolean }> {
+  const gatewayArg = option(args, "gateway");
+  const tokenArg = option(args, "token");
+  const codeArg = option(args, "join-code");
+  if (codeArg) {
+    const decoded = decodeJoinCode(codeArg);
+    return { gateway: decoded.gateway, token: decoded.token, interactive: false };
+  }
+  if (gatewayArg && tokenArg) return { gateway: gatewayArg, token: tokenArg, interactive: false };
+
+  if (gatewayArg || tokenArg) {
+    if (prompt) {
+      const gateway = gatewayArg || (await prompt("gateway", "Gateway URL")).trim();
+      const token = tokenArg || (await prompt("token", "Join token")).trim();
+      if (!gateway) throw new Error("Gateway URL is required");
+      const gatewayError = validateGatewayUrl(gateway);
+      if (gatewayError) throw new Error(gatewayError);
+      if (!token) throw new Error("Join token is required");
+      return { gateway, token, interactive: true };
+    }
+    intro("Join worker");
+    const answers = await group({
+      gateway: async () => gatewayArg || assertJoinNotCancelled(await text({
+        message: "Gateway URL",
+        placeholder: "http://127.0.0.1:7575/",
+        validate: (value) => !value ? "Gateway URL is required" : validateGatewayUrl(value),
+      })),
+      token: async () => tokenArg || assertJoinNotCancelled(await password({
+        message: "Join token",
+        validate: (value) => value?.trim() ? undefined : "Join token is required",
+      })),
+    }, { onCancel: () => cancel("Worker join cancelled") });
+    return { gateway: String(answers.gateway).trim(), token: String(answers.token).trim(), interactive: true };
+  }
+
+  if (prompt) {
+    const code = (await prompt("code", "Join code")).trim();
+    if (!code) throw new Error("Join code is required");
+    const decoded = decodeJoinCode(code);
+    return { gateway: decoded.gateway, token: decoded.token, interactive: true };
+  }
+
+  intro("Join worker");
+  const code = String(assertJoinNotCancelled(await password({
+    message: "Join code",
+    validate: (value) => {
+      if (!value?.trim()) return "Join code is required";
+      try { decodeJoinCode(value); return undefined; } catch { return "Invalid join code"; }
+    },
+  }))).trim();
+  const decoded = decodeJoinCode(code);
+  return { gateway: decoded.gateway, token: decoded.token, interactive: true };
+}
 
 async function persistRuntimeConfig(configFile: string, next: RuntimeConfig): Promise<void> {
   const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
@@ -39,13 +148,69 @@ async function jsonOrThrow(response: Response): Promise<any> {
   return body;
 }
 
-export async function createJoinToken(configFile: string, args: string[]): Promise<unknown> {
+export type ClipboardWriter = (value: string) => Promise<void>;
+
+type ClipboardCommand = { command: string; args: string[] };
+
+function clipboardCommands(): ClipboardCommand[] {
+  if (process.platform === "win32") return [{ command: "clip.exe", args: [] }];
+  if (process.platform === "darwin") return [{ command: "pbcopy", args: [] }];
+  return [
+    { command: "wl-copy", args: [] },
+    { command: "xclip", args: ["-selection", "clipboard"] },
+    { command: "xsel", args: ["--clipboard", "--input"] },
+    { command: "clip.exe", args: [] },
+  ];
+}
+
+async function runClipboardCommand(candidate: ClipboardCommand, value: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(candidate.command, candidate.args, { stdio: ["pipe", "ignore", "pipe"] });
+    let stderr = "";
+    child.stderr?.on("data", (chunk) => { stderr += String(chunk); });
+    child.once("error", reject);
+    child.once("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.trim() || `${candidate.command} exited with code ${code}`)));
+    child.stdin?.end(value);
+  });
+}
+
+export async function copyTextToClipboard(value: string, writer?: ClipboardWriter): Promise<void> {
+  if (writer) return writer(value);
+  let lastError: unknown;
+  for (const candidate of clipboardCommands()) {
+    try {
+      await runClipboardCommand(candidate, value);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(`Clipboard copy is unavailable${lastError instanceof Error ? `: ${lastError.message}` : ""}`);
+}
+
+export async function createJoinToken(configFile: string, args: string[], clipboardWriter?: ClipboardWriter): Promise<unknown> {
   const expires = option(args, "expires");
   const response = await managementRequest(configFile, "/join-tokens", {
     method: "POST",
     body: JSON.stringify({ ...(expires ? { expiresSeconds: Number(expires) } : {}), ...(option(args, "worker-id") ? { workerId: option(args, "worker-id") } : {}), ...(option(args, "environment-id") ? { environmentId: option(args, "environment-id") } : {}) }),
   });
-  return jsonOrThrow(response);
+  const result = await jsonOrThrow(response);
+  if (!args.includes("--copy")) return result;
+  const runtime = await readRuntimeConfig(configFile);
+  if (!runtime.gateway) throw new Error("gateway configuration is required");
+  const joinCode = encodeJoinCode({
+    v: 1,
+    gateway: runtime.gateway.publicBaseUrl,
+    token: String(result.token || ""),
+    ...(typeof result.expiresAt === "string" ? { expiresAt: result.expiresAt } : {}),
+  });
+  const safeResult = { expiresAt: result.expiresAt, bindings: result.bindings, joinCodeVersion: 1 };
+  try {
+    await copyTextToClipboard(joinCode, clipboardWriter);
+    return { ...safeResult, copied: true };
+  } catch (error) {
+    return { ...safeResult, copied: false, copyError: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 export async function listJoinedWorkers(configFile: string): Promise<unknown> {
@@ -126,12 +291,13 @@ async function commitProvisional(state: { marker: string; backupFile?: string })
   await rm(state.marker, { force: true });
 }
 
-export async function joinWorker(configFile: string, args: string[]): Promise<unknown> {
+export async function joinWorker(configFile: string, args: string[], prompt?: JoinPrompt): Promise<unknown> {
   const runtime = await readRuntimeConfig(configFile);
   if (!runtime.worker) throw new Error("worker configuration is required");
   if (!runtime.worker.workerId) throw new Error("Worker has no stable workerId; run worker setup or migrate the Worker identity first");
-  const joinToken = requiredOption(args, "token");
-  const gateway = new URL(requiredOption(args, "gateway"));
+  const inputs = await resolveJoinInputs(args, prompt);
+  const joinToken = inputs.token;
+  const gateway = new URL(inputs.gateway);
   const endpoint = new URL(option(args, "endpoint") || `http://127.0.0.1:${runtime.worker.listen.port}/`);
   if (endpoint.protocol !== "http:" || !["127.0.0.1", "localhost", "::1"].includes(endpoint.hostname)) throw new Error("Worker endpoint must remain loopback HTTP in Security Baseline v2");
   const tokenFile = path.resolve(runtime.worker.tokenFile);
@@ -154,6 +320,7 @@ export async function joinWorker(configFile: string, args: string[]): Promise<un
       signal: AbortSignal.timeout(15_000),
     }));
     await commitProvisional(state);
+    if (inputs.interactive && !prompt) outro(`Worker joined: ${runtime.worker.environmentId}`);
     return confirmed;
   } catch (error) {
     await rollbackProvisional(tokenFile, state);
@@ -185,20 +352,64 @@ export async function setupGateway(configFile: string, args: string[], stateDire
   return { setup: true, role: "gateway", file: configFile };
 }
 
-export async function setupWorker(configFile: string, args: string[], secretsDirectory: string): Promise<unknown> {
+export async function updateWorkerPort(configFile: string, args: string[], prompt?: WorkerSetupPrompt): Promise<unknown> {
+  const runtime = await readRuntimeConfig(configFile);
+  if (!runtime.worker) throw new Error("worker configuration is required");
+  const portArg = option(args, "port");
+  let portValue = portArg;
+  if (!portValue) {
+    const currentPort = String(runtime.worker.listen.port);
+    if (prompt) {
+      portValue = (await prompt("port", "Worker port", currentPort)).trim() || currentPort;
+    } else {
+      intro("Configure worker");
+      portValue = String(assertJoinNotCancelled(await text({
+        message: "Worker port",
+        placeholder: currentPort,
+        defaultValue: currentPort,
+        validate: (value) => validatePort(value || currentPort),
+      }))).trim() || currentPort;
+    }
+  }
+  const portError = validatePort(portValue);
+  if (portError) throw new Error(portError);
+  const port = Number(portValue);
+  const next = runtimeConfigSchema.parse({ ...runtime, worker: { ...runtime.worker, listen: { ...runtime.worker.listen, port } } });
+  await persistRuntimeConfig(configFile, next);
+  if (!portArg && !prompt) outro(`Worker port updated: ${port}`);
+  return { changed: port !== runtime.worker.listen.port, role: "worker", workerId: runtime.worker.workerId, environmentId: runtime.worker.environmentId, previousPort: runtime.worker.listen.port, port };
+}
+
+export async function setupWorker(configFile: string, args: string[], secretsDirectory: string, prompt?: WorkerSetupPrompt): Promise<unknown> {
   await secureRuntimeDirectory(path.dirname(configFile));
   await secureRuntimeDirectory(secretsDirectory);
   let current: any = { version: 1, workspaces: [] };
   try { current = await readRuntimeConfig(configFile); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   if (current.worker) throw new Error("Worker is already setup in this configuration");
   const environmentId = option(args, "environment-id") || (process.platform === "win32" ? "windows" : "linux");
-  const defaultWorkspaceId = requiredOption(args, "workspace-id");
-  const root = await resolveWorkspaceAuthorityRoot(requiredOption(args, "workspace-root"));
+  const portArg = option(args, "port");
+  let portValue = portArg;
+  if (!portValue) {
+    if (prompt) {
+      portValue = (await prompt("port", "Worker port", "7576")).trim() || "7576";
+    } else {
+      intro("Setup worker");
+      portValue = String(assertJoinNotCancelled(await text({
+        message: "Worker port",
+        placeholder: "7576",
+        defaultValue: "7576",
+        validate: (value) => validatePort(value || "7576"),
+      }))).trim() || "7576";
+    }
+  }
+  const portError = validatePort(portValue);
+  if (portError) throw new Error(portError);
+  const port = Number(portValue);
   const tokenFile = path.join(secretsDirectory, `worker-${environmentId}.secret`);
   await writeFile(tokenFile, `${randomBytes(32).toString("base64url")}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
   await secureRuntimeFile(tokenFile);
-  const workspace = { id: defaultWorkspaceId, displayName: defaultWorkspaceId, root, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } };
-  const next = runtimeConfigSchema.parse({ ...current, worker: { workerId: randomUUID(), environmentId, listen: { host: "127.0.0.1", port: Number(option(args, "port") || 7576) }, tokenFile, defaultWorkspaceId }, workspaces: current.workspaces?.some((entry: any) => entry.id === defaultWorkspaceId) ? current.workspaces : [...(current.workspaces || []), workspace] });
+  const next = runtimeConfigSchema.parse({ ...current, worker: { workerId: randomUUID(), environmentId, listen: { host: "127.0.0.1", port }, tokenFile }, workspaces: current.workspaces || [] });
   await persistRuntimeConfig(configFile, next);
-  return { setup: true, role: "worker", file: configFile, workerId: next.worker?.workerId, environmentId };
+  if (!portArg && !prompt) outro(`Worker setup complete: ${environmentId}`);
+  return { setup: true, role: "worker", file: configFile, workerId: next.worker?.workerId, environmentId, port };
 }

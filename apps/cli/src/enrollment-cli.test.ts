@@ -9,8 +9,23 @@ import { EnrollmentService } from "../../gateway/src/enrollment-service.js";
 import { WorkerMembershipStore } from "../../gateway/src/worker-membership-store.js";
 import { createWorkerApp } from "../../worker/src/app.js";
 import { WorkerCredentialSource } from "../../worker/src/worker-credential-source.js";
-import { joinWorker, setupGateway, setupWorker } from "./enrollment-cli.js";
+import { copyTextToClipboard, decodeJoinCode, encodeJoinCode, joinWorker, setupGateway, setupWorker, updateWorkerPort } from "./enrollment-cli.js";
 
+
+describe("join code envelope", () => {
+  it("round-trips the Gateway public URL and one-time token", () => {
+    const code = encodeJoinCode({ v: 1, gateway: "https://gateway.example/shadow/", token: "one-time-token", expiresAt: "2026-08-19T01:00:00.000Z" });
+    expect(code.startsWith("qjq1:")).toBe(true);
+    expect(decodeJoinCode(code)).toEqual({ v: 1, gateway: "https://gateway.example/shadow/", token: "one-time-token", expiresAt: "2026-08-19T01:00:00.000Z" });
+  });
+});
+describe("clipboard helper", () => {
+  it("copies the exact token through an injected writer", async () => {
+    let copied = "";
+    await copyTextToClipboard("one-time-token", async (value) => { copied = value; });
+    expect(copied).toBe("one-time-token");
+  });
+});
 const servers: Server[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))); });
 
@@ -58,14 +73,44 @@ describe("role setup CLI", () => {
     expect(runtime.worker).toBeUndefined();
     expect(runtime).not.toHaveProperty("environments");
     expect((await readFile(path.join(stateDirectory, "management.secret"), "utf8")).trim().length).toBeGreaterThanOrEqual(32);
-    await setupWorker(configFile, ["worker", "setup", "--workspace-id", "default", "--workspace-root", workspaceRoot], secretsDirectory);
+    const setup: any = await setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory);
     runtime = await readRuntimeConfig(configFile);
     expect(runtime.worker?.workerId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(runtime.worker?.listen.port).toBe(7576);
+    expect(setup.port).toBe(7576);
     expect(runtime).not.toHaveProperty("environments");
     expect((await readFile(runtime.worker!.tokenFile, "utf8")).trim().length).toBeGreaterThanOrEqual(32);
   });
-});
 
+  it("prompts for Worker port when --port is omitted", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-setup-port-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const secretsDirectory = path.join(root, "secrets");
+    const prompted: string[] = [];
+    const result: any = await setupWorker(configFile, ["worker", "setup"], secretsDirectory, async (field, message, initialValue) => {
+      prompted.push(`${field}:${message}:${initialValue}`);
+      return "8765";
+    });
+    const runtime = await readRuntimeConfig(configFile);
+    expect(prompted).toEqual(["port:Worker port:7576"]);
+    expect(result.port).toBe(8765);
+    expect(runtime.worker?.listen.port).toBe(8765);
+  });
+
+  it("updates an existing Worker listener port without changing Worker identity or workspaces", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-port-update-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const secretsDirectory = path.join(root, "secrets");
+    const setup: any = await setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory);
+    const before = await readRuntimeConfig(configFile);
+    const result: any = await updateWorkerPort(configFile, ["worker", "port", "--port", "7577"]);
+    const after = await readRuntimeConfig(configFile);
+    expect(result).toMatchObject({ changed: true, previousPort: 7576, port: 7577, workerId: setup.workerId });
+    expect(after.worker?.workerId).toBe(before.worker?.workerId);
+    expect(after.worker?.listen.port).toBe(7577);
+    expect(after.workspaces).toEqual(before.workspaces);
+  });
+});
 describe("worker join CLI transaction", () => {
   it("replaces the bootstrap credential only after Gateway confirmation commits membership", async () => {
     const f = await fixture();
@@ -75,6 +120,24 @@ describe("worker join CLI transaction", () => {
     expect((await f.memberships.read()).workers).toHaveLength(1);
     expect((await readFile(f.tokenFile, "utf8")).trim()).not.toBe(f.bootstrap);
     await expect(readFile(`${f.tokenFile}.join-provisional.json`, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("prompts once for a join code and preserves scripted endpoint input", async () => {
+    const f = await fixture();
+    const joinToken = f.enrollment.createJoinToken().token;
+    const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: joinToken });
+    const prompted: string[] = [];
+    const result: any = await joinWorker(
+      f.configFile,
+      ["worker", "join", "--endpoint", f.workerUrl],
+      async (field) => {
+        prompted.push(field);
+        return joinCode;
+      },
+    );
+    expect(prompted).toEqual(["code"]);
+    expect(result).toMatchObject({ joined: true, workerId: f.workerId, environmentId: f.environmentId });
+    expect((await f.memberships.read()).workers).toHaveLength(1);
   });
 
   it("restores the previous credential when authenticated identity verification fails", async () => {
