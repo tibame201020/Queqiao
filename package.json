@@ -1,6 +1,6 @@
 {
   "name": "@tibame201020/queqiao",
-  "version": "0.1.0",
+  "version": "0.7.0",
   "private": false,
   "type": "module",
   "description": "One secure bridge between AI clients and multiple coding environments.",
@@ -75,6 +75,7 @@
   "files": [
     "dist/",
     "README.md",
+    "CHANGELOG.md",
     "config.example.yaml"
   ],
   "publishConfig": {
