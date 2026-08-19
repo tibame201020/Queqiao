@@ -27,7 +27,7 @@ describe("Security Baseline v1 adversarial gate", () => {
       approvalSecret: "correct horse battery staple",
       jwtSecret,
       trustProxyHops: 1,
-      allowedRedirectOrigins: new Set(["https://chatgpt.com", "http://127.0.0.1", "http://[::1]"]),
+      allowedRedirectOrigins: new Set(["https://chatgpt.com", "http://127.0.0.1", "http://localhost", "http://[::1]"]),
       workers: [{ environmentId: "windows", url: new URL("http://127.0.0.1:65534"), token: "worker-secret" }],
     };
     app = await createGatewayApp(config);
@@ -64,12 +64,12 @@ describe("Security Baseline v1 adversarial gate", () => {
     await request(app).post("/oauth/authorize").type("form").send({ ...valid.authorization, approval_secret: "wrong" }).expect(403);
   });
 
-  it("allows arbitrary ports only for explicitly allowed loopback IP redirect origins", async () => {
+  it("allows arbitrary ports only for explicitly allowed loopback redirect origins", async () => {
     const loopback = "http://127.0.0.1:6276/oauth/callback";
+    const localhost = "http://localhost:6276/callback";
     const ipv6Loopback = "http://[::1]:6276/oauth/callback";
-    const registered = await request(app).post("/oauth/register").send({ client_name: "Native MCP client", redirect_uris: [loopback, ipv6Loopback], scope: "queqiao:access" }).expect(201);
-    expect(registered.body.redirect_uris).toEqual([loopback, ipv6Loopback]);
-    await request(app).post("/oauth/register").send({ redirect_uris: ["http://localhost:6276/oauth/callback"] }).expect(400);
+    const registered = await request(app).post("/oauth/register").send({ client_name: "Native MCP client", redirect_uris: [loopback, localhost, ipv6Loopback], scope: "queqiao:access" }).expect(201);
+    expect(registered.body.redirect_uris).toEqual([loopback, localhost, ipv6Loopback]);
     await request(app).post("/oauth/register").send({ redirect_uris: ["http://127.0.0.2:6276/oauth/callback"] }).expect(400);
 
     const verifier = randomBytes(40).toString("base64url");
@@ -83,7 +83,8 @@ describe("Security Baseline v1 adversarial gate", () => {
       resource: new URL("mcp", publicBaseUrl).href,
       state: "native-loopback",
     };
-    await request(app).get("/oauth/authorize").query(authorization).expect(200);
+    const authorizationPage = await request(app).get("/oauth/authorize").query(authorization).expect(200);
+    expect(authorizationPage.text).toContain("Allow this MCP client to use Queqiao?");
     await request(app).get("/oauth/authorize").query({ ...authorization, redirect_uri: "http://127.0.0.1:6277/oauth/callback" }).expect(400);
   });
 

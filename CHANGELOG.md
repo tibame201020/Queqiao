@@ -16,7 +16,8 @@ First public npm release candidate for the current Queqiao Secure Agent Substrat
 - `run` and `shell` support bounded synchronous and asynchronous native execution without introducing a durable Job abstraction.
 - Trusted local extension composition with deterministic diagnostics and Deployment Manifest Fingerprint.
 - Security Baseline v2, Resource Safety Baseline v1, self-contained package checks, Windows/Ubuntu adversarial CI, and dedicated cross-platform CLI setup-flow protection.
-- Real ChatGPT, Windows, WSL/Linux, package, Shadow, and Stable promotion acceptance evidence is retained under `docs/validation/`.
+- Real ChatGPT, Claude Code 2.1.235, MCP Inspector, Windows, WSL/Linux, package, Shadow, and Stable promotion acceptance evidence is retained under `docs/validation/`.
+- Claude Code remote HTTP MCP Dynamic Client Registration and PKCE OAuth are validated with explicitly allowed `localhost` loopback callbacks on ephemeral ports; OAuth UI/default client wording is client-neutral.
 
 ### Accepted deferred controls
 

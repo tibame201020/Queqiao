@@ -61,6 +61,23 @@ Remote Streamable HTTP(S) MCP is the supported client transport. Queqiao current
 `2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28` rather than inheriting an
 unbounded SDK compatibility range.
 
+### Validated MCP clients and runtime platforms
+
+The 0.7.0 release candidate is client-neutral at the MCP boundary. Real-client validation
+covers **ChatGPT**, **Claude Code 2.1.235**, and the MCP Inspector. Claude Code was
+validated through remote HTTP discovery, Dynamic Client Registration, PKCE OAuth,
+and a final `Connected` health check against the public Shadow deployment. Native OAuth
+loopback redirects are accepted only when the corresponding loopback origin is explicitly
+configured; exact redirect-URI binding remains enforced after registration.
+
+Gateway and Worker runtimes are release-supported on **Windows** and **Linux**. WSL runs
+the Linux Worker/runtime path rather than a Windows-specific Worker adapter. The packed
+npm artifact is exercised by CI with a real Linux Gateway + Linux Worker authenticated
+handshake. macOS is not a supported 0.7.0 lifecycle target; unsupported platforms fail
+explicitly rather than silently using a Windows or Linux lifecycle implementation.
+
+See the [0.7.0 interoperability acceptance](docs/validation/release-v0.7.0-interoperability-acceptance-2026-08-19.md).
+
 The v0 public path was validated through ChatGPT on 2026-08-12. See the
 [validation evidence](docs/validation/v0-chatgpt-2026-08-12.md).
 
