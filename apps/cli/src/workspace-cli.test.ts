@@ -35,6 +35,7 @@ describe("workspace CLI", () => {
   });
   it("derives safe Workspace ids", () => {
     expect(workspaceCliInternals.suggestedWorkspaceId("C:\\work\\123 Project")).toBe("workspace-123-project");
+    expect(workspaceCliInternals.suggestedWorkspaceId("/tmp/My Project")).toBe("my-project");
   });
 });
 

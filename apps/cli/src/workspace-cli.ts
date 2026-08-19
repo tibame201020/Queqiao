@@ -14,7 +14,7 @@ function option(args: string[], name: string): string | undefined {
 }
 
 function suggestedWorkspaceId(root: string): string {
-  let value = path.basename(root).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  let value = path.win32.basename(root).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
   if (!value) value = "workspace";
   if (!/^[a-z]/.test(value)) value = `workspace-${value}`;
   return value;

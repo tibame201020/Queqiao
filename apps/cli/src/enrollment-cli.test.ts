@@ -10,6 +10,7 @@ import { WorkerMembershipStore } from "../../gateway/src/worker-membership-store
 import { createWorkerApp } from "../../worker/src/app.js";
 import { WorkerCredentialSource } from "../../worker/src/worker-credential-source.js";
 import { copyTextToClipboard, decodeJoinCode, encodeJoinCode, joinWorker, setupGateway, setupWorker, updateWorkerPort } from "./enrollment-cli.js";
+import { addWorkspace } from "./workspace-cli.js";
 
 
 describe("join code envelope", () => {
@@ -82,6 +83,43 @@ describe("role setup CLI", () => {
     expect((await readFile(runtime.worker!.tokenFile, "utf8")).trim().length).toBeGreaterThanOrEqual(32);
   });
 
+  it("completes the mocked first-time setup flow through Gateway, Worker, and Workspace", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-setup-flow-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const stateDirectory = path.join(root, "gateway-state");
+    const secretsDirectory = path.join(root, "secrets");
+    const workspaceRoot = path.join(root, "My Project");
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(workspaceRoot, { recursive: true }));
+
+    await setupGateway(configFile, ["gateway", "setup", "--public-base-url", "https://gateway.example/shadow/"], stateDirectory, secretsDirectory);
+
+    const workerPrompts: string[] = [];
+    await setupWorker(configFile, ["worker", "setup"], secretsDirectory, async (field, message, initialValue) => {
+      workerPrompts.push(`${field}:${message}:${initialValue}`);
+      return "8765";
+    });
+
+    const workspacePrompts: string[] = [];
+    const workspaceAnswers = [workspaceRoot, "", "My Project", "3"];
+    await addWorkspace(configFile, ["workspace", "add", "--worker", "windows"], async (message) => {
+      workspacePrompts.push(message);
+      return workspaceAnswers.shift() || "";
+    });
+
+    const runtime = await readRuntimeConfig(configFile);
+    expect(workerPrompts).toEqual(["port:Worker port:7576"]);
+    expect(workspacePrompts).toEqual([
+      `Workspace path [${process.cwd()}]: `,
+      "Workspace id [my-project]: ",
+      "Display name [my-project]: ",
+      "Profile [1=read-only, 2=editor, 3=coding] (1): ",
+    ]);
+    expect(runtime.gateway?.publicBaseUrl).toBe("https://gateway.example/shadow/");
+    expect(runtime.worker).toMatchObject({ listen: { host: "127.0.0.1", port: 8765 }, defaultWorkspaceId: "my-project" });
+    expect(runtime.workspaces).toEqual([
+      expect.objectContaining({ id: "my-project", displayName: "My Project", root: workspaceRoot, profile: "coding" }),
+    ]);
+  });
   it("prompts for Worker port when --port is omitted", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-setup-port-"));
     const configFile = path.join(root, "config", "config.yaml");
