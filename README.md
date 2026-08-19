@@ -1,12 +1,22 @@
 # Queqiao
 
 [![Resource Safety Baseline](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml/badge.svg)](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/@tibame201020/queqiao.svg)](https://www.npmjs.com/package/@tibame201020/queqiao)
 
 Queqiao builds one secure bridge between AI clients and multiple coding environments.
 
 The public MCP endpoint belongs to a lightweight Gateway. Windows, WSL, Linux, and
 future remote environments each run their own Worker, so filesystem and process work
 always executes inside the native environment.
+
+## Quick CLI demo
+
+![Queqiao packed CLI first-run demo](docs/assets/queqiao-cli-demo.gif)
+
+The demo is rendered from commands executed against the packed `0.7.0` npm artifact in
+an isolated Windows demo runtime. Generated worker IDs and process IDs are redacted;
+the command results themselves come from the real CLI execution.
 
 ## Production architecture
 
@@ -30,10 +40,10 @@ See [Architecture](docs/architecture.md) and the [architecture decisions](docs/a
 
 ## Project status
 
-Queqiao is under active development. The current Secure Agent Substrate candidate uses
+Queqiao is under active development. The **0.7.0** release baseline uses
 **Core Manifest Revision 6** and **Worker Protocol 3.0**. Core exposes ten typed tools:
 `workspace_info`, `list_workspaces`, `open_workspace`, `read_file`, `write_file`,
-`edit_file`, `list_directory`, `search_text`, `run`, and `shell`. The candidate also
+`edit_file`, `list_directory`, `search_text`, `run`, and `shell`. This release baseline also
 enables the first-party Git extension with seven named typed tools, for a deterministic
 17-tool public Deployment Manifest.
 
@@ -50,6 +60,23 @@ does not introduce a Queqiao Job API, durable restart recovery, or tmux dependen
 Remote Streamable HTTP(S) MCP is the supported client transport. Queqiao currently pins
 `2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28` rather than inheriting an
 unbounded SDK compatibility range.
+
+### Validated MCP clients and runtime platforms
+
+The 0.7.0 release candidate is client-neutral at the MCP boundary. Real-client validation
+covers **ChatGPT**, **Claude Code 2.1.235**, and the MCP Inspector. Claude Code was
+validated through remote HTTP discovery, Dynamic Client Registration, PKCE OAuth,
+and a final `Connected` health check against the public Shadow deployment. Native OAuth
+loopback redirects are accepted only when the corresponding loopback origin is explicitly
+configured; exact redirect-URI binding remains enforced after registration.
+
+Gateway and Worker runtimes are release-supported on **Windows** and **Linux**. WSL runs
+the Linux Worker/runtime path rather than a Windows-specific Worker adapter. The packed
+npm artifact is exercised by CI with a real Linux Gateway + Linux Worker authenticated
+handshake. macOS is not a supported 0.7.0 lifecycle target; unsupported platforms fail
+explicitly rather than silently using a Windows or Linux lifecycle implementation.
+
+See the [0.7.0 interoperability acceptance](docs/validation/release-v0.7.0-interoperability-acceptance-2026-08-19.md).
 
 The v0 public path was validated through ChatGPT on 2026-08-12. See the
 [validation evidence](docs/validation/v0-chatgpt-2026-08-12.md).
@@ -235,6 +262,10 @@ To migrate an older checkout safely, preview the non-overwriting plan and then e
 npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao
 npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao --execute
 ```
+
+## Contributing and security
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development and validation workflow. Security issues should follow [SECURITY.md](SECURITY.md); do not disclose credentials or exploit details in a public issue. Queqiao is released under the [MIT License](LICENSE).
 
 ## Inspiration and independence
 
