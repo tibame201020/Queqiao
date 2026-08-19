@@ -12,8 +12,9 @@ always executes inside the native environment.
 
 - **Gateway** owns the public MCP endpoint, OAuth, stable tool schemas, routing, and
   worker health. It cannot read files or spawn workspace processes.
-- **Worker** connects outbound to the Gateway and executes only against locally
-  configured workspaces. It is not exposed to the public internet.
+- **Worker** owns native execution and exposes only its environment-local Worker
+  transport to the Gateway. The verified transport is loopback HTTP; Workers do not
+  auto-register, maintain an idle registration connection, or expose a public MCP endpoint.
 - **CLI** manages gateway, worker, workspace, tool, and command policy.
 - **Protocol** contains versioned wire contracts and stable public tool names.
 - **Security** owns identities, step-up challenges, approval grants, secret boundaries,
@@ -122,47 +123,69 @@ authorized child workloads. See the
 The current management CLI supports:
 
 ```text
-queqiao workspace list
-queqiao workspace init --id <id> --name <name> --root <path>
-queqiao workspace add --id <id> --name <name> --root <path>
-queqiao workspace remove --id <id>
-queqiao discovery list
-queqiao discovery add --root <path>
-queqiao discovery remove --root <path>
-queqiao gateway setup --public-base-url <url>
-queqiao gateway join-token [--expires <seconds>]
-queqiao worker setup --workspace-id <id> --workspace-root <path>
-queqiao worker join --gateway <management-url> --token <join-token> --endpoint <loopback-worker-url>
-queqiao worker list
-queqiao worker update --worker-id <id> --endpoint <loopback-worker-url>
-queqiao worker remove --worker-id <id>
-queqiao profile set --workspace <id> --profile read-only|editor|coding
-queqiao tool allow --workspace <id> --tool <tool>
-queqiao tool deny --workspace <id> --tool <tool>
-queqiao command allow --workspace <id> --command <executable>
-queqiao command deny --workspace <id> --command <executable>
-queqiao permissions show
+queqiao gateway setup --name <gateway> --public-base-url <url> [--port <port>] [--management-port <port>]
+queqiao gateway serve --name <gateway> [--bg]
+queqiao gateway stop --name <gateway>
+queqiao gateway status --name <gateway>
+queqiao gateway join-token --name <gateway> [--expires <seconds>] [--copy]
+
+queqiao worker setup --name <worker> [--port <port>]
+queqiao worker port --name <worker> [--port <port>]
+queqiao worker serve --name <worker> [--bg]
+queqiao worker stop --name <worker>
+queqiao worker status --name <worker>
+queqiao worker join --name <worker>
+queqiao worker list --name <gateway>
+queqiao worker update --name <gateway> --worker-id <id> --endpoint <loopback-worker-url>
+queqiao worker remove --name <gateway> --worker-id <id>
+
+queqiao workspace add --worker <worker>
+queqiao workspace list --worker <worker>
+queqiao workspace remove --worker <worker> --id <id>
+queqiao discovery list|add|remove
+queqiao profile set --worker <worker> --workspace <id> --profile read-only|editor|coding
+queqiao tool allow|deny --worker <worker> --workspace <id> --tool <tool>
+queqiao command allow|deny --worker <worker> --workspace <id> --command <executable>
+queqiao permissions show --worker <worker>
 queqiao manifest show
-queqiao extension list
-queqiao extension doctor
+queqiao extension list|doctor
 queqiao tool explain <tool>
 queqiao doctor
 ```
 
-Discovery roots are optional read-only search scopes, never Workspace grants. Core Workspace
-authority is created only through explicit administrator-controlled `workspace init` /
-`workspace add` operations against an existing directory. Repository/worktree discovery
-and lifecycle semantics belong to the Git extension and never broaden the selected
-Workspace authority boundary.
+Discovery roots are optional read-only search scopes, never Workspace grants. Core Workspace authority is created only through explicit `workspace add --worker <name>` operations against an existing directory. Repository/worktree discovery and lifecycle semantics belong to the Git extension and never broaden the selected Workspace authority boundary.
 
 Configuration changes use an exclusive lock, validated temporary file, and atomic
 rename. A Worker validates every new root before replacing its in-memory catalog; a
 rejected update leaves the last-known-good catalog active.
 
-The verified WSL Worker is managed by a systemd user service and keeps its native
-configuration at `$XDG_CONFIG_HOME/queqiao/config.yaml` (or
-`$HOME/.config/queqiao/config.yaml`). Running the same
-compiled CLI inside WSL resolves and validates Linux paths without Windows mediation.
+The same compiled CLI runs inside WSL with Linux-native XDG paths and explicit `serve`/`stop` lifecycle. Queqiao does not require or install a systemd user service for the Worker.
+
+### First-time setup contract
+
+There is deliberately no generic `queqiao setup`. Gateway, Worker, Workspace authority,
+and enrollment are separate operations so no command silently broadens execution authority:
+
+```text
+queqiao gateway setup --name <gateway> --public-base-url <url>
+queqiao worker setup --name <worker>
+queqiao workspace add --worker <worker>
+queqiao worker serve --name <worker> --bg
+queqiao gateway serve --name <gateway> --bg
+queqiao gateway join-token --name <gateway> --copy
+queqiao worker join --name <worker>
+```
+
+`gateway setup` and `worker setup` create role-local state only. `workspace add` is the
+separate authority grant for an existing directory. `worker join` is the separate atomic
+membership transaction. `--bg` means a background process managed by Queqiao's explicit
+PID-aware lifecycle; it is not an OS service, autostart entry, Run key, or systemd unit.
+
+The mocked first-time setup flow and cross-platform Workspace-ID behavior are protected by
+dedicated required GitHub checks on both Ubuntu and Windows:
+`CLI setup flow (ubuntu-latest)` and `CLI setup flow (windows-latest)`. They run only after
+the monorepo packages are typechecked/built, matching the dependency order required by the
+workspace package graph.
 
 ## Runtime configuration
 
@@ -173,45 +196,45 @@ The bundled CLI resolves the platform layout and reports it with:
 npm run queqiao -- config paths
 ```
 
-Installed from npm, set up the Gateway and Worker roles explicitly, then enroll the Worker with a one-time join token:
+Installed from npm, set up each role explicitly and keep role-local state isolated by `--name`:
 
 ```shell
 npm install --global @tibame201020/queqiao
-queqiao gateway setup --public-base-url https://example.invalid
-queqiao worker setup --workspace-root /path/to/project --workspace-id project
-queqiao-gateway
-queqiao-worker
-queqiao gateway join-token
-queqiao worker join --gateway http://127.0.0.1:7574 --token <join-token> --endpoint http://127.0.0.1:7576
+queqiao gateway setup --name shadow --public-base-url https://example.invalid/shadow/
+queqiao worker setup --name windows
+queqiao workspace add --worker windows
+queqiao worker serve --name windows --bg
+queqiao gateway serve --name shadow --bg
+queqiao gateway join-token --name shadow --copy
+queqiao worker join --name windows
 ```
 
-The package is self-contained and exposes three independent process roles. Installing
-it does not start either service: a Gateway host runs `queqiao-gateway`, while every
-coding environment runs its own `queqiao-worker`. Gateway routing comes only from its persistent membership registry. A Worker joins explicitly with a one-time token; the Gateway then verifies authenticated Worker identity, environment identity, protocol version, process instance ID, platform, and required capabilities before committing membership. Worker startup never auto-registers or edits Gateway state.
+`gateway join-token --copy` copies a versioned join code that contains the Gateway public base URL plus the one-time enrollment token. Interactive `worker join` accepts that single join code. The join code is bearer-secret material and is only for Worker CLI → Gateway enrollment; it does not publish or authorize the Gateway → Worker runtime transport.
 
-The frozen HTTP transport baseline permits only loopback Worker endpoints. The persistent Worker credential and authenticated handshake protect Gateway-to-Worker routing; remote-host Workers require a future mutually authenticated transport and are not covered by this baseline.
+The package is self-contained and exposes independent Gateway and Worker process roles. Installing it does not create an OS service, autostart entry, Run key, or systemd unit. Runtime lifecycle is explicit:
 
-On Windows, configuration is stored under `%LOCALAPPDATA%\Queqiao`; on Linux and
-WSL it follows the XDG config, data, state, and runtime directories. Secrets are
-separate files referenced by `config.yaml`. User-editable configuration is YAML;
-OAuth client registrations and other internal state remain implementation-owned data.
-To migrate an older checkout safely,
-preview the non-overwriting plan and then execute it:
+```shell
+queqiao gateway serve --name shadow --bg
+queqiao gateway status --name shadow
+queqiao gateway stop --name shadow
+
+queqiao worker serve --name windows --bg
+queqiao worker status --name windows
+queqiao worker stop --name windows
+```
+
+Worker listeners remain loopback-only. Within one Gateway membership registry, each Gateway-visible Worker transport endpoint must be unique. If a Worker listener port must change, stop that Worker first, run `queqiao worker port --name <worker> --port <port>`, restart it, then update the Gateway membership transport with `queqiao worker update --name <gateway> --worker-id <id> --endpoint http://127.0.0.1:<port>/`.
+
+On Windows, named Gateway and Worker layouts are stored below `%LOCALAPPDATA%\Queqiao\gateways\<name>` and `%LOCALAPPDATA%\Queqiao\workers\<name>`. Linux and WSL use the corresponding XDG role-scoped layout. Secrets remain separate files referenced by `config.yaml`; OAuth client registrations and other internal state remain implementation-owned data.
+
+The frozen HTTP transport baseline permits only loopback Worker endpoints. Windows↔WSL localhost forwarding may make a WSL loopback Worker visible to the Windows Gateway through the Windows WSL relay, but Queqiao does not expose the Worker through the Gateway public base URL.
+
+To migrate an older checkout safely, preview the non-overwriting plan and then execute it:
 
 ```powershell
 npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao
 npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao --execute
 ```
-
-After CLI-managed configuration exists, start the two processes in separate terminals:
-
-```powershell
-npm run start:worker
-npm run start:gateway
-```
-
-The Worker listens only on `127.0.0.1:7576`. The public tunnel must point only to the
-Gateway on port `7575`. Configure ChatGPT with the public `/mcp` URL.
 
 ## Inspiration and independence
 

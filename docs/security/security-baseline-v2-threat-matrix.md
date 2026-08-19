@@ -19,7 +19,7 @@ This matrix records the Security v2 delta on top of the frozen Security Baseline
 | Public health leaks roots/policy/secrets | Covered by v1 | Sanitized public health only | Existing security test |
 | Fresh Windows setup inherits overly broad ACL from parent | **Confirmed Medium before v2** | Setup/migration explicitly protect runtime directories/files and replace inherited ACLs with current-user + SYSTEM authority; ACL failure aborts setup | Windows adversarial test starts beneath an Everyone-writable inherited parent and verifies protected, non-inherited exact SID authority |
 | Durable audit logging causes uncontrolled disk writes | **Medium pre-Dashboard blocker** | Durable audit trail intentionally deferred; any implementation must be bounded/redacted and re-pass Resource Safety | Resource Safety v1 remains required; no durable security event store claimed yet |
-| Worker credential cannot rotate without restart | **Medium pre-CLI blocker** | Deferred to service lifecycle/rotation design | Must be resolved before setup/service lifecycle is considered complete |
+| Worker credential rotation without downtime is not implemented | **Medium accepted residual** | Named CLI lifecycle and atomic enrollment are implemented; automatic/zero-downtime rotation remains a separate future control | Current CLI setup/lifecycle acceptance does not claim rotation; any future rotation design requires explicit security/rollback validation |
 | Workflow action tag is retargeted upstream | **Medium supply-chain risk before v2** | Required Actions pinned to reviewed commit SHAs; workflow permissions remain `contents: read` | Static workflow review + GitHub Actions execution |
 | Dependency install executes unexpected lifecycle scripts in CI | Covered | Required workflows use `npm ci --ignore-scripts`; package allow-scripts remains explicit | Workflow inspection + dependency audit |
 | Production dependency vulnerability | Covered | `npm audit --omit=dev` required | Security workflow |
@@ -30,4 +30,4 @@ This matrix records the Security v2 delta on top of the frozen Security Baseline
 - **High** means a configured security policy could be bypassed at the native enforcement layer.
 - **Medium** means meaningful attack-surface, provisioning, supply-chain, or operational-hardening work is required before the next product surface, but the current default stable deployment is not demonstrated to be remotely compromised by that finding.
 
-Security v2 does not convert deferred controls into claims. CLI setup/doctor and Dashboard work must close their listed blockers explicitly.
+Security v2 does not convert deferred controls into claims. Current CLI setup/lifecycle closes the setup/enrollment surface covered by its acceptance record; deferred rotation, approval-runtime, audit, and Dashboard controls remain separate claims and require their own evidence.

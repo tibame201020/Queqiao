@@ -4,7 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 import { QUEQIAO_WORKER_PROTOCOL_VERSION, workerHelloV3Schema } from "@queqiao/worker-protocol";
 import { secureRuntimeDirectory, secureRuntimeFile } from "@queqiao/platform-paths";
-import { WorkerMembershipStore, workerMembershipSchema, workerTransportDescriptorSchema, type WorkerMembership, type WorkerTransportDescriptor } from "./worker-membership-store.js";
+import { gatewayVisibleTransportKey, WorkerMembershipStore, workerMembershipSchema, workerTransportDescriptorSchema, type WorkerMembership, type WorkerTransportDescriptor } from "./worker-membership-store.js";
 
 const joinStartSchema = z.object({
   token: z.string().min(32).max(256),
@@ -71,6 +71,8 @@ export class EnrollmentService {
     const registry = await this.memberships.read();
     if (registry.workers.some((worker) => worker.workerId === request.workerId)) throw new EnrollmentError(409, "worker_already_joined", "workerId is already enrolled");
     if (registry.workers.some((worker) => worker.environmentId === request.environmentId)) throw new EnrollmentError(409, "environment_already_joined", "environmentId is already enrolled");
+    const transportKey = gatewayVisibleTransportKey(request.transport);
+    if (registry.workers.some((worker) => gatewayVisibleTransportKey(worker.transport) === transportKey)) throw new EnrollmentError(409, "worker_transport_conflict", "Gateway-visible Worker transport endpoint is already enrolled");
     const transactionId = randomUUID();
     const credential = randomBytes(32).toString("base64url");
     const expiresAt = Date.now() + 30_000;
@@ -110,6 +112,8 @@ export class EnrollmentService {
     const registry = await this.memberships.read();
     const existing = registry.workers.find((worker) => worker.workerId === workerId);
     if (!existing) throw new EnrollmentError(404, "worker_not_found", "Worker membership was not found");
+    const transportKey = gatewayVisibleTransportKey(transport);
+    if (registry.workers.some((worker) => worker.workerId !== workerId && gatewayVisibleTransportKey(worker.transport) === transportKey)) throw new EnrollmentError(409, "worker_transport_conflict", "Gateway-visible Worker transport endpoint is already enrolled");
     const reference = existing.credentialRefs[0];
     if (!reference || reference.kind !== "secret-file") throw new EnrollmentError(500, "worker_credential_unavailable", "Worker credential reference is unavailable");
     const credential = (await readFile(reference.path, "utf8")).trim();

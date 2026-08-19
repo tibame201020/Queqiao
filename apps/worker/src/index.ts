@@ -14,6 +14,7 @@ const runtime = await readRuntimeConfig(configFile);
 if (!runtime.worker) throw new Error("worker configuration is required");
 const port = runtime.worker.listen.port;
 const defaultWorkspaceId = runtime.worker.defaultWorkspaceId;
+if (!defaultWorkspaceId) throw new Error("Worker has no Workspace; add one before serving");
 const credentialFile = path.resolve(runtime.worker.tokenFile);
 const credential = new WorkerCredentialSource(credentialFile);
 await credential.current();

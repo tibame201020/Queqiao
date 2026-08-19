@@ -18,6 +18,14 @@ export const workerTransportDescriptorSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export function gatewayVisibleTransportKey(transport: WorkerTransportDescriptor): string {
+  if (transport.type !== "http") return `${transport.type}:unsupported`;
+  const url = new URL(transport.endpoint);
+  const host = url.hostname === "localhost" ? "127.0.0.1" : url.hostname;
+  const port = url.port || "80";
+  return `${url.protocol}//${host}:${port}`;
+}
+
 export const workerCredentialReferenceSchema = z.object({
   kind: z.literal("secret-file"),
   path: z.string().min(1).max(4096),
@@ -36,11 +44,15 @@ export const workerMembershipRegistrySchema = z.object({
 }).superRefine((registry, ctx) => {
   const workerIds = new Set<string>();
   const environmentIds = new Set<string>();
+  const transportKeys = new Set<string>();
   for (const [index, worker] of registry.workers.entries()) {
     if (workerIds.has(worker.workerId)) ctx.addIssue({ code: "custom", path: ["workers", index, "workerId"], message: "workerId must be unique" });
     if (environmentIds.has(worker.environmentId)) ctx.addIssue({ code: "custom", path: ["workers", index, "environmentId"], message: "environmentId must be unique within a Gateway cluster" });
+    const transportKey = gatewayVisibleTransportKey(worker.transport);
+    if (transportKeys.has(transportKey)) ctx.addIssue({ code: "custom", path: ["workers", index, "transport"], message: "Gateway-visible Worker transport endpoint must be unique within a Gateway cluster" });
     workerIds.add(worker.workerId);
     environmentIds.add(worker.environmentId);
+    transportKeys.add(transportKey);
   }
 });
 

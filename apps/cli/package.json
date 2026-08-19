@@ -1,1 +1,17 @@
-{"name":"@queqiao/cli","version":"0.1.0","private":true,"type":"module","dependencies":{"@queqiao/config":"0.1.0","@queqiao/contracts":"0.1.0","@queqiao/core-manifest":"0.1.0","@queqiao/mcp-compat":"0.1.0","@queqiao/operations":"0.1.0","@queqiao/platform-paths":"0.1.0","@queqiao/worker-protocol":"0.1.0","zod":"4.4.3"}}
+{
+  "name": "@queqiao/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@clack/prompts": "1.7.0",
+    "@queqiao/config": "0.1.0",
+    "@queqiao/contracts": "0.1.0",
+    "@queqiao/core-manifest": "0.1.0",
+    "@queqiao/mcp-compat": "0.1.0",
+    "@queqiao/operations": "0.1.0",
+    "@queqiao/platform-paths": "0.1.0",
+    "@queqiao/worker-protocol": "0.1.0",
+    "zod": "4.4.3"
+  }
+}

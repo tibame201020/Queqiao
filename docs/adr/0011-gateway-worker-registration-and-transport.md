@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-14
-- Amended: 2026-08-15
+- Amended: 2026-08-15, 2026-08-19
 - Supersedes: ADR-0002 only for Worker connection/registration direction and channel-lifetime assumptions
 - Refines: ADR-0007
 
@@ -12,7 +12,7 @@ Queqiao is intended to expose one public Gateway for a logical cluster while nat
 
 The verified runtime currently uses Gateway-initiated loopback HTTP requests to statically configured Worker endpoints. ADR-0007 already established that this HTTP binding is an implementation of the Worker Protocol rather than the protocol boundary itself.
 
-Before CLI setup, service lifecycle, and Dashboard management are expanded, the target Gateway/Worker relationship needs a stable contract that does not hard-code HTTP, gRPC, persistent TCP sessions, polling, or platform-specific setup shortcuts into routing and authority semantics.
+As CLI setup and explicit runtime lifecycle are implemented, the Gateway/Worker relationship remains governed by a stable contract that does not hard-code HTTP, gRPC, persistent TCP sessions, polling, or platform-specific setup shortcuts into routing and authority semantics.
 
 ## Decision
 
@@ -45,7 +45,7 @@ queqiao gateway join-token
 queqiao worker join
 ```
 
-`gateway setup` initializes the Gateway. `worker setup` initializes a Worker environment. Neither command implicitly enrolls another environment.
+`gateway setup` initializes the Gateway. `worker setup` initializes Worker identity/listener state. Neither command implicitly enrolls another environment or grants Workspace authority. Workspace authority is created separately with `queqiao workspace add --worker <name>` against an existing directory.
 
 `worker join` is the explicit operation that adds a Worker to a Gateway. Worker runtime startup does not auto-register, re-register, poll for registration, or maintain a registration lease.
 
@@ -67,6 +67,11 @@ A join token:
 - is distinct from the Worker's long-lived operating credential.
 
 Join-token values are never written to durable audit history. Temporary observability may use debug/trace logging only and must not log the token itself.
+For human-operated CLI enrollment, Queqiao may wrap the Gateway public base URL and one-time join token in a single versioned **join code** envelope. The current envelope is `qjq1:` plus base64url-encoded JSON containing `v`, `gateway`, `token`, and optional `expiresAt`. This is encoding, not encryption; the whole join code is bearer-secret material and must be handled like the token itself.
+
+`gateway join-token --copy` copies the join code rather than the raw token and avoids echoing the raw token in normal stdout. Interactive `worker join` accepts one join code and derives the enrollment Gateway URL plus one-time token from it. Scripted `--gateway` + `--token` remains available for automation compatibility.
+
+The join code carries only the **Worker CLI -> Gateway enrollment destination**. It does not carry, publish, or authorize the Gateway -> Worker runtime transport. The Worker continues to propose its own loopback-only transport descriptor independently, and the Gateway must still validate that transport before committing membership.
 
 ### Atomic Worker join transaction
 

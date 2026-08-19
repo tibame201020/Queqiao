@@ -37,6 +37,7 @@ describe("WorkerMembershipStore", () => {
 
     await expect(store.add(worker(first.workerId, "linux", 7577))).rejects.toThrow(/workerId must be unique/);
     await expect(store.add(worker("22222222-2222-4222-8222-222222222222", "windows", 7578))).rejects.toThrow(/environmentId must be unique/);
+    await expect(store.add(worker("33333333-3333-4333-8333-333333333333", "linux", 7576))).rejects.toThrow(/Gateway-visible Worker transport endpoint must be unique/);
     expect(await readFile(store.file, "utf8")).toBe(before);
   });
 

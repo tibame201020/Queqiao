@@ -1,6 +1,6 @@
 # Wayfinder Map — Secure Agent Substrate
 
-Status: Architecture route resolved; ready for feature specification and implementation handoff.
+Status: Original architecture route implemented and release-accepted; retained as the design map for the Secure Agent Substrate. Follow-on Worker enrollment/lifecycle work is governed by ADR-0011 and current validation evidence.
 
 ## Destination
 
@@ -38,16 +38,17 @@ Queqiao remains a substrate: it does not become an LLM provider, chat/session ru
 - [Execution backend](ARCHITECTURE-DECISIONS.md#d17--execution-backend) — native Worker process runtime; no tmux dependency.
 - [Async disconnect semantics](ARCHITECTURE-DECISIONS.md#d18--async-disconnect-semantics) — once accepted, async execution is detached from the initiating MCP request; no Job abstraction or durable recovery.
 
-## Not yet specified
+## Resolved implementation details
 
-These details are intentionally delegated to feature-level tickets rather than reopened as architecture fog:
+Items that were intentionally deferred during architecture planning are now resolved by the implemented release slices:
 
-- The exact MCP specification revisions in the initial bounded compatibility window.
-- The exact configuration syntax for extension installation, host binding, activation scope, ordering, and replacement declarations.
-- The exact deployment-manifest fingerprint canonicalization format.
-- The exact async run/shell result schema, redirect options, process lifetime limits, and graceful Worker-shutdown behavior.
-- The first-party Git extension's public tool surface and worktree storage convention inside a Workspace.
-- The future Dashboard implementation technology and UI composition; only its diagnostics contract is in scope now.
+- MCP compatibility is explicitly bounded to `2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28`; unknown future revisions fail closed.
+- Extension installation/host binding/scope/order/replacement configuration is explicit and validated; trusted local modules do not load implicitly from Workspace content.
+- Deployment-manifest canonicalization/fingerprinting is implemented and exposed through safe deployment attestation.
+- `run` / `shell` async semantics are implemented as bounded native-process modes without a durable Queqiao Job domain.
+- The first-party Git extension exposes seven named public tools and keeps repository/worktree semantics inside an authorized Workspace.
+
+The future Dashboard implementation technology and UI composition remain intentionally unspecified; only its operations/diagnostics contract is part of this architecture pack.
 
 ## Out of scope
 

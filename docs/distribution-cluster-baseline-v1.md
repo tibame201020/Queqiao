@@ -1,51 +1,93 @@
 # Distribution & Cluster Baseline v1
 
-This baseline freezes three production guarantees:
+This baseline freezes the production distribution, native-Worker, and CLI-lifecycle guarantees used by the current release candidate.
 
 1. `@tibame201020/queqiao` is a self-contained npm artifact. Its CLI, Gateway, Worker,
    internal packages, and runtime dependencies are bundled into one tarball.
-2. Gateway core is OS-independent. CI installs the packed artifact and runs the real
-   Gateway on Linux, in addition to package-install checks on Linux and Windows.
-3. A Gateway cannot route to a Worker until an authenticated compatibility handshake
-   succeeds.
+2. Gateway core is OS-independent. CI installs the packed artifact and exercises supported
+   package/runtime behavior on Ubuntu and Windows.
+3. Native Workers remain the execution authority. Gateway membership is explicit and a
+   Worker cannot become routable until authenticated identity/protocol validation succeeds.
+4. First-time setup is an explicit multi-step contract; no generic setup command silently
+   creates Gateway state, Worker state, Workspace authority, or membership together.
 
 ## Process roles
 
-The package exposes `queqiao`, `queqiao-gateway`, and `queqiao-worker`. Installation
-does not enable or launch a role. A host may run Gateway, Worker, both, or neither.
+The package exposes `queqiao`, `queqiao-gateway`, and `queqiao-worker`. Installation does
+not enable or launch a role. A host may run Gateway, Worker, both, or neither.
 
-## Worker handshake
+Named Gateway and Worker runtimes use role-local state. Lifecycle is explicit:
+`serve [--bg]`, `stop`, and `status`. `--bg` starts a background process but does not
+install an OS service or autostart mechanism.
 
-`GET /v1/hello` requires the Worker credential and returns the protocol version,
-configured environment ID, per-process UUID, native platform, and capabilities.
-Gateway validates the response against the configured environment and the exact
-supported protocol schema before listing workspaces or invoking tools. Missing
-capabilities, identity mismatch, malformed data, authentication failure, and protocol
-incompatibility all fail closed and mark the Worker offline.
+## First-time setup and authority boundaries
 
-The handshake is cached only for the lifetime of a `WorkerClient`. Registry hot reload
-constructs new clients and therefore requires a new handshake. A Worker restart also
-changes its instance UUID.
+The supported human flow is:
+
+```text
+queqiao gateway setup --name <gateway> --public-base-url <url>
+queqiao worker setup --name <worker>
+queqiao workspace add --worker <worker>
+queqiao worker serve --name <worker> --bg
+queqiao gateway serve --name <gateway> --bg
+queqiao gateway join-token --name <gateway> --copy
+queqiao worker join --name <worker>
+```
+
+`worker setup` creates Worker identity/listener state only. `workspace add` separately
+creates Workspace authority. `worker join` separately creates Gateway membership through
+the one-time enrollment transaction defined by ADR-0011.
+
+There is no generic `queqiao setup` and Worker startup does not auto-register.
+
+## Enrollment, membership, and Worker validation
+
+Persistent membership is Gateway-owned state separate from user-managed `config.yaml`.
+Membership contains stable Worker/environment identity, a fixed transport descriptor, and
+credential references. Runtime reachability and per-process state are observed live rather
+than persisted as membership truth.
+
+Human enrollment uses a one-time `qjq1:` join code. The atomic transaction issues a
+provisional Worker credential, requires secure Worker-side storage and confirmation within
+30 seconds, then performs a real Gateway-to-Worker identity/Worker-Protocol validation
+before committing membership. Failure rolls back provisional membership/credential state;
+the attempted one-time join token remains consumed.
+
+The verified Worker transport is loopback HTTP. Each Gateway-visible Worker transport
+endpoint must be unique. Gateway-observed liveness is low-frequency and advisory: a failed
+probe marks reachability but does not permanently veto a later real invocation attempt.
+
+Current Worker Protocol is **3.0**.
 
 ## CI gates
 
-`distribution-baseline.yml`:
+`distribution-baseline.yml` protects the distribution and setup contract with:
 
-- builds and packs the artifact on clean Ubuntu and Windows runners;
-- installs the tarball without access to monorepo workspace packages;
-- executes the installed CLI on both operating systems;
-- starts the installed Gateway and Worker on Linux;
-- verifies authenticated hello, Linux platform identity, protocol and capabilities;
-- verifies the Gateway reports the handshaken Worker online;
-- verifies unauthenticated handshake requests are rejected.
+- `Full test suite (ubuntu-latest)` and `Full test suite (windows-latest)`;
+- `Self-contained package (ubuntu-latest)` and `Self-contained package (windows-latest)`;
+- `Linux Gateway and Worker handshake`;
+- `CLI setup flow (ubuntu-latest)` and `CLI setup flow (windows-latest)`.
 
-The existing adversarial gate remains required and includes protocol mismatch,
-capability omission, environment identity mismatch, dependency audit, and Worker-side
-authorization tests.
+The dedicated CLI setup jobs run:
+
+```text
+npm ci --ignore-scripts
+npm run typecheck
+npm run test:cli-setup
+```
+
+The typecheck/build step is intentional: monorepo workspace package entry points must exist
+before focused Vitest execution can resolve packages such as `@queqiao/config` on a clean
+runner. The focused suite covers the mocked first-time Gateway/Worker/Workspace flow and
+cross-platform Workspace-ID/path behavior.
+
+Both CLI setup-flow checks are required by `main` branch protection in addition to the
+existing full-test, package, cluster, adversarial, dependency-audit, and resource-safety
+checks. A setup-flow regression therefore blocks merge even when unrelated suites pass.
 
 ## Security boundary
 
-Workers remain restricted to loopback HTTP in this baseline. The Worker token and
-handshake authenticate processes on one host; they do not provide remote transport
-confidentiality or replace mTLS. Cross-host enrollment and mutually authenticated
-transport require a later baseline.
+Workers remain restricted to loopback HTTP in this baseline. Worker credentials authenticate
+the private Gateway-to-Worker transport on the host; they do not provide a general public
+remote-Worker transport. Future cross-host transport may change the binding, but must not
+change Worker-authoritative execution policy or silently broaden Workspace authority.

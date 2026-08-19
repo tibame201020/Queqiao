@@ -1,17 +1,19 @@
 import path from "node:path";
 import { z } from "zod";
 import { AtomicConfigStore } from "./atomic-config-store.js";
-import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig } from "@queqiao/config";
+import { runtimeConfigSchema, type RuntimeConfig } from "@queqiao/config";
 import { toolNameSchema } from "@queqiao/contracts";
 import { CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core-manifest";
 import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "@queqiao/mcp-compat";
 import { buildDeploymentManifest, buildOperationsDiagnostics, explainTool } from "@queqiao/operations";
 import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
-import { resolveRuntimeLayout } from "@queqiao/platform-paths";
+import { resolveRuntimeLayout, resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
-import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
-import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, setupGateway, setupWorker, updateJoinedWorkerTransport } from "./enrollment-cli.js";
+
+import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, setupGateway, setupWorker, updateJoinedWorkerTransport, updateWorkerPort } from "./enrollment-cli.js";
 import { doctorGateway } from "./doctor.js";
+import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
+import { addWorkspace } from "./workspace-cli.js";
 
 const managedToolSchema = toolNameSchema;
 const workspaceSchema = z.object({
@@ -27,36 +29,46 @@ function option(args: string[], name: string): string | undefined { const index 
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
 function print(value: unknown) { process.stdout.write(`${JSON.stringify(value, null, 2)}\n`); }
 function unique<T>(values: T[]): T[] { return [...new Set(values)]; }
-function newWorkspace(id: string, displayName: string, root: string) { return workspaceConfigSchema.parse({ id, displayName, root, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }); }
+
 function operations(config: RuntimeConfig) { return buildOperationsDiagnostics({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, workerProtocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, supportedMcpProtocolVersions: QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions }); }
 
 const args = process.argv.slice(2);
 const domain = args[0];
 const action = args[1];
-const layout = resolveRuntimeLayout();
+const localName = option(args, "name") || "default";
+const helpRequested = args.includes("--help") || args.includes("-h");
+const USAGE = "Usage: queqiao gateway setup|serve [--bg]|stop|status|join-token [--name <gateway>] [--copy], worker setup|port|serve [--bg]|stop|status|join [--name <worker>] [--join-code <code>] [--gateway <url> --token <token>], worker list|update|remove [--name <gateway>|--gateway-name <gateway>], workspace add|list|remove --worker <worker>, config paths, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor";
+
+function resolveCommandLayout() {
+  if (domain === "gateway") return resolveRuntimeLayoutForNamedRole("gateway", localName);
+  if (domain === "worker" && ["setup", "serve", "stop", "status", "join", "port"].includes(action || "")) return resolveRuntimeLayoutForNamedRole("worker", localName);
+  if (domain === "worker" && ["list", "update", "remove"].includes(action || "")) return resolveRuntimeLayoutForNamedRole("gateway", option(args, "gateway-name") || option(args, "name") || "default");
+  if (["workspace", "profile", "tool", "command", "permissions"].includes(domain || "") && option(args, "worker")) return resolveRuntimeLayoutForNamedRole("worker", option(args, "worker"));
+  return resolveRuntimeLayout();
+}
+
+const layout = resolveCommandLayout();
 const configFile = path.resolve(option(args, "file") || layout.configFile);
 const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
 
 async function main() {
+  if (helpRequested) { process.stdout.write(`${USAGE}\n`); return; }
   if (domain === "gateway" && action === "setup") return print(await setupGateway(configFile, args, layout.gatewayStateDir, layout.secretsDir));
   if (domain === "worker" && action === "setup") return print(await setupWorker(configFile, args, layout.secretsDir));
+  if (domain === "worker" && action === "port") {
+    const status = await runtimeStatus(configFile, layout, "worker", localName);
+    if (status.active) throw new Error("Stop the Worker before changing its listener port");
+    return print(await updateWorkerPort(configFile, args));
+  }
   if (domain === "gateway" && action === "join-token") return print(await createJoinToken(configFile, args));
   if (domain === "worker" && action === "join") return print(await joinWorker(configFile, args));
   if (domain === "worker" && action === "list") return print(await listJoinedWorkers(configFile));
   if (domain === "worker" && action === "update") return print(await updateJoinedWorkerTransport(configFile, requiredOption(args, "worker-id"), requiredOption(args, "endpoint")));
   if (domain === "worker" && action === "remove") return print(await removeJoinedWorker(configFile, requiredOption(args, "worker-id")));
   if (domain === "config" && action === "init") throw new Error("config init is deprecated: use gateway setup and/or worker setup explicitly");
-  if (domain === "workspace" && action === "list") return print({ ...(await configStore.metadata()), workspaces: (await configStore.read()).workspaces });
-  if (domain === "workspace" && action === "init") {
-    const id = requiredOption(args, "id"); const displayName = option(args, "name") || id; const root = await resolveWorkspaceAuthorityRoot(requiredOption(args, "root"));
-    const config = await configStore.initialize(runtimeConfigSchema.parse({ version: 1, workspaces: [newWorkspace(id, displayName, root)] }));
-    return print({ initialized: true, file: configFile, workspaces: config.workspaces });
-  }
-  if (domain === "workspace" && action === "add") {
-    const id = requiredOption(args, "id"); const displayName = option(args, "name") || id; const root = await resolveWorkspaceAuthorityRoot(requiredOption(args, "root"));
-    const config = await configStore.update((current) => { if (current.workspaces.some((entry) => entry.id === id)) throw new Error(`Workspace already exists: ${id}`); return { ...current, workspaces: [...current.workspaces, newWorkspace(id, displayName, root)] }; }); const workspaces = config.workspaces;
-    return print({ changed: true, workspace: id, workspaces });
-  }
+  if (domain === "workspace" && action === "list") { requiredOption(args, "worker"); return print({ ...(await configStore.metadata()), workspaces: (await configStore.read()).workspaces }); }
+  if (domain === "workspace" && action === "init") throw new Error("workspace init is deprecated: run worker setup, then workspace add --worker <name>");
+  if (domain === "workspace" && action === "add") { requiredOption(args, "worker"); return print(await addWorkspace(configFile, args)); }
   if (domain === "workspace" && (action === "discover" || action === "approve")) {
     throw new Error(`workspace ${action} is deprecated: repository discovery does not grant Workspace authority; use workspace add --id <id> --root <directory> for an explicit authority grant`);
   }
@@ -109,6 +121,9 @@ async function main() {
   if (domain === "tool" && action === "explain") {
     const toolName = toolNameSchema.parse(args[2] || option(args, "tool")); const state = operations(await configStore.read()); const explanation = explainTool(state, toolName); if (!explanation) throw new Error(`Tool not found in effective composition: ${toolName}`); return print({ ...explanation, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint });
   }
+  if ((domain === "gateway" || domain === "worker") && action === "stop") return print(await stopRuntime(layout, domain, localName));
+  if ((domain === "gateway" || domain === "worker") && action === "status") return print(await runtimeStatus(configFile, layout, domain, localName));
+  if ((domain === "gateway" || domain === "worker") && action === "serve") return print(args.includes("--bg") ? await startRuntime(configFile, layout, domain, localName) : await serveRuntime(configFile, domain, localName));
   if (domain === "doctor") {
     const config = await configStore.read(); const state = operations(config); const doctor = await doctorGateway(config);
     return print({ ...state, ...doctor, ok: state.ok && doctor.ok });
@@ -116,7 +131,7 @@ async function main() {
   if (domain === "config" && action === "paths") return print(layout);
   if (domain === "migrate" && action === "from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));
   if (domain === "migrate" && action === "runtime-v1") return print(await migrateRuntimeLayoutV1(layout, args.includes("--execute")));
-  throw new Error("Usage: queqiao gateway setup|join-token, worker setup|join|list|update|remove, config paths, workspace init|list|add|remove, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor");
+  throw new Error(USAGE);
 }
 
 async function realpathDirectory(value: string): Promise<string> {
