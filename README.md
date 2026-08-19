@@ -1,6 +1,8 @@
 # Queqiao
 
 [![Resource Safety Baseline](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml/badge.svg)](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/@tibame201020/queqiao.svg)](https://www.npmjs.com/package/@tibame201020/queqiao)
 
 Queqiao builds one secure bridge between AI clients and multiple coding environments.
 
@@ -235,6 +237,10 @@ To migrate an older checkout safely, preview the non-overwriting plan and then e
 npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao
 npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao --execute
 ```
+
+## Contributing and security
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development and validation workflow. Security issues should follow [SECURITY.md](SECURITY.md); do not disclose credentials or exploit details in a public issue. Queqiao is released under the [MIT License](LICENSE).
 
 ## Inspiration and independence
 

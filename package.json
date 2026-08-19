@@ -76,10 +76,12 @@
     "dist/",
     "README.md",
     "CHANGELOG.md",
+    "LICENSE",
     "config.example.yaml"
   ],
   "publishConfig": {
     "access": "public",
     "provenance": true
-  }
+  },
+  "license": "MIT"
 }
