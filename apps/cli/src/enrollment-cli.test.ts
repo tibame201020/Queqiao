@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Server } from "node:http";
@@ -90,6 +90,7 @@ describe("role setup CLI", () => {
     const secretsDirectory = path.join(root, "secrets");
     const workspaceRoot = path.join(root, "My Project");
     await import("node:fs/promises").then(({ mkdir }) => mkdir(workspaceRoot, { recursive: true }));
+    const canonicalWorkspaceRoot = await realpath(workspaceRoot);
 
     await setupGateway(configFile, ["gateway", "setup", "--public-base-url", "https://gateway.example/shadow/"], stateDirectory, secretsDirectory);
 
@@ -117,7 +118,7 @@ describe("role setup CLI", () => {
     expect(runtime.gateway?.publicBaseUrl).toBe("https://gateway.example/shadow/");
     expect(runtime.worker).toMatchObject({ listen: { host: "127.0.0.1", port: 8765 }, defaultWorkspaceId: "my-project" });
     expect(runtime.workspaces).toEqual([
-      expect.objectContaining({ id: "my-project", displayName: "My Project", root: workspaceRoot, profile: "coding" }),
+      expect.objectContaining({ id: "my-project", displayName: "My Project", root: canonicalWorkspaceRoot, profile: "coding" }),
     ]);
   });
   it("prompts for Worker port when --port is omitted", async () => {
