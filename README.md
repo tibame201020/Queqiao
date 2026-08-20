@@ -12,11 +12,44 @@ always executes inside the native environment.
 
 ## Quick CLI demo
 
-![Queqiao packed CLI first-run demo](docs/assets/queqiao-cli-demo.gif)
+Install Queqiao from npm:
 
-The demo is rendered from commands executed against the packed `0.7.0` npm artifact in
-an isolated Windows demo runtime. Generated worker IDs and process IDs are redacted;
-the command results themselves come from the real CLI execution.
+```shell
+npm install --global @tibame201020/queqiao
+```
+
+### 1. Create the Gateway and Worker roles
+
+![Create the Queqiao Gateway and Worker roles](docs/assets/cli/01-bootstrap-roles.gif)
+
+Gateway and Worker setup are separate role-local operations. Neither grants Workspace
+authority or enrolls the Worker.
+
+### 2. Grant a Workspace
+
+![Grant explicit Workspace authority](docs/assets/cli/02-workspace-authority.gif)
+
+Grant one explicit directory to the Worker. Setup and discovery do not silently broaden
+filesystem authority.
+
+### 3. Start and enroll the Worker
+
+![Start Queqiao and enroll the Worker](docs/assets/cli/03-start-enroll.gif)
+
+Start both roles, issue one-time enrollment material, and join the Worker to the Gateway.
+Process startup and Gateway membership remain separate operations.
+
+### 4. Verify the deployment
+
+![Verify the Queqiao deployment](docs/assets/cli/04-verify-deployment.gif)
+
+Confirm that the Gateway and Worker are running and that the enrolled Worker is reachable
+before connecting an MCP client.
+
+These demos are rendered from commands executed against the published `0.7.0` npm artifact
+in an isolated Windows demo runtime. Ephemeral identifiers and enrollment material are
+redacted; displayed command results are projected from the real CLI responses rather than
+fabricated terminal output.
 
 ## Production architecture
 
