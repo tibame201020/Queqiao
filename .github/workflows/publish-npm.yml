@@ -31,9 +31,8 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: npm
       - name: Verify immutable release identity
         shell: bash
         run: |
@@ -54,16 +53,13 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run security:gate
       - run: npm run resource:gate
-      - name: Require npm publishing credential
+      - name: Verify trusted publishing toolchain
         shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          test -n "$NODE_AUTH_TOKEN" || {
-            echo "::error::Repository secret NPM_TOKEN is required for the first npm publication"
-            exit 1
-          }
-      - name: Publish public package with provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          set -euo pipefail
+          node --version
+          npm_version="$(npm --version)"
+          echo "npm v$npm_version"
+          node -e "const [M,m,p]=process.argv[1].split('.').map(Number); if (M < 11 || (M === 11 && (m < 5 || (m === 5 && p < 1)))) process.exit(1)" "$npm_version"
+      - name: Publish public package with trusted publishing
         run: npm publish --provenance --access public
