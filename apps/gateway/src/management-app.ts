@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 import express, { type Express } from "express";
 import rateLimit from "express-rate-limit";
+import { buildControlPlaneSnapshot, type OperationsDiagnostics } from "@queqiao/operations";
 import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
 
@@ -15,14 +16,36 @@ function contained(base: string, candidate: string): boolean {
   return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
-export function createGatewayManagementApp(options: { secret: string; enrollment: EnrollmentService; memberships: WorkerMembershipStore; stateDirectory: string }): Express {
+export function createGatewayManagementApp(options: {
+  secret: string;
+  enrollment: EnrollmentService;
+  memberships: WorkerMembershipStore;
+  stateDirectory: string;
+  operations: OperationsDiagnostics;
+}): Express {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "64kb" }));
   app.use(rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false }));
+  app.use((_req, res, next) => {
+    res.set({ "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+    next();
+  });
   app.use((req, res, next) => {
     if (!safeEqual(req.header("x-queqiao-management-secret") || "", options.secret)) return res.status(401).json({ error: "unauthorized" });
     next();
+  });
+  app.get("/v1/operations", async (_req, res) => {
+    try {
+      const memberships = await options.memberships.read();
+      res.json(buildControlPlaneSnapshot(options.operations, memberships.workers.map((worker) => ({
+        workerId: worker.workerId,
+        environmentId: worker.environmentId,
+        transport: { type: worker.transport.type, endpoint: worker.transport.endpoint },
+      }))));
+    } catch {
+      res.status(500).json({ error: "control_plane_snapshot_failed" });
+    }
   });
   app.post("/join-tokens", (req, res) => {
     try {

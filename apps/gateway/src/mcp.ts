@@ -3,12 +3,12 @@ import { ToolRuntime, extensionActiveForWorkspace, resolveExtensionComposition }
 import type { InstalledExtensionConfig } from "@queqiao/config";
 import { coreWorkspaceTools, type GatewayToolContext } from "./core-tools.js";
 import type { WorkerRegistry } from "./worker-registry.js";
-import { CORE_PUBLIC_TOOL_ORDER, CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core-manifest";
+import { CORE_PUBLIC_TOOL_ORDER, CORE_PUBLIC_TOOLS } from "@queqiao/core-manifest";
 import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "@queqiao/mcp-compat";
-import { buildOperationsDiagnostics, publicOperationsProjection } from "@queqiao/operations";
-import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
+import { publicOperationsProjection } from "@queqiao/operations";
 import type { McpCancellationRegistry } from "./cancellation-registry.js";
 import { toQueqiaoErrorEnvelope } from "./errors.js";
+import { gatewayOperationsDiagnostics } from "./operations.js";
 
 export const QUEQIAO_V0_TOOL_NAMES = ["workspace_info", "read_file"] as const;
 export const QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES = CORE_PUBLIC_TOOL_ORDER;
@@ -30,13 +30,7 @@ export function createGatewayToolRuntime(): ToolRuntime<GatewayToolContext> {
 export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = []): McpServer {
   const server = new McpServer({ name: "queqiao-mcp", version: "0.1.0" }, { supportedProtocolVersions: [...QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS] });
   const runtime = createGatewayToolRuntime();
-  const diagnostics = buildOperationsDiagnostics({
-    coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION,
-    workerProtocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION,
-    supportedMcpProtocolVersions: QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS,
-    coreTools: CORE_PUBLIC_TOOLS,
-    extensions,
-  });
+  const diagnostics = gatewayOperationsDiagnostics(extensions);
   const context: GatewayToolContext = { workers, oauthScopes: new Set(scopes), deployment: publicOperationsProjection(diagnostics) };
 
   const manifestRank = (name: string) => {

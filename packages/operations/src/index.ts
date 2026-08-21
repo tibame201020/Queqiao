@@ -73,6 +73,17 @@ export type PublicOperationsProjection = {
   supportedMcpProtocolVersions: readonly string[];
 };
 
+export type ControlPlaneWorkerProjection = {
+  workerId: string;
+  environmentId: string;
+  transport: { type: string; endpoint: string };
+};
+
+export type ControlPlaneSnapshot = {
+  apiVersion: 1;
+  deployment: OperationsDiagnostics;
+  workers: readonly ControlPlaneWorkerProjection[];
+};
 function normalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalize);
   if (value && typeof value === "object") {
@@ -220,6 +231,17 @@ export function buildOperationsDiagnostics(input: {
   }
 }
 
+export function buildControlPlaneSnapshot(
+  deployment: OperationsDiagnostics,
+  workers: readonly ControlPlaneWorkerProjection[],
+): ControlPlaneSnapshot {
+  const safeWorkers = workers.map((worker) => Object.freeze({
+    workerId: worker.workerId,
+    environmentId: worker.environmentId,
+    transport: Object.freeze({ ...worker.transport }),
+  })).sort((left, right) => left.environmentId.localeCompare(right.environmentId) || left.workerId.localeCompare(right.workerId));
+  return Object.freeze({ apiVersion: 1 as const, deployment, workers: Object.freeze(safeWorkers) });
+}
 export function publicOperationsProjection(diagnostics: OperationsDiagnostics): PublicOperationsProjection {
   return Object.freeze({
     coreManifestRevision: diagnostics.coreManifestRevision,
