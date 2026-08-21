@@ -68,7 +68,7 @@ Internet-facing composition root. It owns OAuth, the remote Streamable HTTP MCP 
 
 The Gateway MUST NOT perform native Workspace filesystem/process execution. MCP-specific construction, protocol-version handling, HTTP adaptation, and result/schema mapping are isolated at the Gateway adapter boundary; MCP SDK dependencies do not belong in Core/domain packages.
 
-The role-local Gateway management listener remains bound to loopback and authenticated with the local management secret. Its versioned control-plane read model (`GET /v1/operations`) reuses the same operations diagnostics as MCP deployment attestation and exposes only a redacted Worker membership projection; Worker credential references are never part of that response. The control-plane API is not public MCP and does not grant or broaden Workspace authority.
+The role-local Gateway management listener remains bound to loopback and authenticated with the local management secret. Its versioned control-plane read model (`GET /v1/operations`) reuses the same operations diagnostics as MCP deployment attestation and the same live `MembershipWorkerRegistry` as Gateway routing. It exposes a redacted Worker projection with liveness plus the Worker-authoritative Workspace catalog (root, profile, tool policy, and command allowlist); Worker credential references are never part of that response. The control-plane API is not public MCP and does not grant or broaden Workspace authority.
 
 ### `apps/worker`
 

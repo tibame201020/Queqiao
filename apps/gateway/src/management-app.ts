@@ -6,6 +6,9 @@ import rateLimit from "express-rate-limit";
 import { buildControlPlaneSnapshot, type OperationsDiagnostics } from "@queqiao/operations";
 import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
+import type { WorkerRegistry } from "./worker-registry.js";
+
+type ControlPlaneWorkerSource = { current(): Promise<Pick<WorkerRegistry, "listEnvironments" | "livenessSnapshot">> };
 
 function safeEqual(left: string, right: string): boolean {
   return timingSafeEqual(createHash("sha256").update(left).digest(), createHash("sha256").update(right).digest());
@@ -20,6 +23,7 @@ export function createGatewayManagementApp(options: {
   secret: string;
   enrollment: EnrollmentService;
   memberships: WorkerMembershipStore;
+  workers: ControlPlaneWorkerSource;
   stateDirectory: string;
   operations: OperationsDiagnostics;
 }): Express {
@@ -38,11 +42,33 @@ export function createGatewayManagementApp(options: {
   app.get("/v1/operations", async (_req, res) => {
     try {
       const memberships = await options.memberships.read();
-      res.json(buildControlPlaneSnapshot(options.operations, memberships.workers.map((worker) => ({
-        workerId: worker.workerId,
-        environmentId: worker.environmentId,
-        transport: { type: worker.transport.type, endpoint: worker.transport.endpoint },
-      }))));
+      const registry = await options.workers.current();
+      const environments = await registry.listEnvironments();
+      const livenessByEnvironment = new Map(registry.livenessSnapshot().map((state) => [state.environmentId, state]));
+      const environmentById = new Map(environments.map((environment) => [environment.environmentId, environment]));
+      res.json(buildControlPlaneSnapshot(options.operations, memberships.workers.map((worker) => {
+        const environment = environmentById.get(worker.environmentId);
+        const liveness = livenessByEnvironment.get(worker.environmentId) ?? { environmentId: worker.environmentId, reachable: false };
+        return {
+          workerId: worker.workerId,
+          environmentId: worker.environmentId,
+          transport: { type: worker.transport.type, endpoint: worker.transport.endpoint },
+          liveness: {
+            reachable: liveness.reachable,
+            ...(liveness.checkedAt ? { checkedAt: liveness.checkedAt } : {}),
+            ...(liveness.lastSuccessAt ? { lastSuccessAt: liveness.lastSuccessAt } : {}),
+          },
+          ...(environment?.defaultWorkspaceId ? { defaultWorkspaceId: environment.defaultWorkspaceId } : {}),
+          workspaces: (environment?.workspaces ?? []).map((workspace) => ({
+            workspaceId: workspace.workspaceId,
+            displayName: workspace.displayName,
+            root: workspace.root,
+            profile: workspace.profile,
+            tools: workspace.tools,
+            commands: workspace.commands,
+          })),
+        };
+      })));
     } catch {
       res.status(500).json({ error: "control_plane_snapshot_failed" });
     }

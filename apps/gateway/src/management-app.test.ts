@@ -8,8 +8,14 @@ import { createGatewayManagementApp } from "./management-app.js";
 import { gatewayOperationsDiagnostics } from "./operations.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
 
-function managementOptions(directory: string, secret: string, memberships: WorkerMembershipStore, enrollment: EnrollmentService) {
-  return { secret, enrollment, memberships, stateDirectory: directory, operations: gatewayOperationsDiagnostics([]) };
+function managementOptions(
+  directory: string,
+  secret: string,
+  memberships: WorkerMembershipStore,
+  enrollment: EnrollmentService,
+  workers = { current: async () => ({ listEnvironments: async () => [], livenessSnapshot: () => [] }) },
+) {
+  return { secret, enrollment, memberships, workers, stateDirectory: directory, operations: gatewayOperationsDiagnostics([]) };
 }
 
 describe("Gateway management listener", () => {
@@ -51,7 +57,28 @@ describe("Gateway management listener", () => {
       transport: { type: "http", endpoint: "http://127.0.0.1:7576/" },
       credentialRefs: [{ kind: "secret-file", path: credentialPath }],
     });
-    const app = createGatewayManagementApp(managementOptions(directory, secret, memberships, enrollment));
+    const checkedAt = "2026-08-21T13:00:00.000Z";
+    const workers = {
+      current: async () => ({
+        listEnvironments: async () => [{
+          environmentId: "windows",
+          online: true,
+          defaultWorkspaceId: "main",
+          workspaces: [{
+            environmentId: "windows",
+            workspaceId: "main",
+            displayName: "Main workspace",
+            root: "C:\\workspace",
+            profile: "coding" as const,
+            tools: { allow: ["run", "read_file"], deny: ["shell"], explicit: ["run"] },
+            commands: { allow: ["npm", "git"] },
+            online: true as const,
+          }],
+        }],
+        livenessSnapshot: () => [{ environmentId: "windows", reachable: true, checkedAt, lastSuccessAt: checkedAt }],
+      }),
+    };
+    const app = createGatewayManagementApp(managementOptions(directory, secret, memberships, enrollment, workers));
 
     await request(app).get("/v1/operations").expect(401);
     const response = await request(app).get("/v1/operations").set("x-queqiao-management-secret", secret).expect(200);
@@ -63,6 +90,16 @@ describe("Gateway management listener", () => {
       workerId,
       environmentId: "windows",
       transport: { type: "http", endpoint: "http://127.0.0.1:7576/" },
+      liveness: { reachable: true, checkedAt, lastSuccessAt: checkedAt },
+      defaultWorkspaceId: "main",
+      workspaces: [{
+        workspaceId: "main",
+        displayName: "Main workspace",
+        root: "C:\\workspace",
+        profile: "coding",
+        tools: { allow: ["read_file", "run"], deny: ["shell"], explicit: ["run"] },
+        commands: { allow: ["git", "npm"] },
+      }],
     }]);
     const serialized = JSON.stringify(response.body);
     expect(serialized).not.toContain("credentialRefs");

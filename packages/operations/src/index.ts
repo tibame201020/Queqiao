@@ -73,10 +73,22 @@ export type PublicOperationsProjection = {
   supportedMcpProtocolVersions: readonly string[];
 };
 
+export type ControlPlaneWorkspaceProjection = {
+  workspaceId: string;
+  displayName: string;
+  root: string;
+  profile: "read-only" | "editor" | "coding";
+  tools: { allow: readonly string[]; deny: readonly string[]; explicit: readonly string[] };
+  commands: { allow: readonly string[] };
+};
+
 export type ControlPlaneWorkerProjection = {
   workerId: string;
   environmentId: string;
   transport: { type: string; endpoint: string };
+  liveness: { reachable: boolean; checkedAt?: string; lastSuccessAt?: string };
+  defaultWorkspaceId?: string;
+  workspaces: readonly ControlPlaneWorkspaceProjection[];
 };
 
 export type ControlPlaneSnapshot = {
@@ -239,6 +251,20 @@ export function buildControlPlaneSnapshot(
     workerId: worker.workerId,
     environmentId: worker.environmentId,
     transport: Object.freeze({ ...worker.transport }),
+    liveness: Object.freeze({ ...worker.liveness }),
+    ...(worker.defaultWorkspaceId ? { defaultWorkspaceId: worker.defaultWorkspaceId } : {}),
+    workspaces: Object.freeze(worker.workspaces.map((workspace) => Object.freeze({
+      workspaceId: workspace.workspaceId,
+      displayName: workspace.displayName,
+      root: workspace.root,
+      profile: workspace.profile,
+      tools: Object.freeze({
+        allow: Object.freeze([...workspace.tools.allow].sort()),
+        deny: Object.freeze([...workspace.tools.deny].sort()),
+        explicit: Object.freeze([...workspace.tools.explicit].sort()),
+      }),
+      commands: Object.freeze({ allow: Object.freeze([...workspace.commands.allow].sort()) }),
+    })).sort((left, right) => left.workspaceId.localeCompare(right.workspaceId))),
   })).sort((left, right) => left.environmentId.localeCompare(right.environmentId) || left.workerId.localeCompare(right.workerId));
   return Object.freeze({ apiVersion: 1 as const, deployment, workers: Object.freeze(safeWorkers) });
 }
