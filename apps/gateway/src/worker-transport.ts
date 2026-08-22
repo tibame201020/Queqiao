@@ -1,3 +1,5 @@
+import type { WorkerWorkspaceMutation } from "@queqiao/worker-protocol";
+
 export type WorkerHttpTransportDescriptor = {
   type: "http";
   endpoint: string;
@@ -11,6 +13,7 @@ export type WorkerTransportRequest =
   | { operation: "list-workspaces" }
   | { operation: "workspace-info"; workspaceId: string; tool: "workspace_info" | "open_workspace" }
   | { operation: "invoke-tool"; toolName: string; input: unknown }
+  | { operation: "workspace-admin-mutation"; mutation: WorkerWorkspaceMutation }
   | { operation: "legacy-read-file"; input: { workspaceId: string; path: string; offset: number; limit: number } };
 
 export interface WorkerTransport {

@@ -1,5 +1,6 @@
 import { WorkerClient, type WorkerClientConfig } from "./worker-client.js";
 import { QueqiaoError } from "./errors.js";
+import type { WorkerWorkspaceMutation } from "@queqiao/worker-protocol";
 
 export type WorkspaceRoute = { environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] }; online: true };
 export type EnvironmentState = { environmentId: string; online: boolean; defaultWorkspaceId?: string; workspaces: WorkspaceRoute[] };
@@ -26,7 +27,17 @@ export class WorkerRegistry {
     });
   }
 
+  private requireWorker(workerId: string): WorkerClient {
+    const worker = this.workers.find((candidate) => candidate.workerId === workerId);
+    if (!worker) throw new QueqiaoError("worker_not_found", `Worker is not enrolled: ${workerId}`);
+    return worker;
+  }
+
   configuredEnvironmentIds(): string[] { return this.workers.map((worker) => worker.environmentId); }
+
+  mutateWorkspace(workerId: string, mutation: WorkerWorkspaceMutation) {
+    return this.requireWorker(workerId).mutateWorkspace(mutation);
+  }
 
   livenessSnapshot(): WorkerLivenessState[] {
     return this.workers.map((worker) => {

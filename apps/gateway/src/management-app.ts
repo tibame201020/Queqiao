@@ -1,14 +1,18 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { rm } from "node:fs/promises";
 import path from "node:path";
-import express, { type Express } from "express";
+import express, { type Express, type Response } from "express";
+import { z } from "zod";
+import { workerIdSchema } from "@queqiao/contracts";
+import { workerWorkspaceMutationSchema } from "@queqiao/worker-protocol";
 import rateLimit from "express-rate-limit";
 import { buildControlPlaneSnapshot, type OperationsDiagnostics } from "@queqiao/operations";
 import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
+import { QueqiaoError, WorkerHttpError } from "./errors.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
 import type { WorkerRegistry } from "./worker-registry.js";
 
-type ControlPlaneWorkerSource = { current(): Promise<Pick<WorkerRegistry, "listEnvironments" | "livenessSnapshot">> };
+type ControlPlaneWorkerSource = { current(): Promise<Pick<WorkerRegistry, "listEnvironments" | "livenessSnapshot" | "mutateWorkspace">> };
 
 function safeEqual(left: string, right: string): boolean {
   return timingSafeEqual(createHash("sha256").update(left).digest(), createHash("sha256").update(right).digest());
@@ -17,6 +21,13 @@ function safeEqual(left: string, right: string): boolean {
 function contained(base: string, candidate: string): boolean {
   const relative = path.relative(path.resolve(base), path.resolve(candidate));
   return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function sendWorkspaceMutationError(res: Response, error: unknown): void {
+  if (error instanceof z.ZodError) { res.status(400).json({ error: "invalid_workspace_mutation" }); return; }
+  if (error instanceof WorkerHttpError) { res.status(error.status).json({ error: error.code, message: error.message }); return; }
+  if (error instanceof QueqiaoError && error.code === "worker_not_found") { res.status(404).json({ error: error.code, message: error.message }); return; }
+  res.status(500).json({ error: "workspace_mutation_failed" });
 }
 
 export function createGatewayManagementApp(options: {
@@ -39,6 +50,17 @@ export function createGatewayManagementApp(options: {
     if (!safeEqual(req.header("x-queqiao-management-secret") || "", options.secret)) return res.status(401).json({ error: "unauthorized" });
     next();
   });
+  const mutateWorkspace = async (workerIdInput: unknown, mutationInput: unknown, res: Response) => {
+    try {
+      const workerId = workerIdSchema.parse(workerIdInput);
+      const mutation = workerWorkspaceMutationSchema.parse(mutationInput);
+      const registry = await options.workers.current();
+      res.json(await registry.mutateWorkspace(workerId, mutation));
+    } catch (error) {
+      sendWorkspaceMutationError(res, error);
+    }
+  };
+
   app.get("/v1/operations", async (_req, res) => {
     try {
       const memberships = await options.memberships.read();
@@ -73,7 +95,31 @@ export function createGatewayManagementApp(options: {
       res.status(500).json({ error: "control_plane_snapshot_failed" });
     }
   });
-  app.post("/join-tokens", (req, res) => {
+  app.post("/v1/workers/:workerId/workspaces", async (req, res) => {
+    await mutateWorkspace(req.params.workerId, {
+      kind: "workspace.add",
+      workspace: {
+        id: req.body?.id,
+        displayName: req.body?.displayName,
+        root: req.body?.root,
+        profile: req.body?.profile,
+      },
+    }, res);
+  });
+  app.delete("/v1/workers/:workerId/workspaces/:workspaceId", async (req, res) => {
+    await mutateWorkspace(req.params.workerId, { kind: "workspace.remove", workspaceId: req.params.workspaceId }, res);
+  });
+  app.patch("/v1/workers/:workerId/workspaces/:workspaceId/profile", async (req, res) => {
+    await mutateWorkspace(req.params.workerId, { kind: "profile.set", workspaceId: req.params.workspaceId, profile: req.body?.profile }, res);
+  });
+  app.patch("/v1/workers/:workerId/workspaces/:workspaceId/tools/:tool", async (req, res) => {
+    await mutateWorkspace(req.params.workerId, { kind: "tool.decide", workspaceId: req.params.workspaceId, tool: req.params.tool, decision: req.body?.decision }, res);
+  });
+  app.patch("/v1/workers/:workerId/workspaces/:workspaceId/commands", async (req, res) => {
+    await mutateWorkspace(req.params.workerId, { kind: "command.decide", workspaceId: req.params.workspaceId, command: req.body?.command, decision: req.body?.decision }, res);
+  });
+
+  app.post(["/join-tokens", "/v1/join-tokens"], (req, res) => {
     try {
       const result = options.enrollment.createJoinToken({
         ...(req.body?.expiresSeconds !== undefined ? { expiresSeconds: Number(req.body.expiresSeconds) } : {}),
@@ -87,16 +133,16 @@ export function createGatewayManagementApp(options: {
     }
   });
   app.get("/workers", async (_req, res) => res.json(await options.memberships.read()));
-  app.patch("/workers/:workerId/transport", async (req, res) => {
+  app.patch(["/workers/:workerId/transport", "/v1/workers/:workerId/transport"], async (req, res) => {
     try {
-      const membership = await options.enrollment.updateTransport(req.params.workerId, req.body?.transport);
+      const membership = await options.enrollment.updateTransport(String(req.params.workerId || ""), req.body?.transport);
       res.json({ updated: true, workerId: membership.workerId, environmentId: membership.environmentId, transport: membership.transport });
     } catch (error) {
       const failure = error instanceof EnrollmentError ? error : new EnrollmentError(400, "worker_transport_update_failed", error instanceof Error ? error.message : "Worker transport update failed");
       res.status(failure.status).json({ error: failure.code, message: failure.message });
     }
   });
-  app.delete("/workers/:workerId", async (req, res) => {
+  app.delete(["/workers/:workerId", "/v1/workers/:workerId"], async (req, res) => {
     try {
       const before = await options.memberships.read();
       const existing = before.workers.find((worker) => worker.workerId === req.params.workerId);

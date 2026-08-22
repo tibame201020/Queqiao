@@ -5,13 +5,17 @@ import {
   QUEQIAO_WORKER_LEGACY_CAPABILITIES,
   QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION,
   QUEQIAO_WORKER_PROTOCOL_VERSION,
+  QUEQIAO_WORKER_WORKSPACE_ADMIN_CAPABILITY,
   workerHelloSchema,
   workerRunResultSchema,
   workerShellResultSchema,
+  workerWorkspaceMutationResultSchema,
   type WorkerHello,
   type WorkerRunResult,
   type WorkerShellResult,
   type WorkerToolInvocationResponse,
+  type WorkerWorkspaceMutation,
+  type WorkerWorkspaceMutationResult,
 } from "@queqiao/worker-protocol";
 
 export type WorkerClientConfig = {
@@ -103,6 +107,14 @@ export class WorkerClient {
   async workspaceInfo(workspaceId: string, tool: "workspace_info" | "open_workspace" = "open_workspace") {
     await this.handshake();
     return this.executeTracked<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] } }>({ operation: "workspace-info", workspaceId, tool });
+  }
+
+  async mutateWorkspace(mutation: WorkerWorkspaceMutation): Promise<WorkerWorkspaceMutationResult> {
+    const hello = await this.handshake();
+    if (!hello.capabilities.includes(QUEQIAO_WORKER_WORKSPACE_ADMIN_CAPABILITY)) {
+      throw new WorkerHttpError(409, "worker_capability_missing", `Worker does not advertise ${QUEQIAO_WORKER_WORKSPACE_ADMIN_CAPABILITY}`);
+    }
+    return workerWorkspaceMutationResultSchema.parse(await this.executeTracked<unknown>({ operation: "workspace-admin-mutation", mutation }));
   }
 
   async invokeTool<T>(toolName: string, input: unknown, signal?: AbortSignal) {

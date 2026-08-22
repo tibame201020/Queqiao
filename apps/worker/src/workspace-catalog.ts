@@ -24,8 +24,8 @@ export class WorkspaceCatalog {
 
   async initialize(): Promise<void> { await this.reload(true); }
 
-  async refresh(): Promise<void> {
-    if ("file" in this.source) await this.reload(false);
+  async refresh(force = false): Promise<void> {
+    if ("file" in this.source) await this.reload(force);
   }
 
   private async reload(force: boolean): Promise<void> {

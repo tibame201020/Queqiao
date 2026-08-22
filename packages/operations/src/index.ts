@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+export * from "./runtime-config-mutations.js";
 import type { InstalledExtensionConfig, ExtensionContribution } from "@queqiao/config";
 import type { ToolAnnotations, ToolCapability, ToolRisk } from "@queqiao/contracts";
 import { ExtensionCompositionError, resolveExtensionComposition } from "@queqiao/tool-runtime";

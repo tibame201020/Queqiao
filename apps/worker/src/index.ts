@@ -27,7 +27,7 @@ const extensionHost = new ExtensionHost<WorkerToolContext>(
 );
 await extensionHost.load();
 const processes = new ProcessRunner();
-const app = await createWorkerApp({ ...(runtime.worker.workerId ? { workerId: runtime.worker.workerId } : {}), environmentId: runtime.worker.environmentId, defaultWorkspaceId, workspacesFile: configFile, workerCredential: credential, processes, extensionHost });
+const app = await createWorkerApp({ ...(runtime.worker.workerId ? { workerId: runtime.worker.workerId } : {}), environmentId: runtime.worker.environmentId, defaultWorkspaceId, workspacesFile: configFile, runtimeConfigFile: configFile, workerCredential: credential, processes, extensionHost });
 const server = app.listen(port, "127.0.0.1", () => console.log(`Queqiao Worker listening on http://127.0.0.1:${port}`));
 
 let stopping = false;

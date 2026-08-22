@@ -1,8 +1,9 @@
 import path from "node:path";
 import { group, intro, isCancel, outro, select, text, cancel } from "@clack/prompts";
 import { workspacePath } from "./workspace-path-prompt.js";
-import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig } from "@queqiao/config";
+import { runtimeConfigSchema, type RuntimeConfig } from "@queqiao/config";
 import { AtomicConfigStore } from "./atomic-config-store.js";
+import { addRuntimeWorkspace } from "@queqiao/operations";
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
 import { secureRuntimeFile } from "./secure-runtime-paths.js";
 
@@ -114,27 +115,10 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
     answers = { ...raw, root: await resolveWorkspaceAuthorityRoot(raw.root) };
   }
 
-  const workspace = workspaceConfigSchema.parse({
-    id: answers.id,
-    displayName: answers.displayName,
-    root: answers.root,
-    profile: answers.profile,
-    tools: { allow: [], deny: [], explicit: [] },
-    commands: { allow: [] },
-  });
-
-  const next = await store.update((config) => {
-    if (!config.worker) throw new Error("Worker setup is required before adding a Workspace");
-    if (config.workspaces.some((entry) => entry.id === workspace.id)) throw new Error(`Workspace already exists: ${workspace.id}`);
-    return runtimeConfigSchema.parse({
-      ...config,
-      worker: { ...config.worker, defaultWorkspaceId: config.worker.defaultWorkspaceId || workspace.id },
-      workspaces: [...config.workspaces, workspace],
-    });
-  });
+  const next = await store.update((config) => addRuntimeWorkspace(config, answers));
   await secureRuntimeFile(configFile);
-  if (!prompt && !scripted) outro(`Workspace added: ${workspace.id}`);
-  return { added: true, workspace: next.workspaces.find((entry) => entry.id === workspace.id), defaultWorkspaceId: next.worker?.defaultWorkspaceId };
+  if (!prompt && !scripted) outro(`Workspace added: ${answers.id}`);
+  return { added: true, workspace: next.workspaces.find((entry) => entry.id === answers.id), defaultWorkspaceId: next.worker?.defaultWorkspaceId };
 }
 
 export const workspaceCliInternals = { suggestedWorkspaceId, parseProfile };

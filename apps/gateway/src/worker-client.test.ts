@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkerClient } from "./worker-client.js";
-import { QUEQIAO_WORKER_LEGACY_CAPABILITIES, QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION, QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
+import { QUEQIAO_WORKER_LEGACY_CAPABILITIES, QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION, QUEQIAO_WORKER_PROTOCOL_VERSION, QUEQIAO_WORKER_WORKSPACE_ADMIN_CAPABILITY } from "@queqiao/worker-protocol";
 
 const legacyConfig = { environmentId: "windows", transport: { type: "http" as const, endpoint: "http://worker.local" }, token: "secret" };
 const membershipConfig = {
@@ -64,6 +64,22 @@ describe("WorkerClient rolling upgrade", () => {
     vi.stubGlobal("fetch", fetch);
     await expect(new WorkerClient(membershipConfig).run({ workspaceId: "one", executable: "node", args: [], cwd: ".", timeoutMs: 1000, mode: "async" })).resolves.toEqual(asyncResult);
   });
+  it("requires the optional Workspace admin capability before delegating mutations", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(membershipHello), { status: 200, headers: { "content-type": "application/json" } })));
+    await expect(new WorkerClient(membershipConfig).mutateWorkspace({ kind: "profile.set", workspaceId: "one", profile: "coding" })).rejects.toMatchObject({ code: "worker_capability_missing", status: 409 });
+  });
+
+  it("sends Workspace mutations only after an authenticated capability handshake", async () => {
+    const hello = { ...membershipHello, capabilities: [QUEQIAO_WORKER_WORKSPACE_ADMIN_CAPABILITY] };
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(hello), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ changed: true, workspaceId: "one" }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(new WorkerClient(membershipConfig).mutateWorkspace({ kind: "profile.set", workspaceId: "one", profile: "coding" })).resolves.toEqual({ changed: true, workspaceId: "one" });
+    expect(String(fetch.mock.calls[1]?.[0])).toContain("/v1/admin/workspace-mutations");
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: "POST" });
+  });
+
   it("treats liveness as advisory and restores reachability after a real invocation succeeds", async () => {
     const states: boolean[] = [];
     const transport = {

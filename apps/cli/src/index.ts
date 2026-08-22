@@ -5,7 +5,7 @@ import { runtimeConfigSchema, type RuntimeConfig } from "@queqiao/config";
 import { toolNameSchema } from "@queqiao/contracts";
 import { CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core-manifest";
 import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "@queqiao/mcp-compat";
-import { buildDeploymentManifest, buildOperationsDiagnostics, explainTool } from "@queqiao/operations";
+import { buildDeploymentManifest, buildOperationsDiagnostics, decideRuntimeWorkspaceCommand, decideRuntimeWorkspaceTool, explainTool, normalizeRuntimeCommand, removeRuntimeWorkspace, setRuntimeWorkspaceProfile } from "@queqiao/operations";
 import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import { resolveRuntimeLayout, resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
@@ -74,28 +74,23 @@ async function main() {
   }
   if (domain === "workspace" && action === "remove") {
     const id = requiredOption(args, "id");
-    const config = await configStore.update((current) => { const next = current.workspaces.filter((entry) => entry.id !== id); if (next.length === current.workspaces.length) throw new Error(`Workspace not found: ${id}`); return { ...current, workspaces: next }; }); const workspaces = config.workspaces;
+    const config = await configStore.update((current) => removeRuntimeWorkspace(current, id)); const workspaces = config.workspaces;
     return print({ changed: true, removed: id, workspaces });
   }
   if (domain === "profile" && action === "set") {
     const id = requiredOption(args, "workspace"); const profile = z.enum(["read-only", "editor", "coding"]).parse(requiredOption(args, "profile"));
-    const config = await configStore.update((current) => ({ ...current, workspaces: current.workspaces.map((entry) => entry.id === id ? { ...entry, profile } : entry) })); const workspaces = config.workspaces;
-    if (!workspaces.some((entry) => entry.id === id)) throw new Error(`Workspace not found: ${id}`);
+    await configStore.update((current) => setRuntimeWorkspaceProfile(current, id, profile));
     return print({ changed: true, workspaceId: id, profile });
   }
   if (domain === "tool" && (action === "allow" || action === "deny")) {
     const id = requiredOption(args, "workspace"); const tool = managedToolSchema.parse(requiredOption(args, "tool"));
-    let found = false;
-    const config = await configStore.update((current) => ({ ...current, workspaces: current.workspaces.map((entry) => { if (entry.id !== id) return entry; found = true; const allow = entry.tools.allow.filter((item) => item !== tool); const deny = entry.tools.deny.filter((item) => item !== tool); const explicit = entry.tools.explicit.filter((item) => item !== tool); if (tool === "shell") return { ...entry, tools: action === "allow" ? { allow, deny, explicit: unique([...explicit, tool]) } : { allow, deny: unique([...deny, tool]), explicit } }; return { ...entry, tools: action === "allow" ? { allow: unique([...allow, tool]), deny, explicit } : { allow, deny: unique([...deny, tool]), explicit } }; }) })); const workspaces = config.workspaces;
-    if (!found) throw new Error(`Workspace not found: ${id}`);
-    return print({ changed: true, workspaceId: id, tool, decision: action, policy: workspaces.find((entry) => entry.id === id)?.tools });
+    const config = await configStore.update((current) => decideRuntimeWorkspaceTool(current, id, tool, action));
+    return print({ changed: true, workspaceId: id, tool, decision: action, policy: config.workspaces.find((entry) => entry.id === id)?.tools });
   }
   if (domain === "command" && (action === "allow" || action === "deny")) {
-    const id = requiredOption(args, "workspace"); const command = requiredOption(args, "command").trim().toLowerCase(); if (!/^[a-z0-9._+-]+$/.test(command)) throw new Error("Command must be an executable name without path or shell syntax");
-    let found = false;
-    const config = await configStore.update((current) => ({ ...current, workspaces: current.workspaces.map((entry) => { if (entry.id !== id) return entry; found = true; const allow = entry.commands.allow.filter((item) => item !== command); return { ...entry, commands: { allow: action === "allow" ? unique([...allow, command]) : allow } }; }) })); const workspaces = config.workspaces;
-    if (!found) throw new Error(`Workspace not found: ${id}`);
-    return print({ changed: true, workspaceId: id, command, decision: action, policy: workspaces.find((entry) => entry.id === id)?.commands });
+    const id = requiredOption(args, "workspace"); const command = normalizeRuntimeCommand(requiredOption(args, "command"));
+    const config = await configStore.update((current) => decideRuntimeWorkspaceCommand(current, id, command, action));
+    return print({ changed: true, workspaceId: id, command, decision: action, policy: config.workspaces.find((entry) => entry.id === id)?.commands });
   }
   if (domain === "environment") throw new Error("environment commands are deprecated: use worker join|list|update|remove for Gateway membership management");
   if (domain === "discovery" && action === "list") {

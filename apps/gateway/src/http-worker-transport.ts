@@ -49,6 +49,11 @@ export class HttpWorkerTransport implements WorkerTransport {
           pathname: `${QUEQIAO_WORKER_HTTP_API_PREFIX}/tools/${encodeURIComponent(request.toolName)}`,
           init: { method: "POST", body: JSON.stringify(request.input) },
         };
+      case "workspace-admin-mutation":
+        return {
+          pathname: `${QUEQIAO_WORKER_HTTP_API_PREFIX}/admin/workspace-mutations`,
+          init: { method: "POST", body: JSON.stringify(request.mutation) },
+        };
       case "legacy-read-file":
         return {
           pathname: `${QUEQIAO_WORKER_HTTP_API_PREFIX}/read-file`,
