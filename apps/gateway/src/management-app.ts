@@ -11,6 +11,7 @@ import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 import { QueqiaoError, WorkerHttpError } from "./errors.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
 import type { WorkerRegistry } from "./worker-registry.js";
+import { DashboardSessionBroker } from "./dashboard-session.js";
 
 type ControlPlaneWorkerSource = { current(): Promise<Pick<WorkerRegistry, "listEnvironments" | "livenessSnapshot" | "mutateWorkspace">> };
 
@@ -38,6 +39,7 @@ export function createGatewayManagementApp(options: {
   stateDirectory: string;
   operations: OperationsDiagnostics;
   dashboardDirectory?: string;
+  dashboardSessions?: DashboardSessionBroker;
 }): Express {
   const app = express();
   app.disable("x-powered-by");
@@ -46,6 +48,11 @@ export function createGatewayManagementApp(options: {
   app.use((_req, res, next) => {
     res.set({ "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
     next();
+  });
+  app.post("/dashboard/session", (req, res) => {
+    const exchanged = options.dashboardSessions?.exchange(typeof req.body?.code === "string" ? req.body.code : "");
+    if (!exchanged) return res.status(401).json({ error: "invalid_dashboard_session_code" });
+    res.json(exchanged);
   });
   if (options.dashboardDirectory) {
     app.use("/dashboard", (_req, res, next) => {
@@ -56,8 +63,19 @@ export function createGatewayManagementApp(options: {
     app.use("/dashboard", (_req, res) => res.status(404).type("text/plain").send("Dashboard asset not found"));
   }
   app.use((req, res, next) => {
-    if (!safeEqual(req.header("x-queqiao-management-secret") || "", options.secret)) return res.status(401).json({ error: "unauthorized" });
+    const managementSecret = req.header("x-queqiao-management-secret") || "";
+    const dashboardSession = req.header("x-queqiao-dashboard-session") || "";
+    if (!safeEqual(managementSecret, options.secret) && !options.dashboardSessions?.authenticate(dashboardSession)) return res.status(401).json({ error: "unauthorized" });
     next();
+  });
+  app.post("/v1/dashboard-sessions", (req, res) => {
+    if (!safeEqual(req.header("x-queqiao-management-secret") || "", options.secret)) return res.status(401).json({ error: "unauthorized" });
+    if (!options.dashboardSessions) return res.status(404).json({ error: "dashboard_sessions_unavailable" });
+    res.status(201).json(options.dashboardSessions.createCode());
+  });
+  app.delete("/v1/dashboard-session", (req, res) => {
+    options.dashboardSessions?.revoke(req.header("x-queqiao-dashboard-session") || "");
+    res.json({ revoked: true });
   });
   const mutateWorkspace = async (workerIdInput: unknown, mutationInput: unknown, res: Response) => {
     try {

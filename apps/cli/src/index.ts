@@ -14,6 +14,7 @@ import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, set
 import { doctorGateway } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 import { addWorkspace } from "./workspace-cli.js";
+import { launchDashboard } from "./dashboard-cli.js";
 
 const managedToolSchema = toolNameSchema;
 const workspaceSchema = z.object({
@@ -37,10 +38,10 @@ const domain = args[0];
 const action = args[1];
 const localName = option(args, "name") || "default";
 const helpRequested = args.includes("--help") || args.includes("-h");
-const USAGE = "Usage: queqiao gateway setup|serve [--bg]|stop|status|join-token [--name <gateway>] [--copy], worker setup|port|serve [--bg]|stop|status|join [--name <worker>] [--join-code <code>] [--gateway <url> --token <token>], worker list|update|remove [--name <gateway>|--gateway-name <gateway>], workspace add|list|remove --worker <worker>, config paths, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor";
+const USAGE = "Usage: queqiao gateway setup|serve [--bg]|stop|status|join-token [--name <gateway>] [--copy], dashboard open [--name <gateway>] [--no-open], worker setup|port|serve [--bg]|stop|status|join [--name <worker>] [--join-code <code>] [--gateway <url> --token <token>], worker list|update|remove [--name <gateway>|--gateway-name <gateway>], workspace add|list|remove --worker <worker>, config paths, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor";
 
 function resolveCommandLayout() {
-  if (domain === "gateway") return resolveRuntimeLayoutForNamedRole("gateway", localName);
+  if (domain === "gateway" || domain === "dashboard") return resolveRuntimeLayoutForNamedRole("gateway", localName);
   if (domain === "worker" && ["setup", "serve", "stop", "status", "join", "port"].includes(action || "")) return resolveRuntimeLayoutForNamedRole("worker", localName);
   if (domain === "worker" && ["list", "update", "remove"].includes(action || "")) return resolveRuntimeLayoutForNamedRole("gateway", option(args, "gateway-name") || option(args, "name") || "default");
   if (["workspace", "profile", "tool", "command", "permissions"].includes(domain || "") && option(args, "worker")) return resolveRuntimeLayoutForNamedRole("worker", option(args, "worker"));
@@ -54,6 +55,7 @@ const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => 
 async function main() {
   if (helpRequested) { process.stdout.write(`${USAGE}\n`); return; }
   if (domain === "gateway" && action === "setup") return print(await setupGateway(configFile, args, layout.gatewayStateDir, layout.secretsDir));
+  if (domain === "dashboard" && action === "open") return print(await launchDashboard(configFile, args));
   if (domain === "worker" && action === "setup") return print(await setupWorker(configFile, args, layout.secretsDir));
   if (domain === "worker" && action === "port") {
     const status = await runtimeStatus(configFile, layout, "worker", localName);

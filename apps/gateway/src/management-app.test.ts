@@ -7,6 +7,7 @@ import { EnrollmentService } from "./enrollment-service.js";
 import { createGatewayManagementApp } from "./management-app.js";
 import { gatewayOperationsDiagnostics } from "./operations.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
+import { DashboardSessionBroker } from "./dashboard-session.js";
 
 function managementOptions(
   directory: string,
@@ -190,5 +191,22 @@ describe("Gateway management listener", () => {
 
     await request(app).delete(`/v1/workers/${workerId}`).set("x-queqiao-management-secret", secret).expect(200);
     expect((await memberships.read()).workers).toEqual([]);
+  });
+
+  it("exchanges a one-time Dashboard code for a bounded session without letting that session mint another code", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "queqiao-management-"));
+    const memberships = new WorkerMembershipStore(directory);
+    const enrollment = new EnrollmentService(memberships, directory);
+    const secret = "d".repeat(43);
+    const dashboardSessions = new DashboardSessionBroker();
+    const app = createGatewayManagementApp({ ...managementOptions(directory, secret, memberships, enrollment), dashboardSessions });
+
+    const created = await request(app).post("/v1/dashboard-sessions").set("x-queqiao-management-secret", secret).send({}).expect(201);
+    const exchanged = await request(app).post("/dashboard/session").send({ code: created.body.code }).expect(200);
+    await request(app).post("/dashboard/session").send({ code: created.body.code }).expect(401);
+    await request(app).get("/v1/operations").set("x-queqiao-dashboard-session", exchanged.body.token).expect(200);
+    await request(app).post("/v1/dashboard-sessions").set("x-queqiao-dashboard-session", exchanged.body.token).send({}).expect(401);
+    await request(app).delete("/v1/dashboard-session").set("x-queqiao-dashboard-session", exchanged.body.token).expect(200);
+    await request(app).get("/v1/operations").set("x-queqiao-dashboard-session", exchanged.body.token).expect(401);
   });
 });
