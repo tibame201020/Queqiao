@@ -23,7 +23,7 @@ export type AddWorkspaceInput = {
   profile: WorkspaceConfig["profile"];
 };
 
-export type WorkspaceToolDecision = "allow" | "deny";
+export type WorkspaceToolDecision = "allow" | "deny" | "inherit";
 export type WorkspaceCommandDecision = "allow" | "deny";
 
 function unique<T>(values: readonly T[]): T[] {
@@ -78,13 +78,15 @@ export function decideRuntimeWorkspaceTool(config: RuntimeConfig, workspaceId: s
   const allow = workspace.tools.allow.filter((item) => item !== tool);
   const deny = workspace.tools.deny.filter((item) => item !== tool);
   const explicit = workspace.tools.explicit.filter((item) => item !== tool);
-  const tools = tool === "shell"
-    ? decision === "allow"
-      ? { allow, deny, explicit: unique([...explicit, tool]) }
-      : { allow, deny: unique([...deny, tool]), explicit }
-    : decision === "allow"
-      ? { allow: unique([...allow, tool]), deny, explicit }
-      : { allow, deny: unique([...deny, tool]), explicit };
+  const tools = decision === "inherit"
+    ? { allow, deny, explicit }
+    : tool === "shell"
+      ? decision === "allow"
+        ? { allow, deny, explicit: unique([...explicit, tool]) }
+        : { allow, deny: unique([...deny, tool]), explicit }
+      : decision === "allow"
+        ? { allow: unique([...allow, tool]), deny, explicit }
+        : { allow, deny: unique([...deny, tool]), explicit };
   return replaceWorkspace(config, workspaceConfigSchema.parse({ ...workspace, tools }));
 }
 

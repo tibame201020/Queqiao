@@ -25,6 +25,7 @@
   ],
   "scripts": {
     "build": "tsc -b",
+    "build:dashboard": "node scripts/build-dashboard.mjs",
     "build:package": "node scripts/build-package.mjs",
     "prepack": "npm run check && npm run build:package",
     "clean": "tsc -b --clean",
@@ -38,7 +39,7 @@
     "resource:soak": "npm run build:package && node scripts/resource-safety-baseline.mjs --soak",
     "check": "npm run clean && npm run typecheck && npm test",
     "start:worker": "tsx apps/worker/src/index.ts",
-    "start:gateway": "tsx apps/gateway/src/index.ts",
+    "start:gateway": "npm run build:dashboard && tsx apps/gateway/src/index.ts",
     "queqiao": "tsx apps/cli/src/index.ts"
   },
   "engines": {

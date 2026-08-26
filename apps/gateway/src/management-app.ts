@@ -37,6 +37,7 @@ export function createGatewayManagementApp(options: {
   workers: ControlPlaneWorkerSource;
   stateDirectory: string;
   operations: OperationsDiagnostics;
+  dashboardDirectory?: string;
 }): Express {
   const app = express();
   app.disable("x-powered-by");
@@ -46,6 +47,14 @@ export function createGatewayManagementApp(options: {
     res.set({ "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
     next();
   });
+  if (options.dashboardDirectory) {
+    app.use("/dashboard", (_req, res, next) => {
+      res.set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+      next();
+    });
+    app.use("/dashboard", express.static(options.dashboardDirectory, { index: "index.html" }));
+    app.use("/dashboard", (_req, res) => res.status(404).type("text/plain").send("Dashboard asset not found"));
+  }
   app.use((req, res, next) => {
     if (!safeEqual(req.header("x-queqiao-management-secret") || "", options.secret)) return res.status(401).json({ error: "unauthorized" });
     next();

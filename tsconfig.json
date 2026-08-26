@@ -11,6 +11,9 @@
       "path": "apps/cli"
     },
     {
+      "path": "apps/dashboard"
+    },
+    {
       "path": "packages/contracts"
     },
     {

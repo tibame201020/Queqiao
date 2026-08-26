@@ -1,9 +1,10 @@
 import { rm } from "node:fs/promises";
-import { build } from "esbuild";
 import path from "node:path";
+import { build } from "esbuild";
+import { buildDashboard } from "./build-dashboard.mjs";
 
 const internalPackages = new Map(["config", "contracts", "core-manifest", "extension-git", "mcp-compat", "operations", "platform-paths", "policy", "process-runtime", "protocol", "security", "tool-runtime", "worker-protocol", "workspace"].map((name) => [`@queqiao/${name}`, path.resolve(`packages/${name}/src/index.ts`)]));
-const internalSourcePlugin = { name: "queqiao-internal-source", setup(build) { build.onResolve({ filter: /^@queqiao\// }, (args) => ({ path: internalPackages.get(args.path) || "", ...(internalPackages.has(args.path) ? {} : { errors: [{ text: `Unknown internal package: ${args.path}` }] }) })); } };
+const internalSourcePlugin = { name: "queqiao-internal-source", setup(buildContext) { buildContext.onResolve({ filter: /^@queqiao\// }, (args) => ({ path: internalPackages.get(args.path) || "", ...(internalPackages.has(args.path) ? {} : { errors: [{ text: `Unknown internal package: ${args.path}` }] }) })); } };
 
 await rm("dist", { recursive: true, force: true });
 await build({
@@ -12,3 +13,4 @@ await build({
   legalComments: "external", banner: { js: "#!/usr/bin/env node\nimport { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
   plugins: [internalSourcePlugin],
 });
+await buildDashboard({ clean: false });

@@ -10,6 +10,7 @@ import {
   workerRunResultSchema,
   workerShellResultSchema,
   workerSyncProcessResultSchema,
+  workerWorkspaceMutationSchema,
 } from "./index.js";
 
 describe("Worker protocol contract", () => {
@@ -45,6 +46,9 @@ describe("Worker protocol contract", () => {
     }).protocolVersion).toBe(QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION);
   });
 
+  it("accepts inherited tool-policy reset as a Dashboard control-plane mutation", () => {
+    expect(workerWorkspaceMutationSchema.parse({ kind: "tool.decide", workspaceId: "main", tool: "read_file", decision: "inherit" })).toMatchObject({ decision: "inherit" });
+  });
   it("defines distinct sync/async process result contracts without adding a Queqiao job identity", () => {
     const sync = { exitCode: 0, signal: null, stdout: "ok", stderr: "", durationMs: 10, timedOut: false, aborted: false, outputLimitExceeded: false };
     const asyncResult = { pid: 123, startedAt: "2026-08-13T01:00:00.000Z", timeoutMs: 30_000, stdout: "discarded", stderr: "discarded" };

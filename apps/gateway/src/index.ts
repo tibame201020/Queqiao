@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { resolveRuntimeLayout } from "@queqiao/platform-paths";
 import { createGatewayApp } from "./app.js";
 import { loadGatewayConfigFile } from "./config.js";
@@ -19,5 +22,8 @@ const operations = gatewayOperationsDiagnostics(config.extensions);
 const app = await createGatewayApp(config, enrollment, workerSource);
 const host = config.host ?? "127.0.0.1";
 listenGateway(app, config, () => { console.log(`Queqiao Gateway listening on http://${host}:${config.port}`); console.log(`Public MCP URL: ${config.resourceUrl}`); });
-const managementApp = createGatewayManagementApp({ secret: managementSecret.secret, enrollment, memberships, workers: workerSource, stateDirectory: config.stateDir, operations });
-managementApp.listen(config.managementPort, "127.0.0.1", () => console.log(`Queqiao Gateway management listening on http://127.0.0.1:${config.managementPort}`));
+const packagedDashboard = fileURLToPath(new URL("./dashboard/", import.meta.url));
+const developmentDashboard = path.resolve(process.cwd(), "dist/dashboard");
+const dashboardDirectory = existsSync(packagedDashboard) ? packagedDashboard : existsSync(developmentDashboard) ? developmentDashboard : undefined;
+const managementApp = createGatewayManagementApp({ secret: managementSecret.secret, enrollment, memberships, workers: workerSource, stateDirectory: config.stateDir, operations, ...(dashboardDirectory ? { dashboardDirectory } : {}) });
+managementApp.listen(config.managementPort, "127.0.0.1", () => { console.log(`Queqiao Gateway management listening on http://127.0.0.1:${config.managementPort}`); if (dashboardDirectory) console.log(`Local Operations Dashboard: http://127.0.0.1:${config.managementPort}/dashboard/`); });

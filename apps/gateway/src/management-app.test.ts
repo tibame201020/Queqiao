@@ -33,6 +33,24 @@ describe("Gateway management listener", () => {
     expect(created.body).not.toHaveProperty("credential");
   });
 
+  it("serves the inert local Dashboard without exposing management APIs unauthenticated", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "queqiao-management-dashboard-"));
+    const dashboardDirectory = path.join(directory, "dashboard");
+    await mkdir(dashboardDirectory, { recursive: true });
+    await writeFile(path.join(dashboardDirectory, "index.html"), "<!doctype html><div id=\"root\"></div>");
+    await writeFile(path.join(dashboardDirectory, "app.js"), "console.log('dashboard')");
+    const memberships = new WorkerMembershipStore(directory);
+    const enrollment = new EnrollmentService(memberships, directory);
+    const secret = "d".repeat(43);
+    const app = createGatewayManagementApp({ ...managementOptions(directory, secret, memberships, enrollment), dashboardDirectory });
+
+    const page = await request(app).get("/dashboard/").expect(200);
+    expect(page.headers["content-security-policy"]).toContain("default-src 'self'");
+    expect(page.headers["cache-control"]).toBe("no-store");
+    await request(app).get("/dashboard/app.js").expect(200);
+    await request(app).get("/v1/operations").expect(401);
+  });
+
   it("supports multiple independent unused join tokens", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "queqiao-management-"));
     const memberships = new WorkerMembershipStore(directory);

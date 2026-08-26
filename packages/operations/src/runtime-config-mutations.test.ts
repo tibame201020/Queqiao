@@ -48,10 +48,12 @@ describe("runtime Workspace mutations", () => {
     expect(workspace.commands.allow).toEqual(["npm"]);
   });
 
-  it("moves a tool between allow and deny deterministically", () => {
+  it("moves a tool between allow, deny, and inherited policy deterministically", () => {
     let next = decideRuntimeWorkspaceTool(baseConfig(), "main", "read_file", "allow");
     next = decideRuntimeWorkspaceTool(next, "main", "read_file", "deny");
     expect(next.workspaces[0]!.tools).toEqual({ allow: [], deny: ["read_file"], explicit: [] });
+    next = decideRuntimeWorkspaceTool(next, "main", "read_file", "inherit");
+    expect(next.workspaces[0]!.tools).toEqual({ allow: [], deny: [], explicit: [] });
   });
 
   it("rejects removal of the selected default Workspace", () => {

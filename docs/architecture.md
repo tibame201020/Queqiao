@@ -74,6 +74,12 @@ Versioned control-plane mutations reuse existing authority owners rather than in
 
 The control-plane API is not public MCP and does not grant Workspace authority directly from the Gateway. Under the current deployed loopback Worker transport, the enrolled Worker credential authenticates the optional admin capability as part of the trusted Gateway-to-Worker channel. That assumption MUST NOT be carried unchanged into a future non-loopback Worker transport; remote Worker administration requires a stronger or separately scoped authenticated control channel before `workspace-admin-v1` is exposed remotely.
 
+### `apps/dashboard`
+
+Local React operations client for the Gateway control plane. The compiled assets are served only by the loopback management listener under `/dashboard/`; static asset delivery is intentionally separate from API authentication. The Dashboard does not contain or derive management credentials. The current first slice asks the operator for the existing Gateway management secret and keeps it only in browser `sessionStorage`, sending it in the same `x-queqiao-management-secret` header already required by the management API.
+
+The Dashboard reads only `GET /v1/operations` and uses the existing versioned Workspace mutation routes for profile, tool policy, and command allowlist changes. It has no private database, no direct filesystem access, no Worker credential access, and no separate authorization semantics. A future browser-launch/session mechanism may improve ergonomics, but MUST remain an adapter over the same control-plane authority rather than creating a parallel management trust model.
+
 ### `apps/worker`
 
 Environment-local authoritative execution root. It loads native Workspace policy, exposes the current authenticated Worker HTTP API, validates delegated requests, and invokes bounded native Workspace/process capabilities.

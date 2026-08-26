@@ -54,7 +54,7 @@ const workerWorkspaceAddSchema = z.object({
 });
 const workerWorkspaceRemoveSchema = z.object({ kind: z.literal("workspace.remove"), workspaceId: workspaceIdSchema });
 const workerWorkspaceProfileSchema = z.object({ kind: z.literal("profile.set"), workspaceId: workspaceIdSchema, profile: permissionProfileSchema });
-const workerWorkspaceToolSchema = z.object({ kind: z.literal("tool.decide"), workspaceId: workspaceIdSchema, tool: toolNameSchema, decision: z.enum(["allow", "deny"]) });
+const workerWorkspaceToolSchema = z.object({ kind: z.literal("tool.decide"), workspaceId: workspaceIdSchema, tool: toolNameSchema, decision: z.enum(["allow", "deny", "inherit"]) });
 const workerWorkspaceCommandSchema = z.object({ kind: z.literal("command.decide"), workspaceId: workspaceIdSchema, command: z.string().min(1).max(128), decision: z.enum(["allow", "deny"]) });
 export const workerWorkspaceMutationSchema = z.discriminatedUnion("kind", [workerWorkspaceAddSchema, workerWorkspaceRemoveSchema, workerWorkspaceProfileSchema, workerWorkspaceToolSchema, workerWorkspaceCommandSchema]);
 export const workerWorkspaceMutationResultSchema = z.object({ changed: z.literal(true), workspaceId: workspaceIdSchema });
