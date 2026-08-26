@@ -6,7 +6,7 @@ import { z } from "zod";
 import { workerIdSchema } from "@queqiao/contracts";
 import { workerWorkspaceMutationSchema } from "@queqiao/worker-protocol";
 import rateLimit from "express-rate-limit";
-import { buildControlPlaneSnapshot, type OperationsDiagnostics } from "@queqiao/operations";
+import { buildControlPlaneSnapshot, type DeploymentManifest, type GatewayDoctorResult, type OperationsDiagnostics } from "@queqiao/operations";
 import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 import { QueqiaoError, WorkerHttpError } from "./errors.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
@@ -38,6 +38,8 @@ export function createGatewayManagementApp(options: {
   workers: ControlPlaneWorkerSource;
   stateDirectory: string;
   operations: OperationsDiagnostics;
+  manifest: DeploymentManifest;
+  doctor: () => Promise<GatewayDoctorResult>;
   dashboardDirectory?: string;
   dashboardSessions?: DashboardSessionBroker;
 }): Express {
@@ -122,6 +124,17 @@ export function createGatewayManagementApp(options: {
       res.status(500).json({ error: "control_plane_snapshot_failed" });
     }
   });
+  app.get("/v1/manifest", (_req, res) => {
+    res.json(options.manifest);
+  });
+  app.get("/v1/doctor", async (_req, res) => {
+    try {
+      res.json(await options.doctor());
+    } catch {
+      res.status(500).json({ error: "doctor_failed" });
+    }
+  });
+
   app.post("/v1/workers/:workerId/workspaces", async (req, res) => {
     await mutateWorkspace(req.params.workerId, {
       kind: "workspace.add",

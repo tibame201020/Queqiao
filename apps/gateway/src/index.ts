@@ -10,6 +10,8 @@ import { MembershipWorkerRegistry } from "./worker-membership-registry.js";
 import { EnrollmentService } from "./enrollment-service.js";
 import { ensureGatewayManagementSecret } from "./management-secret.js";
 import { createGatewayManagementApp } from "./management-app.js";
+import { buildDeploymentManifest, doctorGateway } from "@queqiao/operations";
+import { CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core-manifest";
 import { gatewayOperationsDiagnostics } from "./operations.js";
 import { DashboardSessionBroker } from "./dashboard-session.js";
 
@@ -20,6 +22,7 @@ const workerSource = new MembershipWorkerRegistry(memberships);
 const enrollment = new EnrollmentService(memberships, config.stateDir);
 const managementSecret = await ensureGatewayManagementSecret(config.stateDir);
 const operations = gatewayOperationsDiagnostics(config.extensions);
+const manifest = buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions });
 const app = await createGatewayApp(config, enrollment, workerSource);
 const host = config.host ?? "127.0.0.1";
 listenGateway(app, config, () => { console.log(`Queqiao Gateway listening on http://${host}:${config.port}`); console.log(`Public MCP URL: ${config.resourceUrl}`); });
@@ -27,5 +30,5 @@ const packagedDashboard = fileURLToPath(new URL("./dashboard/", import.meta.url)
 const developmentDashboard = path.resolve(process.cwd(), "dist/dashboard");
 const dashboardDirectory = existsSync(packagedDashboard) ? packagedDashboard : existsSync(developmentDashboard) ? developmentDashboard : undefined;
 const dashboardSessions = new DashboardSessionBroker();
-const managementApp = createGatewayManagementApp({ secret: managementSecret.secret, enrollment, memberships, workers: workerSource, stateDirectory: config.stateDir, operations, dashboardSessions, ...(dashboardDirectory ? { dashboardDirectory } : {}) });
+const managementApp = createGatewayManagementApp({ secret: managementSecret.secret, enrollment, memberships, workers: workerSource, stateDirectory: config.stateDir, operations, manifest, doctor: () => doctorGateway(config), dashboardSessions, ...(dashboardDirectory ? { dashboardDirectory } : {}) });
 managementApp.listen(config.managementPort, "127.0.0.1", () => { console.log(`Queqiao Gateway management listening on http://127.0.0.1:${config.managementPort}`); if (dashboardDirectory) console.log(`Local Operations Dashboard: http://127.0.0.1:${config.managementPort}/dashboard/`); });

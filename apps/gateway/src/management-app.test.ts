@@ -5,6 +5,8 @@ import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EnrollmentService } from "./enrollment-service.js";
 import { createGatewayManagementApp } from "./management-app.js";
+import { CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core-manifest";
+import { buildDeploymentManifest } from "@queqiao/operations";
 import { gatewayOperationsDiagnostics } from "./operations.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
 import { DashboardSessionBroker } from "./dashboard-session.js";
@@ -16,7 +18,16 @@ function managementOptions(
   enrollment: EnrollmentService,
   workers = { current: async () => ({ listEnvironments: async () => [], livenessSnapshot: () => [], mutateWorkspace: async (_workerId: string, mutation: { kind: string; workspaceId?: string; workspace?: { id: string } }) => ({ changed: true as const, workspaceId: mutation.kind === "workspace.add" ? mutation.workspace!.id : mutation.workspaceId! }) }) },
 ) {
-  return { secret, enrollment, memberships, workers, stateDirectory: directory, operations: gatewayOperationsDiagnostics([]) };
+  return {
+    secret,
+    enrollment,
+    memberships,
+    workers,
+    stateDirectory: directory,
+    operations: gatewayOperationsDiagnostics([]),
+    manifest: buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: [] }),
+    doctor: async () => ({ ok: true, gateway: { reachable: true, status: 200 }, environments: [], workerDiagnostics: { supported: false as const, reason: "No Worker-native doctor capability is advertised" } }),
+  };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -191,6 +202,23 @@ describe("Gateway management listener", () => {
 
     await request(app).delete(`/v1/workers/${workerId}`).set("x-queqiao-management-secret", secret).expect(200);
     expect((await memberships.read()).workers).toEqual([]);
+  });
+
+  it("exposes manifest and shared doctor projections only to authenticated control-plane callers", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "queqiao-management-"));
+    const memberships = new WorkerMembershipStore(directory);
+    const enrollment = new EnrollmentService(memberships, directory);
+    const secret = "u".repeat(43);
+    const app = createGatewayManagementApp(managementOptions(directory, secret, memberships, enrollment));
+
+    await request(app).get("/v1/manifest").expect(401);
+    const manifest = await request(app).get("/v1/manifest").set("x-queqiao-management-secret", secret).expect(200);
+    expect(manifest.body.coreManifestRevision).toBe(6);
+    expect(manifest.body.tools.length).toBeGreaterThan(0);
+
+    await request(app).get("/v1/doctor").expect(401);
+    const doctor = await request(app).get("/v1/doctor").set("x-queqiao-management-secret", secret).expect(200);
+    expect(doctor.body).toMatchObject({ ok: true, gateway: { reachable: true, status: 200 }, workerDiagnostics: { supported: false } });
   });
 
   it("exchanges a one-time Dashboard code for a bounded session without letting that session mint another code", async () => {

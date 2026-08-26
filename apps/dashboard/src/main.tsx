@@ -7,7 +7,12 @@ type ToolPolicy = { allow: string[]; deny: string[]; explicit: string[] };
 type CommandPolicy = { allow: string[] };
 type Workspace = { workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: ToolPolicy; commands: CommandPolicy };
 type Worker = { workerId: string; environmentId: string; transport: { type: string; endpoint: string }; liveness: { reachable: boolean; checkedAt?: string; lastSuccessAt?: string }; defaultWorkspaceId?: string; workspaces: Workspace[] };
-type Snapshot = { apiVersion: 1; deployment: { ok: boolean; coreManifestRevision: number; workerProtocolVersion: string; deploymentManifestFingerprint: string; supportedMcpProtocolVersions: string[]; tools: { name: string; visibility?: string }[] }; workers: Worker[] };
+type ToolDiagnostic = { name: string; visibility: "public" | "internal"; registeredBy: string; replacementBy?: string; extenders: { extensionId: string; stage: "before" | "after" | "wrap" }[]; requiredCapabilities: string[]; risk: string };
+type ExtensionDiagnostic = { id: string; version: string; enabled: boolean; host: { kind: "gateway" | "worker"; environmentId?: string }; activation: { kind: "global" | "workspaces"; workspaceIds?: string[] }; loadState: "disabled" | "loaded" | "not_loaded" | "not_observed" };
+type Snapshot = { apiVersion: 1; deployment: { ok: boolean; coreManifestRevision: number; workerProtocolVersion: string; deploymentManifestFingerprint: string; supportedMcpProtocolVersions: string[]; tools: ToolDiagnostic[]; extensions: ExtensionDiagnostic[]; compositionFailure?: { code: string; message: string; tool?: string; extensionIds: string[] } }; workers: Worker[] };
+type DeploymentManifest = { coreManifestRevision: number; tools: { name: string; title: string; description: string; inputSchema: unknown; outputSchema?: unknown; annotations: Record<string, unknown> }[] };
+type DoctorResult = { ok: boolean; gateway: { reachable: boolean; status?: number; error?: string }; environments: { environmentId: string; reachable: boolean; checkedAt?: string; lastSuccessAt?: string }[]; workerDiagnostics: { supported: false; reason: string } };
+type UtilityView = "diagnostics" | "manifest" | "tools" | "extensions" | "permissions";
 type ApiError = { error?: string; message?: string };
 type Credential = { kind: "session" | "secret"; value: string };
 type Selection = { workerId: string; workspaceId?: string };
@@ -71,6 +76,10 @@ function App() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [joinToken, setJoinToken] = useState<string | null>(null);
   const [showEnroll, setShowEnroll] = useState(false);
+  const [utilityView, setUtilityView] = useState<UtilityView | null>(null);
+  const [doctor, setDoctor] = useState<DoctorResult | null>(null);
+  const [manifest, setManifest] = useState<DeploymentManifest | null>(null);
+  const [utilityBusy, setUtilityBusy] = useState(false);
 
   useEffect(() => {
     const fragment = new URLSearchParams(location.hash.startsWith("#") ? location.hash.slice(1) : location.hash);
@@ -98,6 +107,23 @@ function App() {
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to load control plane"); }
   }, [credential]);
   useEffect(() => { void refresh(); }, [refresh]);
+
+  const runDoctor = useCallback(async () => {
+    if (!credential) return;
+    try { setUtilityBusy(true); setError(null); setDoctor(await api<DoctorResult>(credential, "/v1/doctor")); }
+    catch (err) { setError(err instanceof Error ? err.message : "Doctor failed"); }
+    finally { setUtilityBusy(false); }
+  }, [credential]);
+  const loadManifest = useCallback(async () => {
+    if (!credential) return;
+    try { setUtilityBusy(true); setError(null); setManifest(await api<DeploymentManifest>(credential, "/v1/manifest")); }
+    catch (err) { setError(err instanceof Error ? err.message : "Manifest load failed"); }
+    finally { setUtilityBusy(false); }
+  }, [credential]);
+  useEffect(() => {
+    if (utilityView === "diagnostics" && !doctor) void runDoctor();
+    if (utilityView === "manifest" && !manifest) void loadManifest();
+  }, [utilityView, doctor, manifest, runDoctor, loadManifest]);
 
   const publicTools = useMemo(() => snapshot?.deployment.tools.filter((tool) => tool.visibility === "public").map((tool) => tool.name).sort() || [], [snapshot]);
   const selectedWorker = snapshot?.workers.find((w) => w.workerId === selection?.workerId) || null;
@@ -129,15 +155,20 @@ function App() {
     <aside className="sidebar">
       <div className="brand"><div className="brand-glyph">Q</div><div><strong>Queqiao</strong><span>Operations Console</span></div></div>
       <nav className="nav-block">
-        <button className={!selection ? "nav-item active" : "nav-item"} onClick={() => setSelection(null)}><Icon name="grid"/><span>Overview</span></button>
+        <button className={!selection && !utilityView ? "nav-item active" : "nav-item"} onClick={() => { setUtilityView(null); setSelection(null); }}><Icon name="grid"/><span>Overview</span></button>
+        <button className={utilityView === "diagnostics" ? "nav-item active" : "nav-item"} onClick={() => { setSelection(null); setUtilityView("diagnostics"); }}><Icon name="shield"/><span>Diagnostics</span></button>
+        <button className={utilityView === "manifest" ? "nav-item active" : "nav-item"} onClick={() => { setSelection(null); setUtilityView("manifest"); }}><Icon name="link"/><span>Manifest</span></button>
+        <button className={utilityView === "tools" ? "nav-item active" : "nav-item"} onClick={() => { setSelection(null); setUtilityView("tools"); }}><Icon name="terminal"/><span>Tools</span></button>
+        <button className={utilityView === "extensions" ? "nav-item active" : "nav-item"} onClick={() => { setSelection(null); setUtilityView("extensions"); }}><Icon name="plus"/><span>Extensions</span></button>
+        <button className={utilityView === "permissions" ? "nav-item active" : "nav-item"} onClick={() => { setSelection(null); setUtilityView("permissions"); }}><Icon name="folder"/><span>Permissions</span></button>
       </nav>
       <div className="sidebar-section-heading"><span>Topology</span><button className="icon-ghost" title="Enroll Worker" onClick={() => setShowEnroll(true)}><Icon name="plus"/></button></div>
       <div className="topology-tree">
         {snapshot?.workers.map((worker) => <div className="tree-worker" key={worker.workerId}>
-          <button className={selection?.workerId === worker.workerId && !selection.workspaceId ? "tree-row active" : "tree-row"} onClick={() => setSelection({ workerId: worker.workerId })}>
+          <button className={selection?.workerId === worker.workerId && !selection.workspaceId ? "tree-row active" : "tree-row"} onClick={() => { setUtilityView(null); setSelection({ workerId: worker.workerId }); }}>
             <span className={`presence ${worker.liveness.reachable ? "online" : "offline"}`}/><Icon name="server"/><span className="tree-label">{worker.environmentId}</span><span className="tree-count">{worker.workspaces.length}</span>
           </button>
-          <div className="tree-children">{worker.workspaces.map((workspace) => <button key={workspace.workspaceId} className={selection?.workerId === worker.workerId && selection.workspaceId === workspace.workspaceId ? "tree-row child active" : "tree-row child"} onClick={() => setSelection({ workerId: worker.workerId, workspaceId: workspace.workspaceId })}><Icon name="folder"/><span className="tree-label">{workspace.displayName}</span>{worker.defaultWorkspaceId === workspace.workspaceId && <span className="default-dot" title="Default Workspace"/>}</button>)}</div>
+          <div className="tree-children">{worker.workspaces.map((workspace) => <button key={workspace.workspaceId} className={selection?.workerId === worker.workerId && selection.workspaceId === workspace.workspaceId ? "tree-row child active" : "tree-row child"} onClick={() => { setUtilityView(null); setSelection({ workerId: worker.workerId, workspaceId: workspace.workspaceId }); }}><Icon name="folder"/><span className="tree-label">{workspace.displayName}</span>{worker.defaultWorkspaceId === workspace.workspaceId && <span className="default-dot" title="Default Workspace"/>}</button>)}</div>
         </div>)}
         {snapshot && snapshot.workers.length === 0 && <div className="sidebar-empty">No enrolled Workers</div>}
       </div>
@@ -146,14 +177,14 @@ function App() {
 
     <section className="console-main">
       <header className="topbar">
-        <div className="breadcrumbs"><span>Operations</span>{selectedWorker && <><Icon name="chevron"/><span>{selectedWorker.environmentId}</span></>}{selectedWorkspace && <><Icon name="chevron"/><strong>{selectedWorkspace.displayName}</strong></>}</div>
+        <div className="breadcrumbs"><span>Operations</span>{utilityView && <><Icon name="chevron"/><strong>{utilityView.charAt(0).toUpperCase() + utilityView.slice(1)}</strong></>}{!utilityView && selectedWorker && <><Icon name="chevron"/><span>{selectedWorker.environmentId}</span></>}{!utilityView && selectedWorkspace && <><Icon name="chevron"/><strong>{selectedWorkspace.displayName}</strong></>}</div>
         <div className="topbar-actions"><button className="btn ghost" onClick={() => void refresh()}><Icon name="refresh"/>Refresh</button><button className="btn ghost" onClick={() => void disconnect()}><Icon name="logout"/>Disconnect</button></div>
       </header>
 
       {error && <div className="global-alert"><div><strong>Control-plane request failed</strong><span>{error}</span></div><button onClick={() => setError(null)}>Dismiss</button></div>}
       {toast && <div className={`toast ${toast.tone}`}>{toast.message}</div>}
 
-      {!snapshot ? <LoadingView/> : !selection ? <Overview deployment={snapshot.deployment} workers={snapshot.workers} onlineCount={onlineCount} workspaceCount={workspaceCount} publicToolCount={publicTools.length} onEnroll={() => setShowEnroll(true)} onSelectWorker={(workerId) => setSelection({ workerId })}/> : selectedWorker && !selectedWorkspace ? <WorkerDetail worker={selectedWorker} busyKey={busyKey} mutate={mutate} onWorkspace={(workspaceId) => setSelection({ workerId: selectedWorker.workerId, workspaceId })}/> : selectedWorker && selectedWorkspace ? <WorkspaceDetail worker={selectedWorker} workspace={selectedWorkspace} publicTools={publicTools} busyKey={busyKey} mutate={mutate}/> : <EmptyState title="Selection unavailable" detail="The selected resource no longer exists." action={<button className="btn primary" onClick={() => setSelection(null)}>Return to overview</button>}/>}
+      {!snapshot ? <LoadingView/> : utilityView === "diagnostics" ? <DiagnosticsView deployment={snapshot.deployment} doctor={doctor} busy={utilityBusy} onRun={() => void runDoctor()}/> : utilityView === "manifest" ? <ManifestView manifest={manifest} busy={utilityBusy} onReload={() => void loadManifest()}/> : utilityView === "tools" ? <ToolsView tools={snapshot.deployment.tools}/> : utilityView === "extensions" ? <ExtensionsView extensions={snapshot.deployment.extensions} compositionFailure={snapshot.deployment.compositionFailure}/> : utilityView === "permissions" ? <PermissionsView workers={snapshot.workers} publicTools={publicTools}/> : !selection ? <Overview deployment={snapshot.deployment} workers={snapshot.workers} onlineCount={onlineCount} workspaceCount={workspaceCount} publicToolCount={publicTools.length} onEnroll={() => setShowEnroll(true)} onSelectWorker={(workerId) => setSelection({ workerId })}/> : selectedWorker && !selectedWorkspace ? <WorkerDetail worker={selectedWorker} busyKey={busyKey} mutate={mutate} onWorkspace={(workspaceId) => setSelection({ workerId: selectedWorker.workerId, workspaceId })}/> : selectedWorker && selectedWorkspace ? <WorkspaceDetail worker={selectedWorker} workspace={selectedWorkspace} publicTools={publicTools} busyKey={busyKey} mutate={mutate}/> : <EmptyState title="Selection unavailable" detail="The selected resource no longer exists." action={<button className="btn primary" onClick={() => setSelection(null)}>Return to overview</button>}/>}
     </section>
 
     {showEnroll && <EnrollDrawer busy={busyKey === "join-token"} token={joinToken} onCreate={() => void createJoinToken()} onClose={() => { setShowEnroll(false); setJoinToken(null); }}/>}
@@ -166,6 +197,52 @@ function AuthView({ draftSecret, setDraftSecret, submitSecret, error }: { draftS
 
 function LoadingView() {
   return <main className="content"><div className="skeleton-title"/><div className="summary-strip">{[1,2,3,4].map((n) => <div className="summary-cell skeleton" key={n}/>)}</div><div className="table-card"><div className="skeleton-row"/><div className="skeleton-row"/><div className="skeleton-row"/></div></main>;
+}
+
+function DiagnosticsView({ deployment, doctor, busy, onRun }: { deployment: Snapshot["deployment"]; doctor: DoctorResult | null; busy: boolean; onRun: () => void }) {
+  const environmentFailures = doctor?.environments.filter((entry) => !entry.reachable).length ?? 0;
+  return <main className="content">
+    <div className="page-heading"><div><div className="eyebrow">CLI · DOCTOR</div><h1>Diagnostics</h1><p>Gateway reachability, Worker liveness, composition health, and protocol posture.</p></div><button className="btn secondary" disabled={busy} onClick={onRun}><Icon name="refresh"/>{busy ? "Running…" : "Run doctor"}</button></div>
+    <section className="summary-strip compact-summary"><SummaryCell label="Doctor" value={doctor ? doctor.ok ? "Passing" : "Issues found" : "Not run"} meta="Shared with queqiao doctor" tone={doctor ? doctor.ok ? "good" : "bad" : "neutral"}/><SummaryCell label="Gateway" value={doctor?.gateway.reachable ? "Reachable" : doctor ? "Unreachable" : "Pending"} meta={doctor?.gateway.status ? `HTTP ${doctor.gateway.status}` : doctor?.gateway.error || "Local health probe"} tone={doctor ? doctor.gateway.reachable ? "good" : "bad" : "neutral"}/><SummaryCell label="Composition" value={deployment.ok ? "Valid" : "Invalid"} meta={`Manifest rev ${deployment.coreManifestRevision}`} tone={deployment.ok ? "good" : "bad"}/><SummaryCell label="Worker issues" value={String(environmentFailures)} meta={`${doctor?.environments.length ?? 0} environments checked`} tone={environmentFailures ? "warn" : "neutral"}/></section>
+    {deployment.compositionFailure && <div className="diagnostic-callout bad"><strong>{deployment.compositionFailure.code}</strong><span>{deployment.compositionFailure.message}</span></div>}
+    <section className="section-block"><div className="section-heading"><div><h2>Environment checks</h2><p>Reachability returned by the same doctor operation used by the CLI.</p></div></div><div className="table-card"><div className="table-head diagnostic-table"><span>Environment</span><span>Status</span><span>Last checked</span><span>Last success</span></div>{doctor?.environments.map((entry) => <div className="table-row diagnostic-table static-row" key={entry.environmentId}><strong>{entry.environmentId}</strong><Badge tone={entry.reachable ? "good" : "bad"} dot>{entry.reachable ? "Reachable" : "Offline"}</Badge><span>{formatRelative(entry.checkedAt)}</span><span>{formatRelative(entry.lastSuccessAt)}</span></div>)}{doctor && doctor.environments.length === 0 && <EmptyState title="No Worker diagnostics" detail="No enrolled environments were returned by the Gateway health probe."/>}{!doctor && <div className="utility-loading">Run doctor to collect current diagnostics.</div>}</div></section>
+    <section className="section-block"><div className="settings-card diagnostic-note"><div><span className="card-label">Worker-native doctor</span><strong>{doctor?.workerDiagnostics.supported ? "Supported" : "Not advertised"}</strong><p>{doctor?.workerDiagnostics.reason || "No Worker-native doctor capability is advertised."}</p></div></div></section>
+  </main>;
+}
+
+function ManifestView({ manifest, busy, onReload }: { manifest: DeploymentManifest | null; busy: boolean; onReload: () => void }) {
+  return <main className="content">
+    <div className="page-heading"><div><div className="eyebrow">CLI · MANIFEST SHOW</div><h1>Deployment manifest</h1><p>The effective public MCP contract for this Gateway deployment.</p></div><button className="btn secondary" disabled={busy} onClick={onReload}><Icon name="refresh"/>{busy ? "Loading…" : "Reload manifest"}</button></div>
+    <section className="summary-strip compact-summary"><SummaryCell label="Revision" value={manifest ? String(manifest.coreManifestRevision) : "—"} meta="Public MCP manifest revision"/><SummaryCell label="Public tools" value={manifest ? String(manifest.tools.length) : "—"} meta="Effective exposed contracts"/></section>
+    <section className="section-block"><div className="section-heading"><div><h2>Public contracts</h2><p>Titles, descriptions, annotations, and JSON input schemas.</p></div></div><div className="manifest-list">{manifest?.tools.map((tool) => <details className="manifest-entry" key={tool.name}><summary><div><code>{tool.name}</code><strong>{tool.title}</strong><span>{tool.description}</span></div><Badge tone="neutral">public</Badge></summary><div className="manifest-detail"><div><span className="card-label">Annotations</span><pre>{JSON.stringify(tool.annotations, null, 2)}</pre></div><div><span className="card-label">Input schema</span><pre>{JSON.stringify(tool.inputSchema, null, 2)}</pre></div>{tool.outputSchema !== undefined && <div><span className="card-label">Output schema</span><pre>{JSON.stringify(tool.outputSchema, null, 2)}</pre></div>}</div></details>)}{!manifest && <div className="utility-loading">Loading deployment manifest…</div>}</div></section>
+  </main>;
+}
+
+function ToolsView({ tools }: { tools: ToolDiagnostic[] }) {
+  return <main className="content">
+    <div className="page-heading"><div><div className="eyebrow">CLI · TOOL EXPLAIN</div><h1>Tool composition</h1><p>Effective ownership, visibility, risk, capabilities, replacements, and extension stages.</p></div></div>
+    <section className="summary-strip compact-summary"><SummaryCell label="Effective tools" value={String(tools.length)} meta="Core and extension composition"/><SummaryCell label="Public" value={String(tools.filter((tool) => tool.visibility === "public").length)} meta="Exposed through MCP"/><SummaryCell label="Extension-owned" value={String(tools.filter((tool) => tool.registeredBy !== "core").length)} meta="Registered outside core"/><SummaryCell label="Composed" value={String(tools.filter((tool) => tool.replacementBy || tool.extenders.length).length)} meta="Replaced or extended tools"/></section>
+    <section className="section-block"><div className="table-card"><div className="table-head tool-table"><span>Tool</span><span>Visibility</span><span>Owner</span><span>Risk</span><span>Capabilities</span></div>{tools.map((tool) => <div className="table-row tool-table static-row" key={tool.name}><div className="tool-name"><Icon name="terminal"/><code>{tool.name}</code></div><Badge tone={tool.visibility === "public" ? "good" : "neutral"}>{tool.visibility}</Badge><span>{tool.registeredBy}{tool.replacementBy ? ` → ${tool.replacementBy}` : ""}</span><Badge tone={tool.risk === "high" ? "bad" : tool.risk === "medium" ? "warn" : "neutral"}>{tool.risk}</Badge><div className="capability-list">{tool.requiredCapabilities.map((capability) => <code key={capability}>{capability}</code>)}{tool.extenders.map((extender) => <span key={`${extender.extensionId}:${extender.stage}`}>{extender.extensionId}:{extender.stage}</span>)}</div></div>)}</div></section>
+  </main>;
+}
+
+function ExtensionsView({ extensions, compositionFailure }: { extensions: ExtensionDiagnostic[]; compositionFailure?: Snapshot["deployment"]["compositionFailure"] }) {
+  return <main className="content">
+    <div className="page-heading"><div><div className="eyebrow">CLI · EXTENSION LIST / DOCTOR</div><h1>Extensions</h1><p>Installed extension state, host placement, activation scope, and composition diagnostics.</p></div></div>
+    {compositionFailure && <div className="diagnostic-callout bad"><strong>{compositionFailure.code}</strong><span>{compositionFailure.message}</span></div>}
+    <section className="summary-strip compact-summary"><SummaryCell label="Installed" value={String(extensions.length)} meta="Configured extensions"/><SummaryCell label="Enabled" value={String(extensions.filter((extension) => extension.enabled).length)} meta="Participating in composition"/><SummaryCell label="Loaded" value={String(extensions.filter((extension) => extension.loadState === "loaded").length)} meta="Observed by runtime"/><SummaryCell label="Composition" value={compositionFailure ? "Failed" : "Healthy"} meta={compositionFailure ? "Resolve before exposure" : "No composition failure"} tone={compositionFailure ? "bad" : "good"}/></section>
+    <section className="section-block"><div className="table-card"><div className="table-head extension-table"><span>Extension</span><span>Status</span><span>Host</span><span>Activation</span><span>Load state</span></div>{extensions.map((extension) => <div className="table-row extension-table static-row" key={extension.id}><div><strong>{extension.id}</strong><code>{extension.version}</code></div><Badge tone={extension.enabled ? "good" : "neutral"}>{extension.enabled ? "Enabled" : "Disabled"}</Badge><span>{extension.host.kind}{extension.host.environmentId ? ` · ${extension.host.environmentId}` : ""}</span><span>{extension.activation.kind === "global" ? "Global" : `${extension.activation.workspaceIds?.length ?? 0} Workspaces`}</span><Badge tone={extension.loadState === "loaded" ? "good" : extension.loadState === "not_loaded" ? "bad" : "neutral"}>{extension.loadState.replaceAll("_", " ")}</Badge></div>)}{extensions.length === 0 && <EmptyState title="No extensions installed" detail="The effective runtime composition currently contains only core tools."/>}</div></section>
+  </main>;
+}
+
+function PermissionsView({ workers, publicTools }: { workers: Worker[]; publicTools: string[] }) {
+  const rows = workers.flatMap((worker) => worker.workspaces.map((workspace) => ({ worker, workspace })));
+  return <main className="content">
+    <div className="page-heading"><div><div className="eyebrow">CLI · PERMISSIONS SHOW</div><h1>Permission inventory</h1><p>Worker-authoritative profiles, tool overrides, and executable allowlists across all Workspaces.</p></div></div>
+    <section className="summary-strip compact-summary"><SummaryCell label="Workspaces" value={String(rows.length)} meta="Across enrolled Workers"/><SummaryCell label="Coding" value={String(rows.filter(({ workspace }) => workspace.profile === "coding").length)} meta="Process-capable profiles" tone={rows.some(({ workspace }) => workspace.profile === "coding") ? "warn" : "neutral"}/><SummaryCell label="Tool denies" value={String(rows.reduce((sum, { workspace }) => sum + workspace.tools.deny.length, 0))} meta="Explicit deny decisions"/><SummaryCell label="Command grants" value={String(rows.reduce((sum, { workspace }) => sum + workspace.commands.allow.length, 0))} meta="Executable allow entries"/></section>
+    <section className="section-block"><div className="table-card"><div className="table-head permission-table"><span>Workspace</span><span>Worker</span><span>Profile</span><span>Tools</span><span>Commands</span></div>{rows.map(({ worker, workspace }) => { const allow = publicTools.filter((tool) => workspace.tools.allow.includes(tool) || workspace.tools.explicit.includes(tool)).length; return <div className="table-row permission-table static-row" key={`${worker.workerId}:${workspace.workspaceId}`}><div><strong>{workspace.displayName}</strong><code>{workspace.workspaceId}</code></div><span>{worker.environmentId}</span><Badge tone={workspace.profile === "coding" ? "warn" : workspace.profile === "read-only" ? "good" : "neutral"}>{workspace.profile}</Badge><span>{allow} allow · {workspace.tools.deny.length} deny</span><span>{workspace.commands.allow.length}</span></div>; })}{rows.length === 0 && <EmptyState title="No Workspace permissions" detail="Enroll a Worker and add a Workspace to inspect authority."/>}</div></section>
+    <section className="section-block"><div className="settings-card diagnostic-note"><div><span className="card-label">Authorization boundary</span><strong>Worker policy is authoritative</strong><p>OAuth authenticates the connector only. The Dashboard reflects Worker policy and does not grant authority independently.</p></div></div></section>
+  </main>;
 }
 
 function Overview({ deployment, workers, onlineCount, workspaceCount, publicToolCount, onEnroll, onSelectWorker }: { deployment: Snapshot["deployment"]; workers: Worker[]; onlineCount: number; workspaceCount: number; publicToolCount: number; onEnroll: () => void; onSelectWorker: (id: string) => void }) {
