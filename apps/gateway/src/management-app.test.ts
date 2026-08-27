@@ -237,4 +237,16 @@ describe("Gateway management listener", () => {
     await request(app).delete("/v1/dashboard-session").set("x-queqiao-dashboard-session", exchanged.body.token).expect(200);
     await request(app).get("/v1/operations").set("x-queqiao-dashboard-session", exchanged.body.token).expect(401);
   });
+
+  it("exposes the supervisor-backed lifecycle snapshot only through authenticated management", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "queqiao-management-lifecycle-"));
+    const memberships = new WorkerMembershipStore(directory);
+    const enrollment = new EnrollmentService(memberships, directory);
+    const secret = "l".repeat(43);
+    const runtimeLifecycle = async () => ({ apiVersion: 1 as const, supervisor: { reachable: true }, runtimes: [] });
+    const app = createGatewayManagementApp({ ...managementOptions(directory, secret, memberships, enrollment), runtimeLifecycle });
+    await request(app).get("/v1/runtime-lifecycle").expect(401);
+    const response = await request(app).get("/v1/runtime-lifecycle").set("x-queqiao-management-secret", secret).expect(200);
+    expect(response.body).toEqual({ apiVersion: 1, supervisor: { reachable: true }, runtimes: [] });
+  });
 });

@@ -1,3 +1,6 @@
+export const QUEQIAO_RUNTIME_SUPERVISOR_DEFAULT_PORT = 7564;
+export const QUEQIAO_RUNTIME_SUPERVISOR_SECRET_HEADER = "x-queqiao-supervisor-secret";
+
 export type RuntimeLifecycleRole = "gateway" | "worker";
 export type RuntimeReadinessState = "ready" | "needs_setup" | "needs_workspace";
 export type RuntimeHealthState = "healthy" | "degraded" | "identity_conflict" | "offline";
@@ -97,6 +100,20 @@ export function buildRuntimeLifecycleProjection(observation: RuntimeLifecycleObs
       inspectConflict: healthState === "identity_conflict",
     },
   };
+}
+
+export type RuntimeLifecyclePublicProjection = Omit<RuntimeLifecycleProjection, "ownership"> & {
+  ownership: { state: RuntimeOwnershipState };
+};
+
+export type RuntimeLifecycleSnapshot = {
+  apiVersion: 1;
+  supervisor: { reachable: boolean; error?: "supervisor_unavailable" };
+  runtimes: RuntimeLifecyclePublicProjection[];
+};
+
+export function sanitizeRuntimeLifecycleProjection(projection: RuntimeLifecycleProjection): RuntimeLifecyclePublicProjection {
+  return { ...projection, ownership: { state: projection.ownership.state } };
 }
 
 export interface RuntimeLifecycleSupervisor {

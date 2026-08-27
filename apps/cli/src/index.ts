@@ -15,6 +15,8 @@ import { doctorGateway } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 import { addWorkspace } from "./workspace-cli.js";
 import { launchDashboard } from "./dashboard-cli.js";
+import { QUEQIAO_RUNTIME_SUPERVISOR_DEFAULT_PORT } from "@queqiao/operations";
+import { serveRuntimeSupervisor } from "./runtime-supervisor-server.js";
 
 const managedToolSchema = toolNameSchema;
 const workspaceSchema = z.object({
@@ -38,7 +40,7 @@ const domain = args[0];
 const action = args[1];
 const localName = option(args, "name") || "default";
 const helpRequested = args.includes("--help") || args.includes("-h");
-const USAGE = "Usage: queqiao gateway setup|serve [--bg]|stop|status|join-token [--name <gateway>] [--copy], dashboard open [--name <gateway>] [--no-open], worker setup|port|serve [--bg]|stop|status|join [--name <worker>] [--join-code <code>] [--gateway <url> --token <token>], worker list|update|remove [--name <gateway>|--gateway-name <gateway>], workspace add|list|remove --worker <worker>, config paths, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor";
+const USAGE = "Usage: queqiao gateway setup|serve [--bg]|stop|status|join-token [--name <gateway>] [--copy], dashboard open [--name <gateway>] [--no-open], supervisor serve [--port <port>], worker setup|port|serve [--bg]|stop|status|join [--name <worker>] [--join-code <code>] [--gateway <url> --token <token>], worker list|update|remove [--name <gateway>|--gateway-name <gateway>], workspace add|list|remove --worker <worker>, config paths, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor";
 
 function resolveCommandLayout() {
   if (domain === "gateway" || domain === "dashboard") return resolveRuntimeLayoutForNamedRole("gateway", localName);
@@ -56,6 +58,7 @@ async function main() {
   if (helpRequested) { process.stdout.write(`${USAGE}\n`); return; }
   if (domain === "gateway" && action === "setup") return print(await setupGateway(configFile, args, layout.gatewayStateDir, layout.secretsDir));
   if (domain === "dashboard" && action === "open") return print(await launchDashboard(configFile, args));
+  if (domain === "supervisor" && action === "serve") return serveRuntimeSupervisor(Number(option(args, "port") || QUEQIAO_RUNTIME_SUPERVISOR_DEFAULT_PORT));
   if (domain === "worker" && action === "setup") return print(await setupWorker(configFile, args, layout.secretsDir));
   if (domain === "worker" && action === "port") {
     const status = await runtimeStatus(configFile, layout, "worker", localName);

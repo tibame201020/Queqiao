@@ -6,7 +6,7 @@ import { z } from "zod";
 import { workerIdSchema } from "@queqiao/contracts";
 import { workerWorkspaceMutationSchema } from "@queqiao/worker-protocol";
 import rateLimit from "express-rate-limit";
-import { buildControlPlaneSnapshot, type DeploymentManifest, type GatewayDoctorResult, type OperationsDiagnostics } from "@queqiao/operations";
+import { buildControlPlaneSnapshot, type DeploymentManifest, type GatewayDoctorResult, type OperationsDiagnostics, type RuntimeLifecycleSnapshot } from "@queqiao/operations";
 import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 import { QueqiaoError, WorkerHttpError } from "./errors.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
@@ -42,6 +42,7 @@ export function createGatewayManagementApp(options: {
   doctor: () => Promise<GatewayDoctorResult>;
   dashboardDirectory?: string;
   dashboardSessions?: DashboardSessionBroker;
+  runtimeLifecycle?: () => Promise<RuntimeLifecycleSnapshot>;
 }): Express {
   const app = express();
   app.disable("x-powered-by");
@@ -122,6 +123,14 @@ export function createGatewayManagementApp(options: {
       })));
     } catch {
       res.status(500).json({ error: "control_plane_snapshot_failed" });
+    }
+  });
+  app.get("/v1/runtime-lifecycle", async (_req, res) => {
+    if (!options.runtimeLifecycle) return res.status(404).json({ error: "runtime_lifecycle_unavailable" });
+    try {
+      res.json(await options.runtimeLifecycle());
+    } catch {
+      res.status(500).json({ error: "runtime_lifecycle_failed" });
     }
   });
   app.get("/v1/manifest", (_req, res) => {

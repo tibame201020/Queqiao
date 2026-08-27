@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRuntimeLifecycleProjection } from "./runtime-lifecycle.js";
+import { buildRuntimeLifecycleProjection, sanitizeRuntimeLifecycleProjection } from "./runtime-lifecycle.js";
 
 describe("runtime lifecycle projection", () => {
   it("treats a healthy reachable process without a reconciled pid as unmanaged", () => {
@@ -17,5 +17,12 @@ describe("runtime lifecycle projection", () => {
     expect(buildRuntimeLifecycleProjection({ role: "worker", name: "windows", configured: true, workspaceReady: false, reachable: false, healthy: false, identityMatches: false }).readiness.state).toBe("needs_workspace");
     expect(buildRuntimeLifecycleProjection({ role: "worker", name: "windows", configured: true, workspaceReady: true, reachable: true, healthy: false, identityMatches: false }).health.state).toBe("degraded");
     expect(buildRuntimeLifecycleProjection({ role: "worker", name: "windows", configured: true, workspaceReady: true, reachable: true, healthy: false, identityMatches: false, identityConflict: true }).health.state).toBe("identity_conflict");
+  });
+
+  it("removes managed process identifiers from public lifecycle projections", () => {
+    const internal = buildRuntimeLifecycleProjection({ role: "worker", name: "windows", configured: true, workspaceReady: true, reachable: true, healthy: true, identityMatches: true, managedPid: 4242 });
+    const publicState = sanitizeRuntimeLifecycleProjection(internal);
+    expect(publicState.ownership).toEqual({ state: "managed" });
+    expect(publicState.ownership).not.toHaveProperty("pid");
   });
 });
