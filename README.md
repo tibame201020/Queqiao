@@ -163,6 +163,14 @@ Core Manifest Revision 6 makes `workspace_info` explicitly targetable by Workspa
 adds safe deployment attestation to `list_workspaces` without adding an eighteenth public
 tool. See the [Revision 6 evidence](docs/validation/core-manifest-revision-6-workspace-attestation-2026-08-13.md).
 
+The current development candidate advances to **Core Manifest Revision 7** with one fixed
+public `extension` proxy tool plus an environment-local Extension Hub. Hub installation and
+Worker attachment are separate: attachment itself means the Worker uses the extension, so
+there is no additional enable/disable state. Proxy-mode extension changes do not mutate the
+public Core schema after the Revision 7 connector migration. See
+[ADR-0012](docs/adr/0012-extension-hub-and-worker-attachment.md) and the
+[Revision 7 candidate evidence](docs/validation/core-manifest-revision-7-extension-platform-candidate-2026-08-27.md).
+
 Security Baseline v1 is frozen. OAuth replay protection, MCP request budgets, sanitized
 health reporting, fail-closed Worker routing, native policy enforcement, filesystem and
 process containment, and the documented adversarial matrix are enforced by required
@@ -208,7 +216,13 @@ queqiao tool allow|deny --worker <worker> --workspace <id> --tool <tool>
 queqiao command allow|deny --worker <worker> --workspace <id> --command <executable>
 queqiao permissions show --worker <worker>
 queqiao manifest show
-queqiao extension list|doctor
+queqiao extension install npm:<package> [--worker <name>|--attach-all]
+queqiao extension attach <id> --worker <name>
+queqiao extension detach <id> --worker <name>
+queqiao extension uninstall <id> [--force]
+queqiao extension list
+queqiao extension show <id>
+queqiao extension doctor
 queqiao tool explain <tool>
 queqiao doctor
 ```

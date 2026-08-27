@@ -14,6 +14,7 @@ import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, set
 import { doctorGateway } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 import { addWorkspace } from "./workspace-cli.js";
+import { attachExtension, detachExtension, doctorExtensionHub, installNpmExtension, listExtensions, showExtension, uninstallExtension } from "./extension-cli.js";
 
 const managedToolSchema = toolNameSchema;
 const workspaceSchema = z.object({
@@ -37,7 +38,7 @@ const domain = args[0];
 const action = args[1];
 const localName = option(args, "name") || "default";
 const helpRequested = args.includes("--help") || args.includes("-h");
-const USAGE = "Usage: queqiao gateway setup|serve [--bg]|stop|status|join-token [--name <gateway>] [--copy], worker setup|port|serve [--bg]|stop|status|join [--name <worker>] [--join-code <code>] [--gateway <url> --token <token>], worker list|update|remove [--name <gateway>|--gateway-name <gateway>], workspace add|list|remove --worker <worker>, config paths, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension list|doctor, doctor";
+const USAGE = "Usage: queqiao gateway setup|serve [--bg]|stop|status|join-token [--name <gateway>] [--copy], worker setup|port|serve [--bg]|stop|status|join [--name <worker>] [--join-code <code>] [--gateway <url> --token <token>], worker list|update|remove [--name <gateway>|--gateway-name <gateway>], workspace add|list|remove --worker <worker>, config paths, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension install npm:<package> [--worker <name>|--attach-all]|attach <id> --worker <name>|detach <id> --worker <name>|uninstall <id> [--force]|list|show <id>|doctor, doctor";
 
 function resolveCommandLayout() {
   if (domain === "gateway") return resolveRuntimeLayoutForNamedRole("gateway", localName);
@@ -116,8 +117,30 @@ async function main() {
     const config = await configStore.read(); const state = operations(config);
     return print({ ok: state.ok, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint, supportedMcpProtocolVersions: state.supportedMcpProtocolVersions, manifest: state.ok ? buildDeploymentManifest({ coreManifestRevision: state.coreManifestRevision, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions }) : null, ...(state.compositionFailure ? { compositionFailure: state.compositionFailure } : {}) });
   }
-  if (domain === "extension" && action === "list") { const state = operations(await configStore.read()); return print({ ok: state.ok, extensions: state.extensions }); }
-  if (domain === "extension" && action === "doctor") { const state = operations(await configStore.read()); return print({ ok: state.ok, extensions: state.extensions, ...(state.compositionFailure ? { compositionFailure: state.compositionFailure } : {}) }); }
+  if (domain === "extension" && action === "install") {
+    const source = args[2] || option(args, "source");
+    if (!source) throw new Error("Extension source is required, for example: npm:queqiao-mcp");
+    const workerName = option(args, "worker");
+    return print(await installNpmExtension(layout, source, { ...(workerName ? { workerName } : {}), attachAll: args.includes("--attach-all") }));
+  }
+  if (domain === "extension" && action === "attach") {
+    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    return print(await attachExtension(layout, id, requiredOption(args, "worker")));
+  }
+  if (domain === "extension" && action === "detach") {
+    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    return print(await detachExtension(id, requiredOption(args, "worker")));
+  }
+  if (domain === "extension" && action === "uninstall") {
+    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    return print(await uninstallExtension(layout, id, args.includes("--force")));
+  }
+  if (domain === "extension" && action === "list") return print(await listExtensions(layout));
+  if (domain === "extension" && action === "show") {
+    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    return print(await showExtension(layout, id));
+  }
+  if (domain === "extension" && action === "doctor") return print(await doctorExtensionHub(layout));
   if (domain === "tool" && action === "explain") {
     const toolName = toolNameSchema.parse(args[2] || option(args, "tool")); const state = operations(await configStore.read()); const explanation = explainTool(state, toolName); if (!explanation) throw new Error(`Tool not found in effective composition: ${toolName}`); return print({ ...explanation, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint });
   }

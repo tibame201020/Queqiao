@@ -27,7 +27,7 @@ const manifest = {
 
 describe("extension config schema", () => {
   it("accepts an explicitly trusted local extension with Worker host and Workspace scope", () => {
-    const parsed = runtimeConfigSchema.parse({ ...base, extensions: [{ enabled: true, trusted: true, source: { kind: "local-module", module: "extensions/git.mjs" }, activation: { kind: "workspaces", workspaceIds: ["alpha"] }, manifest }] });
+    const parsed = runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: true, source: { kind: "local-module", module: "extensions/git.mjs" }, activation: { kind: "workspaces", workspaceIds: ["alpha"] }, manifest }] });
     expect(parsed.extensions[0]?.manifest.id).toBe("dev.queqiao.git");
   });
 

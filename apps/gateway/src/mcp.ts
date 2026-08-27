@@ -64,9 +64,8 @@ export function createMcpServer(workers: WorkerRegistry, scopes: readonly string
       },
     );
   }
-  const enabledExtensions = extensions.filter((extension) => extension.enabled);
-  resolveExtensionComposition(enabledExtensions.map((extension) => extension.manifest), definitions.map((definition) => definition.name));
-  const publicContributions = enabledExtensions.flatMap((extension) => extension.manifest.contributions
+  resolveExtensionComposition(extensions.map((extension) => extension.manifest), definitions.map((definition) => definition.name));
+  const publicContributions = extensions.flatMap((extension) => extension.manifest.contributions
     .filter((contribution): contribution is Extract<typeof contribution, { operation: "register" }> => contribution.operation === "register" && contribution.visibility === "public")
     .map((contribution) => ({ extension, contribution })))
     .sort((left, right) => left.contribution.tool.localeCompare(right.contribution.tool));

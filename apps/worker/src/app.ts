@@ -7,6 +7,7 @@ import { WorkerCoreCapabilities, type WorkerProcessExecutor } from "./core-capab
 import { ProcessCapacityError, ProcessRunner } from "@queqiao/process-runtime";
 import { QUEQIAO_WORKER_HTTP_API_PREFIX, QUEQIAO_WORKER_LEGACY_CAPABILITIES, QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION, QUEQIAO_WORKER_OPTIONAL_CAPABILITIES, QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import type { ExtensionHost, ToolRuntime } from "@queqiao/tool-runtime";
+import type { ReloadableExtensionHost } from "./reloadable-extension-host.js";
 
 export type WorkerAppConfig = {
   workerId?: string;
@@ -18,6 +19,7 @@ export type WorkerAppConfig = {
   workerCredential?: { current(): Promise<string> };
   processes?: WorkerProcessExecutor;
   extensionHost?: ExtensionHost<WorkerToolContext>;
+  extensionRuntime?: ReloadableExtensionHost;
 };
 
 const readRequestSchema = z.object({ workspaceId: z.string().min(1), path: z.string().min(1).max(4096), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(5000).default(500) });
@@ -29,11 +31,16 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   const catalog = new WorkspaceCatalog(config.defaultWorkspaceId, config.workspacesFile ? { file: config.workspacesFile } : { workspaces: config.workspaces! });
   await catalog.initialize();
   const coreTools = createWorkerToolRuntime();
-  const toolRuntimes = new Map<string, ToolRuntime<WorkerToolContext>>();
-  const toolsFor = (workspaceId: string): ToolRuntime<WorkerToolContext> => {
-    if (!config.extensionHost) return coreTools;
-    const existing = toolRuntimes.get(workspaceId); if (existing) return existing;
-    const runtime = createWorkerToolRuntimeForWorkspace(config.extensionHost, workspaceId); toolRuntimes.set(workspaceId, runtime); return runtime;
+  type RequestExtensionState = { host: ExtensionHost<WorkerToolContext> | undefined; generation: number };
+  const requestExtensions = new WeakMap<Request, RequestExtensionState>();
+  const toolRuntimes = new Map<string, { generation: number; runtime: ToolRuntime<WorkerToolContext> }>();
+  const toolsFor = (workspaceId: string, state: RequestExtensionState): ToolRuntime<WorkerToolContext> => {
+    if (!state.host) return coreTools;
+    const existing = toolRuntimes.get(workspaceId);
+    if (existing?.generation === state.generation) return existing.runtime;
+    const runtime = createWorkerToolRuntimeForWorkspace(state.host, workspaceId);
+    toolRuntimes.set(workspaceId, { generation: state.generation, runtime });
+    return runtime;
   };
   const processes = config.processes ?? new ProcessRunner();
   const instanceId = randomUUID();
@@ -54,14 +61,55 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
       res.status(503).json({ error: "worker_credential_unavailable" });
     }
   });
-  app.use(async (_req, _res, next) => { try { await catalog.refresh(); next(); } catch (error) { console.error("Workspace config reload rejected", error); next(); } });
+  app.use(async (req, res, next) => {
+    if (config.extensionRuntime) {
+      try {
+        const reload = await config.extensionRuntime.refresh();
+        if ("rejected" in reload) console.error("Extension config reload rejected", reload.rejected);
+      } catch (error) {
+        console.error("Extension config reload check failed", error);
+      }
+      const lease = config.extensionRuntime.acquire();
+      requestExtensions.set(req, { host: lease.host, generation: lease.generation });
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        void lease.release().catch((error) => console.error("ExtensionHost dispose failed", error));
+      };
+      res.once("finish", release);
+      res.once("close", release);
+    } else {
+      requestExtensions.set(req, { host: config.extensionHost, generation: 0 });
+    }
+    try { await catalog.refresh(); next(); } catch (error) { console.error("Workspace config reload rejected", error); next(); }
+  });
   const descriptors = () => catalog.list().map(({ config: entry, reader }) => ({ environmentId: config.environmentId, workspaceId: entry.id, displayName: entry.displayName, root: reader.root, profile: entry.profile, tools: entry.tools, commands: entry.commands }));
-  const contextFor = (toolName: string, workspaceId: string, signal?: AbortSignal): WorkerToolContext => {
-    const contract = toolsFor(workspaceId).definitions().find(({ name }) => name === toolName);
+  const contextFor = (toolName: string, workspaceId: string, state: RequestExtensionState, signal?: AbortSignal): WorkerToolContext => {
+    const runtime = toolsFor(workspaceId, state);
+    const contract = runtime.definitions().find(({ name }) => name === toolName);
     if (!contract) throw new WorkerToolError(404, "tool_not_found", `Tool is not available: ${toolName}`);
     const workspace = catalog.get(workspaceId);
     if (!workspace) throw new WorkerToolError(404, "workspace_not_found", `Workspace is not available: ${workspaceId}`);
-    return { workspaceId, capabilities: new WorkerCoreCapabilities({ toolName, grantedCapabilities: contract.requiredCapabilities, workspace, processes, ...(signal ? { signal } : {}) }), ...(signal ? { signal } : {}) };
+    const extensionContext = state.host ? {
+      extensionHost: state.host,
+      invokeExtensionTool: async (targetTool: string, input: Record<string, unknown>) => runtime.execute(
+        targetTool,
+        { ...input, workspaceId },
+        contextFor(targetTool, workspaceId, state, signal),
+      ),
+    } : {};
+    return {
+      workspaceId,
+      capabilities: new WorkerCoreCapabilities({ toolName, grantedCapabilities: contract.requiredCapabilities, workspace, processes, ...(signal ? { signal } : {}) }),
+      ...extensionContext,
+      ...(signal ? { signal } : {}),
+    };
+  };
+  const extensionStateFor = (req: Request): RequestExtensionState => requestExtensions.get(req) ?? { host: config.extensionHost, generation: 0 };
+  const executeTool = (req: Request, toolName: string, workspaceId: string, input: unknown, signal?: AbortSignal) => {
+    const state = extensionStateFor(req);
+    return toolsFor(workspaceId, state).execute(toolName, input, contextFor(toolName, workspaceId, state, signal));
   };
 
   app.get("/health", (_req, res) => res.json({ ok: true, service: "queqiao-worker", environmentId: config.environmentId }));
@@ -81,7 +129,7 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
     const abort = new AbortController();
     req.once("aborted", () => abort.abort(new Error("Worker request aborted")));
     res.once("close", () => { if (!res.writableEnded) abort.abort(new Error("Worker response connection closed")); });
-    try { res.json({ result: await toolsFor(workspaceId).execute(req.params.toolName, req.body, contextFor(req.params.toolName, workspaceId, abort.signal)) }); }
+    try { res.json({ result: await executeTool(req, req.params.toolName, workspaceId, req.body, abort.signal) }); }
     catch (error) {
       if (error instanceof WorkerToolError) return res.status(error.status).json({ error: error.code, message: error.message });
       if (error instanceof ProcessCapacityError) return res.status(429).json({ error: "process_capacity", message: error.message });
@@ -91,7 +139,7 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   app.post(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/read-file`, async (req, res) => {
     const parsed = readRequestSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
-    try { res.json(await toolsFor(parsed.data.workspaceId).execute("read_file", parsed.data, contextFor("read_file", parsed.data.workspaceId))); }
+    try { res.json(await executeTool(req, "read_file", parsed.data.workspaceId, parsed.data)); }
     catch (error) {
       if (error instanceof WorkerToolError) return res.status(error.status).json({ error: error.code, message: error.message });
       res.status(400).json({ error: "workspace_error", message: error instanceof Error ? error.message : "Unknown error" });

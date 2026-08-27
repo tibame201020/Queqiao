@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@queqiao/config": "0.1.0",
+    "@queqiao/core-manifest": "0.1.0",
     "@queqiao/platform-paths": "0.1.0",
     "@queqiao/policy": "0.1.0",
     "@queqiao/process-runtime": "0.1.0",

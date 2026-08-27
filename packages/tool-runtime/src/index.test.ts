@@ -99,7 +99,6 @@ describe("ExtensionHost", () => {
         };
       `, "utf8");
       const extension: InstalledExtensionConfig = {
-        enabled: true,
         trusted: true,
         source: { kind: "local-module", module: modulePath },
         activation: { kind: "workspaces", workspaceIds: ["alpha"] },
@@ -128,12 +127,12 @@ describe("ExtensionHost", () => {
 
   it("filters by declared host and leaves load state empty after an import failure", async () => {
     const gatewayExtension: InstalledExtensionConfig = {
-      enabled: true, trusted: true, source: { kind: "local-module", module: "missing-module" }, activation: { kind: "global" },
+      trusted: true, source: { kind: "local-module", module: "missing-module" }, activation: { kind: "global" },
       manifest: { id: "dev.queqiao.gateway", version: "1.0.0", displayName: "Gateway", host: { kind: "gateway" }, ordering: { requires: [], before: [], after: [] }, contributions: [] },
     };
 
     const allWorkers: InstalledExtensionConfig = {
-      enabled: true, trusted: true, source: { kind: "local-module", module: "all-worker" }, activation: { kind: "global" },
+      trusted: true, source: { kind: "local-module", module: "all-worker" }, activation: { kind: "global" },
       manifest: { id: "dev.queqiao.all-worker", version: "1.0.0", displayName: "All Worker", host: { kind: "worker" }, ordering: { requires: [], before: [], after: [] }, contributions: [] },
     };
     const linuxHost = new ExtensionHost<Context>([allWorkers], { kind: "worker", environmentId: "linux" }, process.cwd(), async () => ({ default: module("dev.queqiao.all-worker", () => undefined) }));

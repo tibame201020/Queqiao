@@ -125,6 +125,17 @@ export const coreWorkspaceTools: QueqiaoExtension<GatewayToolContext> = {
     });
 
     api.registerTool({
+      ...CORE_PUBLIC_TOOL_CONTRACTS.extension,
+      async execute(input, context) {
+        requireHandshake(context);
+        const { workspaceId, ...request } = input as { workspaceId?: string; [key: string]: unknown };
+        const selected = await selectWorkspace(context, workspaceId);
+        await context.workers.requireTool(selected, "extension");
+        return context.workers.invokeTool("extension", { ...request, workspaceId: selected }, context.signal);
+      },
+    });
+
+    api.registerTool({
       ...CORE_PUBLIC_TOOL_CONTRACTS.shell,
       async execute(input, context) {
         requireHandshake(context);

@@ -51,6 +51,9 @@
     },
     {
       "path": "packages/extension-git"
+    },
+    {
+      "path": "packages/extension-sdk"
     }
   ]
 }

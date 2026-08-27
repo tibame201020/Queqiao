@@ -38,7 +38,11 @@ export type ExtensionApi<TContext> = {
   extendTool(toolName: string, stage: "wrap", hook: WrapToolCallHook<TContext>): void;
   replaceTool(toolName: string, definition: ToolDefinition<TContext>): void;
 };
-export type QueqiaoExtension<TContext> = { manifest: ExtensionModuleManifest; activate(api: ExtensionApi<TContext>): void };
+export type QueqiaoExtension<TContext> = {
+  manifest: ExtensionModuleManifest;
+  activate(api: ExtensionApi<TContext>): void;
+  dispose?(): void | Promise<void>;
+};
 
 export type CompositionExtension = Pick<ExtensionManifestConfig, "id" | "ordering" | "contributions">;
 export type ResolvedToolComposition = {
@@ -151,7 +155,7 @@ function hostMatches(extension: InstalledExtensionConfig, target: ExtensionHostT
 }
 
 export function extensionActiveForWorkspace(extension: InstalledExtensionConfig, workspaceId: string): boolean {
-  return extension.enabled && (extension.activation.kind === "global" || extension.activation.workspaceIds.some((configuredId) => configuredId === workspaceId));
+  return extension.activation.kind === "global" || extension.activation.workspaceIds.some((configuredId) => configuredId === workspaceId);
 }
 
 function moduleSpecifier(module: string, configDirectory: string): string {
@@ -185,7 +189,7 @@ export class ExtensionHost<TContext> {
   ) {}
 
   async load(): Promise<void> {
-    const selected = this.configured.filter((extension) => extension.enabled && hostMatches(extension, this.target));
+    const selected = this.configured.filter((extension) => hostMatches(extension, this.target));
     resolveExtensionComposition(selected.map((extension) => extension.manifest), this.coreToolNames);
     const staged = new Map<string, RuntimeExtension<TContext>>();
     for (const extension of selected) {
@@ -217,10 +221,25 @@ export class ExtensionHost<TContext> {
     }).sort());
   }
 
+  activeManifests(workspaceId: string): readonly ExtensionManifestConfig[] {
+    const active = new Set(this.activeIds(workspaceId));
+    return Object.freeze([...this.loaded.values()]
+      .filter((entry) => active.has(entry.config.id))
+      .map((entry) => entry.config)
+      .sort((left, right) => left.id.localeCompare(right.id)));
+  }
+
   runtimeForWorkspace(workspaceId: string, coreTools: readonly ToolDefinition<TContext>[] = [], authority?: ToolAuthorityGuard<TContext>): ToolRuntime<TContext> {
     const active = new Set(this.activeIds(workspaceId));
     const entries = [...this.loaded.values()].filter((entry) => active.has(entry.config.id));
     return new ToolRuntime<TContext>(coreTools, authority).compose(entries);
+  }
+
+  /** Dispose extension modules that are not retained by the replacement host. */
+  async disposeReplacedBy(next?: ExtensionHost<TContext>): Promise<void> {
+    const retained = new Set(next ? [...next.loaded.values()].map((entry) => entry.module) : []);
+    const retiring = [...this.loaded.values()].reverse().filter((entry) => !retained.has(entry.module));
+    for (const entry of retiring) await entry.module.dispose?.();
   }
 }
 

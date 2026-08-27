@@ -25,9 +25,8 @@ function register(tool: string, description = "Extension tool") {
   };
 }
 
-function installed(id: string, contributions: InstalledExtensionConfig["manifest"]["contributions"], options: { enabled?: boolean; version?: string; activation?: InstalledExtensionConfig["activation"] } = {}): InstalledExtensionConfig {
+function installed(id: string, contributions: InstalledExtensionConfig["manifest"]["contributions"], options: { version?: string; activation?: InstalledExtensionConfig["activation"] } = {}): InstalledExtensionConfig {
   return {
-    enabled: options.enabled ?? true,
     trusted: true,
     source: { kind: "local-module", module: `C:/private/extensions/${id}.mjs` },
     activation: options.activation ?? { kind: "global" },
@@ -68,7 +67,7 @@ describe("deployment manifest fingerprint", () => {
     expect(revision5WorkspaceSchema.properties ?? {}).not.toHaveProperty("workspaceId");
 
     const state = diagnostics();
-    expect(QUEQIAO_CORE_MANIFEST_REVISION).toBe(6);
+    expect(QUEQIAO_CORE_MANIFEST_REVISION).toBe(7);
     expect(state.deploymentManifestFingerprint).not.toBe(revision4Fingerprint);
     expect(state.deploymentManifestFingerprint).not.toBe(revision5Fingerprint);
     const manifest = buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: [] });
@@ -105,9 +104,9 @@ describe("deployment manifest fingerprint", () => {
     expect(diagnostics([replaced, extended]).deploymentManifestFingerprint).toBe(base);
   });
 
-  it("omits disabled public extensions and canonicalizes schema object key order", () => {
-    const disabled = installed("dev.queqiao.reader", [register("extension_read")], { enabled: false });
-    expect(diagnostics([disabled]).deploymentManifestFingerprint).toBe(diagnostics().deploymentManifestFingerprint);
+  it("treats attached public extensions as active and canonicalizes schema object key order", () => {
+    const attached = installed("dev.queqiao.reader", [register("extension_read")]);
+    expect(diagnostics([attached]).deploymentManifestFingerprint).not.toBe(diagnostics().deploymentManifestFingerprint);
     expect(canonicalJson({ b: 1, a: { d: 2, c: 3 }, $schema: "ignored" })).toBe('{"a":{"c":3,"d":2},"b":1}');
   });
 
@@ -141,7 +140,7 @@ describe("composition diagnostics", () => {
     const state = diagnostics([extension]);
     const publicState = publicOperationsProjection(state);
     expect(state.extensions[0]).toMatchObject({ id: "dev.queqiao.reader", activation: { kind: "workspaces", workspaceIds: ["alpha"] }, loadState: "not_observed" });
-    expect(publicState).toEqual({ coreManifestRevision: 6, deploymentManifestFingerprint: state.deploymentManifestFingerprint, publicToolCount: 11, workerProtocolVersion: "2.0", supportedMcpProtocolVersions: ["2026-07-28", "2025-11-25"] });
+    expect(publicState).toEqual({ coreManifestRevision: 7, deploymentManifestFingerprint: state.deploymentManifestFingerprint, publicToolCount: 12, workerProtocolVersion: "2.0", supportedMcpProtocolVersions: ["2026-07-28", "2025-11-25"] });
     expect(JSON.stringify(publicState)).not.toContain("dev.queqiao.reader");
     expect(JSON.stringify(publicState)).not.toContain("alpha");
   });

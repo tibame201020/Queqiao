@@ -92,12 +92,16 @@ describe("Queqiao v0 vertical slice", () => {
       const search = await client.callTool({ name: "search_text", arguments: { query: "native worker", globs: ["**/*.txt"] } });
       expect(search.isError).not.toBe(true);
       expect(JSON.stringify(search.content)).toContain("fixture.txt");
+      const extensionList = await client.callTool({ name: "extension", arguments: { operation: "list" } });
+      expect(extensionList.isError).not.toBe(true);
+      const extensionPayload = JSON.parse((extensionList.content[0] as { type: "text"; text: string }).text) as { capabilities: unknown[] };
+      expect(extensionPayload.capabilities).toEqual([]);
       const listed = await client.callTool({ name: "list_workspaces", arguments: {} });
       const listedPayload = JSON.parse((listed.content[0] as { type: "text"; text: string }).text) as { deployment: { coreManifestRevision: number; deploymentManifestFingerprint: string; publicToolCount: number; workerProtocolVersion: string; supportedMcpProtocolVersions: string[] }; workspaces: Array<{ workspaceId: string }> };
       expect(listedPayload.workspaces.map((entry) => entry.workspaceId)).toContain("secondary");
       expect(listedPayload.deployment.coreManifestRevision).toBe(QUEQIAO_CORE_MANIFEST_REVISION);
       expect(listedPayload.deployment.deploymentManifestFingerprint).toBe(deploymentManifestFingerprint(expectedManifest));
-      expect(listedPayload.deployment.publicToolCount).toBe(10);
+      expect(listedPayload.deployment.publicToolCount).toBe(11);
       expect(listedPayload.deployment.workerProtocolVersion).toBe(QUEQIAO_WORKER_PROTOCOL_VERSION);
       expect(listedPayload.deployment.supportedMcpProtocolVersions).toContain("2026-07-28");
       const explicitInfo = await client.callTool({ name: "workspace_info", arguments: { workspaceId: "secondary" } });
