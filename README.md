@@ -227,6 +227,53 @@ queqiao tool explain <tool>
 queqiao doctor
 ```
 
+### External extension contract
+
+External packages use the public SDK export from the published Queqiao package:
+
+```ts
+import { defineExtension } from "@tibame201020/queqiao/extension";
+
+export default defineExtension({
+  manifest: {
+    id: "dev.example.extension",
+    version: "1.0.0",
+    displayName: "Example Extension",
+  },
+  activate(api) {
+    // Register, extend, or replace typed tools through the public Extension API.
+  },
+  async dispose() {
+    // Release sessions, timers, child resources, or other extension-owned state.
+  },
+});
+```
+
+The npm package must also declare Queqiao package metadata in `package.json`. `apiVersion` is currently `1`; `module` is a package-contained module path; the manifest declares Worker hosting, ordering, and contribution contracts:
+
+```json
+{
+  "name": "example-queqiao-extension",
+  "version": "1.0.0",
+  "queqiao": {
+    "apiVersion": 1,
+    "module": "./dist/index.js",
+    "manifest": {
+      "id": "dev.example.extension",
+      "version": "1.0.0",
+      "displayName": "Example Extension",
+      "host": { "kind": "worker" },
+      "ordering": { "requires": [], "before": [], "after": [] },
+      "contributions": []
+    }
+  }
+}
+```
+
+Revision 7 Extension Hub installation accepts Worker-hosted registry npm packages only. Install runs with npm lifecycle scripts disabled and validates package metadata, manifest/version identity, entry-point containment, and Worker compatibility before committing the Hub entry. `install` changes package state only unless `--worker` or `--attach-all` is supplied. `attach` is the Worker activation state; there is no separate enable/disable lifecycle.
+
+A running Worker hot-reloads attachment config generation-by-generation. A candidate ExtensionHost must load and validate before atomic replacement; rejected candidates preserve the last-known-good generation. In-flight requests retain the generation they started with, and retired extensions receive `dispose()` only after the final lease completes.
+
 Discovery roots are optional read-only search scopes, never Workspace grants. Core Workspace authority is created only through explicit `workspace add --worker <name>` operations against an existing directory. Repository/worktree discovery and lifecycle semantics belong to the Git extension and never broaden the selected Workspace authority boundary.
 
 Configuration changes use an exclusive lock, validated temporary file, and atomic
