@@ -4,10 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { readRuntimeConfig } from "@queqiao/config";
+import { buildRuntimeLifecycleProjection, type RuntimeLifecycleProjection, type RuntimeLifecycleRole, type RuntimeLifecycleSupervisor } from "@queqiao/operations";
 import type { RuntimeLayout } from "@queqiao/platform-paths";
 import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-paths.js";
 
-export type RuntimeRole = "gateway" | "worker";
+export type RuntimeRole = RuntimeLifecycleRole;
 type ExecFile = (file: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>;
 type Dependencies = {
   platform?: NodeJS.Platform;
@@ -26,25 +27,26 @@ function windowsSystemExecutable(name: string, env: NodeJS.ProcessEnv) { const r
 function pathsFor(layout: RuntimeLayout, role: RuntimeRole) { const dir = path.join(layout.stateDir, "processes"); return { dir, pidFile: path.join(dir, `${role}.pid.json`), stdout: path.join(layout.logDir, `${role}.out.log`), stderr: path.join(layout.logDir, `${role}.err.log`) }; }
 async function exists(file: string) { try { await access(file); return true; } catch { return false; } }
 async function validateConfiguredRole(configFile: string, role: RuntimeRole) { const runtime = await readRuntimeConfig(configFile); if (role === "gateway" && !runtime.gateway) throw new Error("gateway setup is required before serve"); if (role === "worker" && !runtime.worker) throw new Error("worker setup is required before serve"); if (role === "worker" && !runtime.worker?.defaultWorkspaceId) throw new Error("Worker has no Workspace; run workspace add --worker <name> before serving"); return runtime; }
-async function health(configFile: string, role: RuntimeRole, fetchImpl: typeof fetch) {
+type RuntimeHealthProbe = { reachable: boolean; healthy: boolean; identityMatches: boolean; identityConflict: boolean; status?: number; error?: string };
+async function health(configFile: string, role: RuntimeRole, fetchImpl: typeof fetch): Promise<RuntimeHealthProbe> {
   try {
     const runtime = await readRuntimeConfig(configFile);
     const port = role === "gateway" ? runtime.gateway?.listen.port : runtime.worker?.listen.port;
-    if (!port) return { reachable: false, healthy: false, identityMatches: false, error: `${role} configuration is required` };
+    if (!port) return { reachable: false, healthy: false, identityMatches: false, identityConflict: false, error: `${role} configuration is required` };
     const response = await fetchImpl(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(3000) });
-    if (role === "gateway") return { reachable: true, healthy: response.ok, identityMatches: true, status: response.status };
-    if (!response.ok) return { reachable: true, healthy: false, identityMatches: false, status: response.status };
+    if (role === "gateway") return { reachable: true, healthy: response.ok, identityMatches: true, identityConflict: false, status: response.status };
+    if (!response.ok) return { reachable: true, healthy: false, identityMatches: false, identityConflict: false, status: response.status };
     const expected = runtime.worker;
-    if (!expected) return { reachable: true, healthy: false, identityMatches: false, status: response.status, error: "worker configuration is required" };
+    if (!expected) return { reachable: true, healthy: false, identityMatches: false, identityConflict: false, status: response.status, error: "worker configuration is required" };
     const workerToken = (await readFile(path.resolve(expected.tokenFile), "utf8")).trim();
-    if (Buffer.byteLength(workerToken) < 32) return { reachable: true, healthy: false, identityMatches: false, status: response.status, error: "Worker credential is unavailable" };
+    if (Buffer.byteLength(workerToken) < 32) return { reachable: true, healthy: false, identityMatches: false, identityConflict: false, status: response.status, error: "Worker credential is unavailable" };
     const identityResponse = await fetchImpl(`http://127.0.0.1:${port}/enrollment/identity`, { headers: { "x-queqiao-worker-token": workerToken }, signal: AbortSignal.timeout(3000) });
-    if (!identityResponse.ok) return { reachable: true, healthy: false, identityMatches: false, status: response.status, error: `Worker identity probe failed with HTTP ${identityResponse.status}` };
+    if (!identityResponse.ok) return { reachable: true, healthy: false, identityMatches: false, identityConflict: true, status: response.status, error: `Worker identity probe failed with HTTP ${identityResponse.status}` };
     const identity = await identityResponse.json() as { workerId?: unknown; environmentId?: unknown };
     const identityMatches = identity.workerId === expected.workerId && identity.environmentId === expected.environmentId;
-    return { reachable: true, healthy: identityMatches, identityMatches, status: response.status, ...(identityMatches ? {} : { error: "Worker identity does not match this configuration" }) };
+    return { reachable: true, healthy: identityMatches, identityMatches, identityConflict: !identityMatches, status: response.status, ...(identityMatches ? {} : { error: "Worker identity does not match this configuration" }) };
   } catch (error) {
-    return { reachable: false, healthy: false, identityMatches: false, error: error instanceof Error ? error.message : "Unknown error" };
+    return { reachable: false, healthy: false, identityMatches: false, identityConflict: false, error: error instanceof Error ? error.message : "Unknown error" };
   }
 }
 async function readPid(file: string) { try { const parsed = JSON.parse(await readFile(file, "utf8")) as { pid?: unknown }; return Number.isInteger(parsed.pid) && Number(parsed.pid) > 0 ? Number(parsed.pid) : undefined; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; } }
@@ -77,8 +79,26 @@ export async function startRuntime(configFile: string, layout: RuntimeLayout, ro
   if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Queqiao ${role} start did not return a valid PID`); await writeFile(p.pidFile, `${JSON.stringify({ pid, entryPoint, configFile: path.resolve(configFile), startedAt: new Date().toISOString() })}\n`, { encoding: "utf8", mode: 0o600 }); await secureRuntimeFile(p.pidFile); return { started: true, name, role, pid };
 }
 export async function stopRuntime(layout: RuntimeLayout, roleValue: string, nameValue: string, dependencies: Dependencies = {}) { const role = validateRole(roleValue); const name = validateName(nameValue); return { stopped: await stopManaged(layout, role, dependencies), name, role }; }
+export async function runtimeLifecycleStatus(configFile: string, layout: RuntimeLayout, roleValue: string, nameValue: string, dependencies: Dependencies = {}): Promise<RuntimeLifecycleProjection> {
+  const role = validateRole(roleValue); const name = validateName(nameValue); const runtime = await readRuntimeConfig(configFile); const pid = await reconcileManagedPid(layout, role, dependencies); const state = await health(configFile, role, dependencies.fetchImpl || fetch); const configured = role === "gateway" ? Boolean(runtime.gateway) : Boolean(runtime.worker); const workspaceReady = role === "worker" ? Boolean(runtime.worker?.defaultWorkspaceId) : undefined; const port = role === "gateway" ? runtime.gateway?.listen.port : runtime.worker?.listen.port;
+  return buildRuntimeLifecycleProjection({ role, name, configured, ...(workspaceReady === undefined ? {} : { workspaceReady }), reachable: state.reachable, healthy: state.healthy, identityMatches: state.identityMatches, identityConflict: state.identityConflict, ...(state.status === undefined ? {} : { status: state.status }), ...(state.error ? { error: state.error } : {}), ...(pid ? { managedPid: pid } : {}), ...(port ? { endpoint: { url: `http://127.0.0.1:${port}/`, port } } : {}) });
+}
 export async function runtimeStatus(configFile: string, layout: RuntimeLayout, roleValue: string, nameValue: string, dependencies: Dependencies = {}) { const role = validateRole(roleValue); const name = validateName(nameValue); const pid = await reconcileManagedPid(layout, role, dependencies); const state = await health(configFile, role, dependencies.fetchImpl || fetch); return { name, role, active: state.reachable && state.identityMatches, managed: Boolean(pid), ...(pid ? { pid } : {}), health: state }; }
 export async function serveRuntime(configFile: string, roleValue: string, nameValue: string, dependencies: Dependencies = {}) {
   const role = validateRole(roleValue); const name = validateName(nameValue); await validateConfiguredRole(configFile, role); const current = await health(configFile, role, dependencies.fetchImpl || fetch); if (current.reachable && current.identityMatches) throw new Error(`${role} ${name} is already running`); if (current.reachable && !current.identityMatches) throw new Error(`Cannot serve ${role} ${name}: configured port is already occupied by another runtime`); const nodePath = path.resolve(dependencies.nodePath || process.execPath); const entryPoint = path.resolve(dependencies.entryPoints?.[role] || packageEntryPoint(role)); const child = spawn(nodePath, [entryPoint], { cwd: path.dirname(entryPoint), stdio: "inherit", env: { ...(dependencies.env || process.env), QUEQIAO_CONFIG_FILE: path.resolve(configFile) } }); const exitCode = await new Promise<number>((resolve, reject) => { child.once("error", reject); child.once("exit", (code, signal) => resolve(code ?? (signal ? 1 : 0))); }); return { served: true, name, role, exitCode };
 }
+
+export class LocalRuntimeSupervisor implements RuntimeLifecycleSupervisor {
+  constructor(private readonly configFile: string, private readonly layout: RuntimeLayout, private readonly dependencies: Dependencies = {}) {}
+  status(role: RuntimeLifecycleRole, name: string) { return runtimeLifecycleStatus(this.configFile, this.layout, role, name, this.dependencies); }
+  start(role: RuntimeLifecycleRole, name: string) { return startRuntime(this.configFile, this.layout, role, name, this.dependencies); }
+  stop(role: RuntimeLifecycleRole, name: string) { return stopRuntime(this.layout, role, name, this.dependencies); }
+  async restart(role: RuntimeLifecycleRole, name: string) {
+    const current = await this.status(role, name);
+    if (!current.actions.restart) throw new Error(`Cannot restart ${role} ${name}: runtime is not a healthy managed Queqiao process`);
+    await this.stop(role, name);
+    return this.start(role, name);
+  }
+}
+
 export const runtimeLifecycleInternals = { validateName, pathsFor, exists };

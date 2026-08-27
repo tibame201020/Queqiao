@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveRuntimeLayout } from "@queqiao/platform-paths";
-import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
+import { LocalRuntimeSupervisor, runtimeLifecycleStatus, runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-runtime-lifecycle-")); const layout = resolveRuntimeLayout({ LOCALAPPDATA: root, TEMP: root, USERPROFILE: root }, "win32"); await import("node:fs/promises").then(({ mkdir }) => mkdir(layout.configDir, { recursive: true }));
@@ -45,6 +45,16 @@ describe("runtime lifecycle", () => {
       : new Response(JSON.stringify({ workerId: "22222222-2222-4222-8222-222222222222", environmentId: "windows" }), { status: 200 });
     await expect(serveRuntime(layout.configFile, "worker", "windows", { fetchImpl: fetchImpl as typeof fetch })).rejects.toThrow(/port is already occupied by another runtime/);
     await expect(startRuntime(layout.configFile, layout, "worker", "windows", { platform:"win32", env:{SystemRoot:"C:\\Windows"}, execFile: async()=>({stdout:"",stderr:""}), fetchImpl: fetchImpl as typeof fetch, entryPoints:{worker:"C:\\pkg\\queqiao-worker.js"} })).rejects.toThrow(/port is already occupied by another runtime/);
+  });
+  it("projects readiness, health, ownership, and contextual lifecycle actions", async () => {
+    const { layout } = await fixture();
+    const state = await runtimeLifecycleStatus(layout.configFile, layout, "gateway", "shadow", { fetchImpl: async()=>new Response("{}",{status:200}) });
+    expect(state).toMatchObject({ apiVersion: 1, role: "gateway", name: "shadow", readiness: { state: "ready" }, health: { state: "healthy", reachable: true }, ownership: { state: "unmanaged" }, endpoint: { port: 7675 }, actions: { start: false, stop: false, restart: false } });
+  });
+  it("keeps restart behind reconciled managed ownership through the supervisor seam", async () => {
+    const { layout } = await fixture();
+    const supervisor = new LocalRuntimeSupervisor(layout.configFile, layout, { fetchImpl: async()=>new Response("{}",{status:200}) });
+    await expect(supervisor.restart("gateway", "shadow")).rejects.toThrow(/not a healthy managed Queqiao process/);
   });
   it("rejects unsafe runtime names", async () => { const { layout } = await fixture(); await expect(runtimeStatus(layout.configFile,layout,"gateway","../bad",{fetchImpl:async()=>new Response("{}",{status:200})})).rejects.toThrow(/Name must match/); });
 });
