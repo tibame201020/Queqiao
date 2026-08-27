@@ -16,7 +16,7 @@ let temporary: string | undefined;
 let external: string | undefined;
 afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); if (external) await rm(external, { recursive: true, force: true }); temporary = undefined; external = undefined; });
 
-const installed: InstalledExtensionConfig = { enabled: true, trusted: true, source: { kind: "local-module", module: "@queqiao/extension-git" }, activation: { kind: "global" }, manifest: GIT_EXTENSION_MANIFEST };
+const installed: InstalledExtensionConfig = { trusted: true, source: { kind: "local-module", module: "@queqiao/extension-git" }, activation: { kind: "global" }, manifest: GIT_EXTENSION_MANIFEST };
 async function git(cwd: string, args: string[]) { return exec("git", args, { cwd, windowsHide: true }); }
 async function initializeRepo(root: string) {
   await mkdir(root, { recursive: true });
@@ -52,6 +52,12 @@ describe("first-party Git extension", () => {
     expect(discovered.body.result.repositories).toEqual(expect.arrayContaining([expect.objectContaining({ path: "repo", kind: "repository" })]));
     const status = await tool(app, "git_status", { workspaceId: "coding", repositoryPath: "repo" });
     expect(status.body.result.repositoryPath).toBe("repo");
+    const proxySearch = await tool(app, "extension", { workspaceId: "coding", operation: "search", query: "git status" });
+    expect(proxySearch.body.result.matches).toEqual(expect.arrayContaining([expect.objectContaining({ extensionId: "dev.queqiao.git", capability: "git_status" })]));
+    const proxyDescribe = await tool(app, "extension", { workspaceId: "coding", operation: "describe", extensionId: "dev.queqiao.git", capability: "git_status" });
+    expect(proxyDescribe.body.result.capability.name).toBe("git_status");
+    const proxyCall = await tool(app, "extension", { workspaceId: "coding", operation: "call", extensionId: "dev.queqiao.git", capability: "git_status", arguments: { repositoryPath: "repo" } });
+    expect(proxyCall.body.result.result.repositoryPath).toBe("repo");
     const branches = await tool(app, "git_branches", { workspaceId: "coding", repositoryPath: "repo" });
     expect(branches.body.result.branches.some((entry: { current: boolean }) => entry.current)).toBe(true);
     const log = await tool(app, "git_log", { workspaceId: "coding", repositoryPath: "repo", limit: 5 });

@@ -14,3 +14,4 @@ instead of silently rewriting the reason a boundary exists.
 - [ADR-0009: Workspace is an authority boundary; discovery semantics belong outside Core](0009-workspace-authority-and-discovery.md)
 - [ADR-0010: `run` and `shell` support bounded sync and async execution modes](0010-async-execution-modes.md)
 - [ADR-0011: Worker enrollment, registry, liveness, and transport abstraction](0011-gateway-worker-registration-and-transport.md)
+- [ADR-0012: Extension Hub owns packages; Workers attach and execute them](0012-extension-hub-and-worker-attachment.md)

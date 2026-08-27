@@ -1,9 +1,9 @@
 ﻿import { z } from "zod";
-import { MAX_TEXT_MUTATION_BYTES, processExecutionModeSchema } from "@queqiao/contracts";
+import { MAX_TEXT_MUTATION_BYTES, extensionIdSchema, processExecutionModeSchema, toolNameSchema } from "@queqiao/contracts";
 import { MAX_PROCESS_TIMEOUT_MS } from "@queqiao/process-runtime";
 import type { ToolAnnotations, ToolCapability, ToolRisk } from "@queqiao/contracts";
 
-export const QUEQIAO_CORE_MANIFEST_REVISION = 6 as const;
+export const QUEQIAO_CORE_MANIFEST_REVISION = 7 as const;
 
 export type CorePublicToolContract = {
   name: string;
@@ -72,6 +72,21 @@ export const CORE_PUBLIC_TOOL_CONTRACTS = {
     requiredCapabilities: ["workspace:exec"], risk: "execute",
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
+  extension: {
+    name: "extension", title: "Extension proxy",
+    description: "Discover and invoke capabilities exposed by trusted Queqiao extensions without changing the public MCP manifest for each installed extension. The selected Workspace and target capability remain Worker-authoritative.",
+    inputSchema: z.object({
+      workspaceId: z.string().min(1).max(64).optional(),
+      operation: z.enum(["list", "search", "describe", "call"]),
+      extensionId: extensionIdSchema.optional(),
+      capability: toolNameSchema.optional(),
+      query: z.string().min(1).max(256).optional(),
+      arguments: z.record(z.string(), z.unknown()).default({}),
+      limit: z.number().int().min(1).max(50).default(20),
+    }),
+    requiredCapabilities: ["workspace:read"], risk: "execute",
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+  },
   list_directory: {
     name: "list_directory", title: "List directory",
     description: "List bounded workspace-relative directory entries. Omit workspaceId to use the default workspace.",
@@ -87,5 +102,5 @@ export const CORE_PUBLIC_TOOL_CONTRACTS = {
 } as const satisfies Record<string, CorePublicToolContract>;
 
 export type CorePublicToolName = keyof typeof CORE_PUBLIC_TOOL_CONTRACTS;
-export const CORE_PUBLIC_TOOL_ORDER = ["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "shell", "list_directory", "search_text"] as const satisfies readonly CorePublicToolName[];
+export const CORE_PUBLIC_TOOL_ORDER = ["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "shell", "extension", "list_directory", "search_text"] as const satisfies readonly CorePublicToolName[];
 export const CORE_PUBLIC_TOOLS: readonly CorePublicToolContract[] = Object.freeze(CORE_PUBLIC_TOOL_ORDER.map((name) => CORE_PUBLIC_TOOL_CONTRACTS[name]));

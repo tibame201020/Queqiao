@@ -2,13 +2,43 @@ import { z } from "zod";
 import { processExecutionModeSchema, type ProcessExecutionMode } from "@queqiao/contracts";
 import { MAX_TEXT_MUTATION_BYTES } from "@queqiao/contracts";
 import { MAX_PROCESS_TIMEOUT_MS } from "@queqiao/process-runtime";
+import { CORE_PUBLIC_TOOL_CONTRACTS } from "@queqiao/core-manifest";
 import { ExtensionHost, ToolRuntime, type QueqiaoExtension, type RuntimeExtension, type ToolAuthorityGuard } from "@queqiao/tool-runtime";
 import { WorkerCoreCapabilities, type NativeShellName } from "./core-capabilities.js";
 import { WorkerToolError } from "./tool-errors.js";
 
 export { WorkerToolError } from "./tool-errors.js";
 
-export type WorkerToolContext = { workspaceId: string; capabilities: WorkerCoreCapabilities; signal?: AbortSignal };
+export type WorkerToolContext = {
+  workspaceId: string;
+  capabilities: WorkerCoreCapabilities;
+  extensionHost?: ExtensionHost<WorkerToolContext>;
+  invokeExtensionTool?: (toolName: string, input: Record<string, unknown>) => Promise<unknown>;
+  signal?: AbortSignal;
+};
+
+type ExtensionProxyInput = {
+  workspaceId: string;
+  operation: "list" | "search" | "describe" | "call";
+  extensionId?: string;
+  capability?: string;
+  query?: string;
+  arguments: Record<string, unknown>;
+  limit: number;
+};
+
+function extensionRegistrations(context: WorkerToolContext) {
+  const manifests = context.extensionHost?.activeManifests(context.workspaceId) ?? [];
+  return manifests.flatMap((manifest) => manifest.contributions
+    .filter((contribution) => contribution.operation === "register")
+    .map((contribution) => ({ extension: manifest, contribution })));
+}
+
+function requireProxyTarget(input: ExtensionProxyInput) {
+  if (!input.extensionId) throw new WorkerToolError(400, "invalid_request", "extensionId is required");
+  if (!input.capability) throw new WorkerToolError(400, "invalid_request", "capability is required");
+  return { extensionId: input.extensionId, capability: input.capability };
+}
 
 const workerCoreTools: QueqiaoExtension<WorkerToolContext> = {
   manifest: {
@@ -18,6 +48,66 @@ const workerCoreTools: QueqiaoExtension<WorkerToolContext> = {
     supportedEnvironments: ["windows", "linux", "darwin"],
   },
   activate(api) {
+    api.registerTool({
+      ...CORE_PUBLIC_TOOL_CONTRACTS.extension,
+      async execute(input, context) {
+        const request = input as ExtensionProxyInput;
+        const registrations = extensionRegistrations(context);
+        if (request.operation === "list") {
+          const capabilities = registrations.slice(0, request.limit).map(({ extension, contribution }) => ({
+            extensionId: extension.id,
+            extensionVersion: extension.version,
+            extensionDisplayName: extension.displayName,
+            capability: contribution.tool,
+            title: contribution.title,
+            description: contribution.description,
+            visibility: contribution.visibility,
+            risk: contribution.risk,
+          }));
+          return { workspaceId: context.workspaceId, capabilities, total: registrations.length, truncated: registrations.length > capabilities.length };
+        }
+        if (request.operation === "search") {
+          if (!request.query) throw new WorkerToolError(400, "invalid_request", "query is required for extension search");
+          const needle = request.query.toLowerCase();
+          const matches = registrations.filter(({ extension, contribution }) => [extension.id, extension.displayName, contribution.tool, contribution.title, contribution.description]
+            .some((value) => value.toLowerCase().includes(needle)));
+          const selected = matches.slice(0, request.limit).map(({ extension, contribution }) => ({
+            extensionId: extension.id,
+            extensionVersion: extension.version,
+            capability: contribution.tool,
+            title: contribution.title,
+            description: contribution.description,
+            visibility: contribution.visibility,
+            risk: contribution.risk,
+          }));
+          return { workspaceId: context.workspaceId, query: request.query, matches: selected, total: matches.length, truncated: matches.length > selected.length };
+        }
+        const target = requireProxyTarget(request);
+        const registration = registrations.find(({ extension, contribution }) => extension.id === target.extensionId && contribution.tool === target.capability);
+        if (!registration) throw new WorkerToolError(404, "tool_not_found", `Extension capability is not available: ${target.extensionId}/${target.capability}`);
+        if (request.operation === "describe") {
+          const { extension, contribution } = registration;
+          return {
+            workspaceId: context.workspaceId,
+            extension: { id: extension.id, version: extension.version, displayName: extension.displayName, host: extension.host },
+            capability: {
+              name: contribution.tool,
+              title: contribution.title,
+              description: contribution.description,
+              visibility: contribution.visibility,
+              inputSchema: contribution.inputSchema,
+              ...(contribution.outputSchema ? { outputSchema: contribution.outputSchema } : {}),
+              requiredCapabilities: contribution.requiredCapabilities,
+              risk: contribution.risk,
+              annotations: contribution.annotations,
+            },
+          };
+        }
+        if (!context.invokeExtensionTool) throw new WorkerToolError(503, "tool_error", "Extension invocation runtime is unavailable");
+        const result = await context.invokeExtensionTool(target.capability, request.arguments);
+        return { workspaceId: context.workspaceId, extensionId: target.extensionId, capability: target.capability, result };
+      },
+    });
     api.registerTool({
       name: "list_directory",
       title: "List directory",

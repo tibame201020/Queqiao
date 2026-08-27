@@ -31,7 +31,7 @@ Gateway-observed liveness is configurable and low-frequency; no Worker lease/hea
 
 The transport descriptor is intentionally abstract and is fixed in persistent membership until an explicit management update changes it. Loopback HTTP is the current verified implementation; future bindings such as gRPC may be introduced without redefining Worker Protocol semantics, Gateway routing responsibilities, or Worker-authoritative execution policy.
 
-The current Core contract is **Core Manifest Revision 6**. Core exposes ten typed tools:
+The current development candidate is **Core Manifest Revision 7**. Revision 7 preserves the ten existing Core tools and adds one fixed public `extension` proxy tool:
 
 - `workspace_info`
 - `list_workspaces`
@@ -43,8 +43,9 @@ The current Core contract is **Core Manifest Revision 6**. Core exposes ten type
 - `search_text`
 - `run`
 - `shell`
+- `extension`
 
-The accepted production-like deployment composition additionally enables the first-party Git extension with seven named public tools: `git_repositories`, `git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and `git_worktree_remove`, yielding an effective 17-tool Deployment Manifest. `workspace_info` accepts an optional Workspace ID for explicit cross-environment inspection, and `list_workspaces` returns a safe deployment-attestation projection.
+The accepted production-like deployment composition additionally enables the first-party Git extension with seven named public tools: `git_repositories`, `git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and `git_worktree_remove`. Revision 7's fixed `extension` proxy is the stable discovery/call surface for proxy-mode external extensions; installing or removing such extensions does not mutate the Core schema again. `workspace_info` accepts an optional Workspace ID for explicit cross-environment inspection, and `list_workspaces` returns a safe deployment-attestation projection.
 
 Historical Revision 4 and Revision 5 validation evidence remains authoritative for those contracts and is not rewritten by later revisions.
 
@@ -78,7 +79,7 @@ The current loopback HTTP API is the deployed Worker transport, not the permanen
 
 ### `apps/cli`
 
-Administrative interface for validated/atomic configuration changes, migrations, diagnostics, explicit named runtime lifecycle (`serve [--bg]` / `stop` / `status`), Worker enrollment, Workspace authority management, and permission inspection. It does not install or manage OS services or autostart.
+Administrative interface for validated/atomic configuration changes, migrations, diagnostics, explicit named runtime lifecycle (`serve [--bg]` / `stop` / `status`), Worker enrollment, Workspace authority management, permission inspection, and Extension Hub package/Worker attachment management. It does not install or manage OS services or autostart.
 
 CLI/config changes do not by themselves mutate a client's cached public MCP tool schema.
 
@@ -122,7 +123,7 @@ Worker-side policy enforcement remains authoritative.
 
 Transport-neutral typed tool runtime and extension host. The current implementation supports typed registration, tool-specific `extend`/wrap/replace, deterministic dependency/order DAG composition, scoped activation, lifecycle sealing, input validation, and fail-closed conflict diagnostics.
 
-Configured extensions are explicitly installed trusted local TypeScript modules. The mandatory Workspace/profile/tool/process authority envelope executes outside extension implementations, so replacements and wrappers cannot increase authority. Public composition feeds the deterministic Deployment Manifest and diagnostics model.
+Revision 7 adds a public external-extension SDK export at `@tibame201020/queqiao/extension`. Registry npm packages are validated into an environment-local Extension Hub, then explicitly attached to Workers. Attachment is execution intent; there is no separate enable/disable state. A running Worker hot-reloads attachment changes through generation-based ExtensionHost replacement with last-known-good fallback, request leases, and deferred `dispose()` of retired generations. The mandatory Workspace/profile/tool/process authority envelope executes outside extension implementations, so replacements and wrappers cannot increase authority. Public composition feeds the deterministic Deployment Manifest and diagnostics model.
 
 ### `packages/process-runtime`
 

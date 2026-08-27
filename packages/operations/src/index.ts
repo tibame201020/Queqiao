@@ -38,10 +38,9 @@ export type CompositionFailureDiagnostic = {
 export type ExtensionDiagnostic = {
   id: string;
   version: string;
-  enabled: boolean;
   host: { kind: "gateway" } | { kind: "worker"; environmentId?: string };
   activation: { kind: "global" } | { kind: "workspaces"; workspaceIds: readonly string[] };
-  loadState: "disabled" | "loaded" | "not_loaded" | "not_observed";
+  loadState: "loaded" | "not_loaded" | "not_observed";
 };
 
 export type ToolCompositionDiagnostic = {
@@ -109,19 +108,14 @@ function extensionPublicContract(contribution: Extract<ExtensionContribution, { 
   };
 }
 
-function enabledExtensions(extensions: readonly InstalledExtensionConfig[]): readonly InstalledExtensionConfig[] {
-  return extensions.filter((extension) => extension.enabled);
-}
-
 export function buildDeploymentManifest(input: {
   coreManifestRevision: number;
   coreTools: readonly RuntimeToolContract[];
   extensions: readonly InstalledExtensionConfig[];
 }): DeploymentManifest {
-  const enabled = enabledExtensions(input.extensions);
-  resolveExtensionComposition(enabled.map((extension) => extension.manifest), input.coreTools.map((tool) => tool.name));
+  resolveExtensionComposition(input.extensions.map((extension) => extension.manifest), input.coreTools.map((tool) => tool.name));
   const tools: PublicToolManifestContract[] = input.coreTools.map(runtimePublicContract);
-  for (const extension of enabled) {
+  for (const extension of input.extensions) {
     for (const contribution of extension.manifest.contributions) {
       if (contribution.operation === "register" && contribution.visibility === "public") tools.push(extensionPublicContract(contribution));
     }
@@ -151,23 +145,21 @@ function extensionDiagnostics(extensions: readonly InstalledExtensionConfig[], l
   return Object.freeze([...extensions].sort((left, right) => left.manifest.id.localeCompare(right.manifest.id)).map((extension) => ({
     id: extension.manifest.id,
     version: extension.manifest.version,
-    enabled: extension.enabled,
     host: extension.manifest.host.kind === "gateway"
       ? { kind: "gateway" as const }
       : { kind: "worker" as const, ...(extension.manifest.host.environmentId ? { environmentId: extension.manifest.host.environmentId } : {}) },
     activation: extension.activation.kind === "global"
       ? { kind: "global" as const }
       : { kind: "workspaces" as const, workspaceIds: Object.freeze([...extension.activation.workspaceIds].sort()) },
-    loadState: !extension.enabled ? "disabled" as const : !loaded ? "not_observed" as const : loaded.has(extension.manifest.id) ? "loaded" as const : "not_loaded" as const,
+    loadState: !loaded ? "not_observed" as const : loaded.has(extension.manifest.id) ? "loaded" as const : "not_loaded" as const,
   })));
 }
 
 function toolDiagnostics(coreTools: readonly RuntimeToolContract[], extensions: readonly InstalledExtensionConfig[]): readonly ToolCompositionDiagnostic[] {
-  const enabled = enabledExtensions(extensions);
-  const plan = resolveExtensionComposition(enabled.map((extension) => extension.manifest), coreTools.map((tool) => tool.name));
+  const plan = resolveExtensionComposition(extensions.map((extension) => extension.manifest), coreTools.map((tool) => tool.name));
   const core = new Map(coreTools.map((tool) => [tool.name, tool]));
   const contributions = new Map<string, { extensionId: string; contribution: Extract<ExtensionContribution, { operation: "register" }> }>();
-  for (const extension of enabled) {
+  for (const extension of extensions) {
     for (const contribution of extension.manifest.contributions) if (contribution.operation === "register") contributions.set(contribution.tool, { extensionId: extension.manifest.id, contribution });
   }
   return Object.freeze([...plan.tools.values()].map((entry) => {

@@ -34,6 +34,19 @@ export function resolveRuntimeLayoutForInstance(instanceValue: string | undefine
 
 export type RuntimeRole = "gateway" | "worker";
 
+export function resolveNamedRoleConfigRoot(role: RuntimeRole, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  const hasExplicitLayout = Boolean(env.QUEQIAO_CONFIG_DIR || env.QUEQIAO_DATA_DIR || env.QUEQIAO_STATE_HOME || env.QUEQIAO_RUNTIME_DIR);
+  if (hasExplicitLayout) throw new Error("Named runtime discovery is unavailable when explicit QUEQIAO_* layout overrides are active");
+  const paths = platform === "win32" ? path.win32 : path.posix;
+  const windows = platform === "win32";
+  const home = (windows ? env.USERPROFILE || env.HOME : env.HOME || env.USERPROFILE) || os.homedir();
+  const localAppData = env.LOCALAPPDATA || paths.join(home, "AppData", "Local");
+  const roleDirectory = role === "gateway" ? "gateways" : "workers";
+  return windows
+    ? paths.join(localAppData, "Queqiao", roleDirectory)
+    : paths.join(env.XDG_CONFIG_HOME || paths.join(home, ".config"), "queqiao", roleDirectory);
+}
+
 export function resolveRuntimeLayoutForNamedRole(role: RuntimeRole, nameValue: string | undefined, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): RuntimeLayout {
   const name = (nameValue || "default").trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(name)) throw new Error("Name must match /^[a-z0-9][a-z0-9_-]{0,63}$/");

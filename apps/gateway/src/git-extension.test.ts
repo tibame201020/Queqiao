@@ -10,19 +10,17 @@ import type { InstalledExtensionConfig } from "@queqiao/config";
 import { createMcpNodeAdapter } from "./mcp-adapter.js";
 import type { WorkerRegistry } from "./worker-registry.js";
 
-const installed: InstalledExtensionConfig = { enabled: true, trusted: true, source: { kind: "local-module", module: "@queqiao/extension-git" }, activation: { kind: "global" }, manifest: GIT_EXTENSION_MANIFEST };
+const installed: InstalledExtensionConfig = { trusted: true, source: { kind: "local-module", module: "@queqiao/extension-git" }, activation: { kind: "global" }, manifest: GIT_EXTENSION_MANIFEST };
 let server: Server | undefined;
 afterEach(async () => { if (server) await new Promise<void>((resolve) => server!.close(() => resolve())); server = undefined; });
 
 describe("Gateway public extension projection", () => {
-  it("keeps Git diagnostics deterministic when disabled or Workspace-scoped", () => {
-    const enabled = buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: [installed] });
-    const disabled = buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: [{ ...installed, enabled: false }] });
+  it("keeps Git diagnostics deterministic when Workspace-scoped", () => {
+    const attached = buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: [installed] });
     const scoped = { ...installed, activation: { kind: "workspaces" as const, workspaceIds: ["coding"] } };
     const scopedManifest = buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: [scoped] });
-    expect(enabled.tools).toHaveLength(17);
-    expect(disabled.tools).toHaveLength(10);
-    expect(deploymentManifestFingerprint(scopedManifest)).toBe(deploymentManifestFingerprint(enabled));
+    expect(attached.tools).toHaveLength(CORE_PUBLIC_TOOLS.length + 7);
+    expect(deploymentManifestFingerprint(scopedManifest)).toBe(deploymentManifestFingerprint(attached));
     expect(extensionActiveForWorkspace(scoped, "coding")).toBe(true);
     expect(extensionActiveForWorkspace(scoped, "other")).toBe(false);
   });
@@ -45,7 +43,7 @@ describe("Gateway public extension projection", () => {
       await client.connect(transport);
       const tools = (await client.listTools()).tools;
       const manifest = buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: [installed] });
-      expect(manifest.tools).toHaveLength(17);
+      expect(manifest.tools).toHaveLength(CORE_PUBLIC_TOOLS.length + 7);
       expect(deploymentManifestFingerprint(manifest)).toMatch(/^sha256:[0-9a-f]{64}$/);
       const actual = tools.map((tool) => ({ name: tool.name, title: tool.title, description: tool.description, inputSchema: tool.inputSchema, annotations: tool.annotations })).sort((a, b) => a.name.localeCompare(b.name));
       expect(canonicalJson(actual)).toBe(canonicalJson(manifest.tools));

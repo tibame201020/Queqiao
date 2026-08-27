@@ -118,10 +118,27 @@ export const extensionManifestSchema = z.object({
   }
 });
 
+export const extensionPackageMetadataSchema = z.object({
+  apiVersion: z.literal(1),
+  module: z.string().min(1).max(4096),
+  manifest: extensionManifestSchema,
+});
+
+export const extensionSourceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("local-module"), module: z.string().min(1).max(4096) }),
+  z.object({
+    kind: z.literal("npm"),
+    package: z.string().min(1).max(214),
+    requested: z.string().min(1).max(256),
+    version: semanticVersionSchema,
+    module: z.string().min(1).max(4096),
+    installDirectory: z.string().min(1).max(4096),
+  }),
+]);
+
 export const installedExtensionSchema = z.object({
-  enabled: z.boolean().default(true),
   trusted: z.literal(true),
-  source: z.object({ kind: z.literal("local-module"), module: z.string().min(1).max(4096) }),
+  source: extensionSourceSchema,
   activation: extensionActivationSchema.default({ kind: "global" }),
   manifest: extensionManifestSchema,
 });
@@ -152,6 +169,8 @@ export type ExtensionHost = z.infer<typeof extensionHostSchema>;
 export type ExtensionActivation = z.infer<typeof extensionActivationSchema>;
 export type ExtensionContribution = z.infer<typeof extensionContributionSchema>;
 export type ExtensionManifestConfig = z.infer<typeof extensionManifestSchema>;
+export type ExtensionPackageMetadata = z.infer<typeof extensionPackageMetadataSchema>;
+export type ExtensionSource = z.infer<typeof extensionSourceSchema>;
 export type InstalledExtensionConfig = z.infer<typeof installedExtensionSchema>;
 
 export const runtimeConfigSchema = z.object({
