@@ -58,13 +58,15 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: npm }
       - run: npm ci --ignore-scripts
+      - run: npm run build:package
       - shell: bash
         run: |
           mkdir package-test
-          npm pack --pack-destination package-test >/dev/null
+          npm pack --ignore-scripts --pack-destination package-test >/dev/null
           tarball="$(find "$(pwd)/package-test" -name '*.tgz' -print -quit)"
           npm install --prefix package-test/install "$tarball" --ignore-scripts
           package-test/install/node_modules/.bin/queqiao config paths
+          (cd package-test/install && node --input-type=module -e "const m=await import('@tibame201020/queqiao/extension'); if(typeof m.defineExtension!=='function') throw new Error('defineExtension export missing')")
 
   linux-gateway-cluster:
     name: Linux Gateway and Worker handshake
