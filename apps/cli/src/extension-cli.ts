@@ -259,9 +259,14 @@ export async function installNpmExtension(
     const currentHub = await readHub(hubLayout);
     if (currentHub.extensions.some((entry) => entry.manifest.id === metadata.manifest.id)) throw new Error(`Extension is already installed in the Hub: ${metadata.manifest.id}`);
 
+    const relativeModule = path.relative(realPackageRoot, realModule);
+    if (relativeModule.startsWith(`..${path.sep}`) || relativeModule === ".." || path.isAbsolute(relativeModule)) {
+      throw new Error("queqiao.module escapes the installed npm package");
+    }
+
     finalDirectory = path.join(packageStore, safeInstallDirectoryName(metadata.manifest.id, metadata.manifest.version));
     await rename(staging, finalDirectory);
-    const relativeModule = path.relative(staging, realModule);
+    const finalPackageRoot = packageDirectory(finalDirectory, packageName);
     const extension: HubExtension = {
       trusted: true,
       source: {
@@ -269,7 +274,7 @@ export async function installNpmExtension(
         package: packageName,
         requested,
         version: packageJson.version,
-        module: path.join(finalDirectory, relativeModule),
+        module: path.join(finalPackageRoot, relativeModule),
         installDirectory: finalDirectory,
       },
       manifest: metadata.manifest,
