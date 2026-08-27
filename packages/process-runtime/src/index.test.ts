@@ -162,7 +162,7 @@ describe("ProcessRunner", () => {
     await expect(runner.run({ executable: "node && calc", args: [], cwd: temporary })).rejects.toThrow(/basename/);
     if (process.platform === "win32") await expect(runner.run({ executable: "npm.cmd", args: [], cwd: temporary })).rejects.toThrow(/native/);
     const active = runner.run({ executable: nodeExecutable, args: ["-e", "setTimeout(()=>{},300)"], cwd: temporary });
-    await sleep(20);
+    await waitFor(() => runner.activeCount() === 1);
     await expect(runner.run({ executable: nodeExecutable, args: [], cwd: temporary })).rejects.toBeInstanceOf(ProcessCapacityError);
     await active;
   });
