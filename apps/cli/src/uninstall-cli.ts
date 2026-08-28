@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { rm } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 import { cancel, confirm, intro, isCancel, multiselect, outro } from "@clack/prompts";
 import { resolveRuntimeLayout, resolveRuntimeLayoutForNamedRole, type RuntimeLayout, type RuntimeRole } from "@queqiao/platform-paths";
@@ -11,13 +12,14 @@ const PACKAGE_NAME = "@tibame201020/queqiao";
 const execFileAsync = promisify(execFile);
 
 type StatusResult = { active: boolean; managed: boolean };
-type CleanupChoice = { value: string; label: string };
+type CleanupChoice = { value: string; label: string; hint?: string };
 type Dependencies = {
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   interactive?: boolean;
   selectTargets?: (choices: CleanupChoice[]) => Promise<string[]>;
-  confirm?: (message: string) => Promise<boolean>;
+  confirmCleanup?: (message: string) => Promise<boolean>;
+  confirmPackageUninstall?: (message: string) => Promise<boolean>;
   status?: (configFile: string, layout: RuntimeLayout, role: RuntimeRole, name: string) => Promise<StatusResult>;
   stop?: (layout: RuntimeLayout, role: RuntimeRole, name: string) => Promise<unknown>;
   runNpm?: (args: string[]) => Promise<void>;
@@ -37,9 +39,18 @@ function sharedOwnedRoots(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): st
   return [...new Set([layout.configDir, layout.dataDir, layout.stateDir])];
 }
 
+function roleOwnedPaths(layout: RuntimeLayout): string[] {
+  const stateRoot = path.dirname(layout.configDir);
+  return [...new Set([stateRoot, layout.runtimeDir])];
+}
+
+function displayPaths(paths: string[]): string {
+  return paths.join(" | ");
+}
+
 async function defaultSelectTargets(choices: CleanupChoice[]): Promise<string[]> {
   const value = await multiselect({
-    message: "Select Queqiao items to remove",
+    message: "Select local Queqiao data to remove",
     options: choices,
     initialValues: choices.map((choice) => choice.value),
     required: false,
@@ -85,65 +96,82 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
     }
   }
 
+  const sharedRoots = sharedOwnedRoots(env, platform);
   const choices: CleanupChoice[] = [
-    ...instances.map(({ role, name, status }) => ({
+    ...instances.map(({ role, name, layout, status }) => ({
       value: `${role}:${name}`,
       label: `${role === "gateway" ? "Gateway" : "Worker"}: ${name}${status.active ? status.managed ? " (running)" : " (running unmanaged)" : ""}`,
+      hint: displayPaths(roleOwnedPaths(layout)),
     })),
-    { value: "shared", label: "Shared Queqiao data / Extension Hub" },
-    { value: "package", label: "Global npm package" },
+    {
+      value: "shared",
+      label: "Shared Queqiao data / Extension Hub",
+      hint: displayPaths(sharedRoots),
+    },
   ];
 
   if (!injected) intro("Uninstall Queqiao");
   const selected = await (dependencies.selectTargets ?? defaultSelectTargets)(choices);
   const valid = new Set(choices.map((choice) => choice.value));
   for (const value of selected) if (!valid.has(value)) throw new Error(`Unknown uninstall target: ${value}`);
-  if (!selected.length) {
-    if (!injected) outro("Nothing selected; Queqiao was not changed");
-    return { uninstalled: false, cancelled: true, package: PACKAGE_NAME, selected: [] };
-  }
 
   const selectedSet = new Set(selected);
-  const selectedInstances = instances.filter(({ role, name }) => selectedSet.has(`${role}:${name}`));
-  const unmanaged = selectedInstances.filter((instance) => instance.status.active && !instance.status.managed);
-  if (unmanaged.length) {
-    const names = unmanaged.map(({ role, name }) => `${role}:${name}`).join(", ");
-    throw new Error(`Cannot remove while an unmanaged Queqiao runtime is active: ${names}. Stop it first.`);
-  }
+  let cleaned = false;
 
-  const selectedLabels = choices.filter((choice) => selectedSet.has(choice.value)).map((choice) => choice.label);
-  const approve = dependencies.confirm ?? defaultConfirm;
-  const confirmed = await approve(`Remove the selected Queqiao items?\n${selectedLabels.map((label) => `  - ${label}`).join("\n")}`);
-  if (!confirmed) return { uninstalled: false, cancelled: true, package: PACKAGE_NAME, selected };
-
-  for (const instance of selectedInstances) {
-    if (instance.status.active && instance.status.managed) {
-      if (dependencies.stop) await dependencies.stop(instance.layout, instance.role, instance.name);
-      else await stopRuntime(instance.layout, instance.role, instance.name);
+  if (selected.length) {
+    const selectedInstances = instances.filter(({ role, name }) => selectedSet.has(`${role}:${name}`));
+    const unmanaged = selectedInstances.filter((instance) => instance.status.active && !instance.status.managed);
+    if (unmanaged.length) {
+      const names = unmanaged.map(({ role, name }) => `${role}:${name}`).join(", ");
+      throw new Error(`Cannot remove while an unmanaged Queqiao runtime is active: ${names}. Stop it first.`);
     }
-    await roleRemoveInternals.removeLayout(instance.layout);
-  }
 
-  if (selectedSet.has("shared")) {
-    for (const root of sharedOwnedRoots(env, platform)) await rm(root, { recursive: true, force: true });
-    const remainingInstances = instances.filter(({ role, name }) => !selectedSet.has(`${role}:${name}`));
-    if (!remainingInstances.length) {
-      await rm(resolveRuntimeLayout(env, platform).runtimeDir, { recursive: true, force: true });
+    const selectedLines = choices
+      .filter((choice) => selectedSet.has(choice.value))
+      .map((choice) => `  - ${choice.label}\n    ${choice.hint ?? ""}`);
+    const approveCleanup = dependencies.confirmCleanup ?? defaultConfirm;
+    const confirmed = await approveCleanup(`Remove the selected local Queqiao data?\n${selectedLines.join("\n")}`);
+    if (!confirmed) {
+      if (!injected) outro("Queqiao uninstall cancelled");
+      return { cleaned: false, uninstalled: false, cancelled: true, package: PACKAGE_NAME, selected };
     }
+
+    for (const instance of selectedInstances) {
+      if (instance.status.active && instance.status.managed) {
+        if (dependencies.stop) await dependencies.stop(instance.layout, instance.role, instance.name);
+        else await stopRuntime(instance.layout, instance.role, instance.name);
+      }
+      await roleRemoveInternals.removeLayout(instance.layout);
+    }
+
+    if (selectedSet.has("shared")) {
+      for (const root of sharedRoots) await rm(root, { recursive: true, force: true });
+      const remainingInstances = instances.filter(({ role, name }) => !selectedSet.has(`${role}:${name}`));
+      if (!remainingInstances.length) {
+        await rm(resolveRuntimeLayout(env, platform).runtimeDir, { recursive: true, force: true });
+      }
+    }
+    cleaned = true;
   }
 
-  if (selectedSet.has("package")) {
+  const approvePackage = dependencies.confirmPackageUninstall ?? defaultConfirm;
+  const uninstallPackage = await approvePackage(`Uninstall ${PACKAGE_NAME} from global npm?`);
+  if (uninstallPackage) {
     if (dependencies.runNpm) await dependencies.runNpm(["uninstall", "--global", PACKAGE_NAME]);
     else await defaultRunNpm(["uninstall", "--global", PACKAGE_NAME], platform);
   }
 
-  if (!injected) outro(selectedSet.has("package") ? "Queqiao uninstalled" : "Selected Queqiao items removed");
+  if (!injected) {
+    if (uninstallPackage) outro(cleaned ? "Local Queqiao data removed; global package uninstalled" : "Global Queqiao package uninstalled");
+    else outro(cleaned ? "Selected local Queqiao data removed; global package kept" : "Nothing changed");
+  }
+
   return {
-    uninstalled: selectedSet.has("package"),
-    cleaned: true,
+    cleaned,
+    uninstalled: uninstallPackage,
     package: PACKAGE_NAME,
     selected,
   };
 }
 
-export const uninstallInternals = { standardEnvironment, sharedOwnedRoots };
+export const uninstallInternals = { standardEnvironment, sharedOwnedRoots, roleOwnedPaths };
