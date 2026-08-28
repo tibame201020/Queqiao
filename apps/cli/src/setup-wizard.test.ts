@@ -8,7 +8,7 @@ import { listNamedRoleInstances, runRoleSetupWizard, type RoleSetupPrompts } fro
 function prompts(answers: Array<string>): RoleSetupPrompts {
   return {
     choose: async () => answers.shift() || "",
-    text: async () => answers.shift() || "",
+    text: async (_message, initialValue) => answers.shift() || initialValue || "",
   };
 }
 
@@ -31,7 +31,8 @@ describe("role setup wizard", () => {
     const result = await runRoleSetupWizard("gateway", ["gateway", "setup"], {
       env,
       platform: process.platform,
-      prompts: prompts(["stable"]),
+      prompts: prompts(["stable", "https://gateway.example/stable/", "7575", "7574"]),
+      portAvailable: async () => true,
       setupGateway: async (_config, _args, _state, _secrets, _prompt) => { calls.push("stable"); return { mode: "edit" }; },
     });
 
@@ -47,7 +48,8 @@ describe("role setup wizard", () => {
     const result = await runRoleSetupWizard("worker", ["worker", "setup"], {
       env,
       platform: process.platform,
-      prompts: prompts(["__create__", "windows"]),
+      prompts: prompts(["__create__", "windows", "7576"]),
+      portAvailable: async () => true,
       setupWorker: async (_config, _args, _secrets, _prompt) => { calls.push("windows"); return { mode: "create" }; },
     });
 

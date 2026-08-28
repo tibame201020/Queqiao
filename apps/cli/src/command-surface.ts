@@ -18,7 +18,7 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
 
   // Reject the former flat public surface before translating canonical commands
   // to the existing internal handler routes.
-  if (domain === "worker" && ["list", "update", "remove"].includes(action || "")) {
+  if (domain === "worker" && ["list", "update"].includes(action || "")) {
     return removedRoute(`queqiao gateway workers ${action}`);
   }
   if (domain === "workspace" && ["add", "list", "remove"].includes(action || "")) {
@@ -34,7 +34,7 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
   if (domain === "config" && action === "paths") return removedRoute("queqiao doctor paths");
 
   if (domain === "gateway" && action === "workers" && ["list", "update", "remove"].includes(resource || "")) {
-    return replacePrefix(args, 3, ["worker", resource!]);
+    return replacePrefix(args, 3, ["membership", resource!]);
   }
 
   if (domain === "worker" && action === "workspace") {
@@ -66,6 +66,7 @@ const COMMAND_TREE: CommandNode = {
     gateway: {
       children: {
         setup: terminal,
+        remove: terminal,
         serve: terminal,
         stop: terminal,
         status: terminal,
@@ -76,6 +77,7 @@ const COMMAND_TREE: CommandNode = {
     worker: {
       children: {
         setup: terminal,
+        remove: terminal,
         port: terminal,
         serve: terminal,
         stop: terminal,
@@ -113,6 +115,7 @@ const COMMAND_TREE: CommandNode = {
         paths: terminal,
       },
     },
+    uninstall: terminal,
     migrate: { children: { "from-repo": terminal, "runtime-v1": terminal } },
   },
 };
@@ -184,6 +187,7 @@ Commands:
   worker       Manage a Queqiao Worker
   extension    Manage Queqiao extensions
   doctor       Diagnose Queqiao
+  uninstall    Remove Queqiao and Queqiao-owned local state
 
 Global options:
   --json       Print machine-readable JSON
@@ -194,6 +198,7 @@ const GATEWAY_HELP = `Usage: queqiao gateway <command> [options]
 
 Commands:
   setup
+  remove
   serve [--bg]
   stop
   status
@@ -213,6 +218,7 @@ const WORKER_HELP = `Usage: queqiao worker <command> [options]
 
 Commands:
   setup
+  remove
   port
   serve [--bg]
   stop
@@ -249,6 +255,10 @@ Diagnostics:
   tool explain <tool> --gateway <name>
   paths`;
 
+const UNINSTALL_HELP = `Usage: queqiao uninstall
+
+Interactively select Queqiao-owned items to remove, review the selection, then confirm before cleanup.`;
+
 const MIGRATE_HELP = `Usage: queqiao migrate <command> [options]
 
 Advanced compatibility commands:
@@ -275,6 +285,7 @@ export function renderCliHelp(input: readonly string[]): string {
   }
   if (domain === "extension") return EXTENSION_HELP;
   if (domain === "doctor") return DOCTOR_HELP;
+  if (domain === "uninstall") return UNINSTALL_HELP;
   if (domain === "migrate") return MIGRATE_HELP;
   return ROOT_HELP;
 }

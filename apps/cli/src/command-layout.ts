@@ -34,8 +34,8 @@ export function resolveCommandLayout(args: readonly string[]): RuntimeLayout {
   const workerName = option(args, "worker");
 
   if (domain === "gateway") return resolveRuntimeLayoutForNamedRole("gateway", localName);
-  if (domain === "worker" && ["setup", "serve", "stop", "status", "join", "port"].includes(action || "")) return resolveRuntimeLayoutForNamedRole("worker", localName);
-  if (domain === "worker" && ["list", "update", "remove"].includes(action || "")) return resolveRuntimeLayoutForNamedRole("gateway", option(args, "gateway-name") || option(args, "name") || "default");
+  if (domain === "worker" && ["setup", "remove", "serve", "stop", "status", "join", "port"].includes(action || "")) return resolveRuntimeLayoutForNamedRole("worker", localName);
+  if (domain === "membership" && ["list", "update", "remove"].includes(action || "")) return resolveRuntimeLayoutForNamedRole("gateway", option(args, "gateway-name") || option(args, "name") || "default");
   if (isWorkerOwnedRoute(args) && workerName) return resolveRuntimeLayoutForNamedRole("worker", workerName);
   if (isGatewayDiagnosticRoute(args)) return resolveRuntimeLayoutForNamedRole("gateway", option(args, "gateway"));
   return resolveRuntimeLayout();

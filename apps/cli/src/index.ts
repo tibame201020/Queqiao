@@ -12,6 +12,8 @@ import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migrati
 
 import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, updateJoinedWorkerTransport, updateWorkerPort } from "./enrollment-cli.js";
 import { runRoleSetupWizard } from "./setup-wizard.js";
+import { removeRoleInstance } from "./role-remove.js";
+import { uninstallQueqiao } from "./uninstall-cli.js";
 import { doctorPaths, doctorQueqiao } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 import { addWorkspace } from "./workspace-cli.js";
@@ -57,7 +59,10 @@ async function main() {
   if (routeError) throw new Error(routeError);
   assertCommandOwnership(args);
   if (domain === "gateway" && action === "setup") return print(await runRoleSetupWizard("gateway", args));
+  if (domain === "gateway" && action === "remove") return print(await removeRoleInstance("gateway", args));
   if (domain === "worker" && action === "setup") return print(await runRoleSetupWizard("worker", args));
+  if (domain === "worker" && action === "remove") return print(await removeRoleInstance("worker", args));
+  if (domain === "uninstall") return print(await uninstallQueqiao(args));
   if (domain === "worker" && action === "port") {
     const status = await runtimeStatus(configFile, layout, "worker", localName);
     if (status.active) throw new Error("Stop the Worker before changing its listener port");
@@ -65,9 +70,9 @@ async function main() {
   }
   if (domain === "gateway" && action === "join-token") return print(await createJoinToken(configFile, args));
   if (domain === "worker" && action === "join") return print(await joinWorker(configFile, args));
-  if (domain === "worker" && action === "list") return print(await listJoinedWorkers(configFile));
-  if (domain === "worker" && action === "update") return print(await updateJoinedWorkerTransport(configFile, requiredOption(args, "worker-id"), requiredOption(args, "endpoint")));
-  if (domain === "worker" && action === "remove") return print(await removeJoinedWorker(configFile, requiredOption(args, "worker-id")));
+  if (domain === "membership" && action === "list") return print(await listJoinedWorkers(configFile));
+  if (domain === "membership" && action === "update") return print(await updateJoinedWorkerTransport(configFile, requiredOption(args, "worker-id"), requiredOption(args, "endpoint")));
+  if (domain === "membership" && action === "remove") return print(await removeJoinedWorker(configFile, requiredOption(args, "worker-id")));
   if (domain === "workspace" && action === "list") { requiredOption(args, "worker"); return print({ ...(await configStore.metadata()), workspaces: (await configStore.read()).workspaces }); }
   if (domain === "workspace" && action === "add") { requiredOption(args, "worker"); return print(await addWorkspace(configFile, args)); }
   if (domain === "workspace" && action === "remove") {

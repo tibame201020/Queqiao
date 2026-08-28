@@ -301,10 +301,7 @@ queqiao gateway join-token --name <gateway> --copy
 queqiao worker join --name <worker>
 ```
 
-`gateway setup` and `worker setup` create role-local state only. `worker workspace add` is the
-separate authority grant for an existing directory. `worker join` is the separate atomic
-membership transaction. `--bg` means a background process managed by Queqiao's explicit
-PID-aware lifecycle; it is not an OS service, autostart entry, Run key, or systemd unit.
+`gateway setup` and `worker setup` are interactive create/edit flows. They first select an existing named instance or Create new. Gateway setup asks for the Public Gateway URL, Gateway port, and Management port; Worker setup asks for the Worker port. Existing values are prefilled during edit. New or changed local ports must be in range, must not collide with another configured Queqiao instance, and must be available on loopback. `worker workspace add` is the separate authority grant for an existing directory. `worker join` is the separate atomic membership transaction. `--bg` means a background process managed by Queqiao's explicit PID-aware lifecycle; it is not an OS service, autostart entry, Run key, or systemd unit.
 
 The mocked first-time setup flow and cross-platform Workspace-ID behavior are protected by
 dedicated required GitHub checks on both Ubuntu and Windows:
@@ -335,6 +332,10 @@ queqiao worker join --name windows
 ```
 
 `gateway join-token --copy` copies a versioned join code that contains the Gateway public base URL plus the one-time enrollment token. Interactive `worker join` accepts that single join code. The join code is bearer-secret material and is only for Worker CLI ??Gateway enrollment; it does not publish or authorize the Gateway ??Worker runtime transport.
+
+Local instances can be removed with `queqiao gateway remove` or `queqiao worker remove`. Removal uses the same interactive instance-selection model as setup, requires confirmation, and refuses to delete a running instance.
+
+Use `queqiao uninstall` for package cleanup. The command is always interactive: it first shows a Space-toggle multi-select list of discovered Gateway instances, Worker instances, shared Queqiao data / Extension Hub state, and the global npm package. All targets are selected initially, but the user can change the selection before a separate review/confirmation step. Only confirmed selections are stopped and removed. Selecting all targets removes Queqiao-owned standard config/data/state/runtime state before running the global npm uninstall. There is no `--yes` bypass. Direct `npm uninstall --global @tibame201020/queqiao` removes the package but cannot guarantee runtime/config cleanup because modern npm does not run package uninstall lifecycle hooks. Explicit `QUEQIAO_*` override directories are not recursively deleted by the cleanup command because they may point at user-owned locations outside Queqiao's standard roots.
 
 The package is self-contained and exposes independent Gateway and Worker process roles. Installing it does not create an OS service, autostart entry, Run key, or systemd unit. Runtime lifecycle is explicit:
 

@@ -31,7 +31,7 @@ describe("CLI ownership layout", () => {
   });
 
   it("keeps Gateway-owned Worker membership on the named Gateway config", () => {
-    expect(resolveCommandLayout(["worker", "list", "--name", "stable"]).configFile).toBe(resolveRuntimeLayoutForNamedRole("gateway", "stable").configFile);
+    expect(resolveCommandLayout(["membership", "list", "--name", "stable"]).configFile).toBe(resolveRuntimeLayoutForNamedRole("gateway", "stable").configFile);
   });
 
   it("routes Gateway-owned manifest and tool diagnostics to an explicit named Gateway", () => {
