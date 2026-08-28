@@ -121,6 +121,32 @@ describe("role setup CLI", () => {
       expect.objectContaining({ id: "my-project", displayName: "My Project", root: canonicalWorkspaceRoot, profile: "coding" }),
     ]);
   });
+  it("prompts for the public Gateway URL when the flag is omitted", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-gateway-setup-url-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const stateDirectory = path.join(root, "gateway-state");
+    const secretsDirectory = path.join(root, "secrets");
+    const prompted: string[] = [];
+    await setupGateway(configFile, ["gateway", "setup"], stateDirectory, secretsDirectory, async (field, message) => {
+      prompted.push(`${field}:${message}`);
+      return "https://gateway.example/stable/";
+    });
+    const runtime = await readRuntimeConfig(configFile);
+    expect(prompted).toEqual(["public-base-url:Public Gateway URL"]);
+    expect(runtime.gateway?.publicBaseUrl).toBe("https://gateway.example/stable/");
+  });
+
+  it("rejects a non-http public Gateway URL even when provided by a prompt", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-gateway-setup-url-invalid-"));
+    await expect(setupGateway(
+      path.join(root, "config", "config.yaml"),
+      ["gateway", "setup"],
+      path.join(root, "gateway-state"),
+      path.join(root, "secrets"),
+      async () => "ftp://gateway.example/",
+    )).rejects.toThrow("Public Gateway URL must use http or https");
+  });
+
   it("prompts for Worker port when --port is omitted", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-setup-port-"));
     const configFile = path.join(root, "config", "config.yaml");

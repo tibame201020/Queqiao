@@ -12,6 +12,7 @@ function option(args: string[], name: string): string | undefined { const index 
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
 export type JoinPrompt = (field: "code" | "gateway" | "token", message: string) => Promise<string>;
 export type WorkerSetupPrompt = (field: "port", message: string, initialValue: string) => Promise<string>;
+export type GatewaySetupPrompt = (field: "public-base-url", message: string) => Promise<string>;
 
 type JoinCodeEnvelope = {
   v: 1;
@@ -328,8 +329,37 @@ export async function joinWorker(configFile: string, args: string[], prompt?: Jo
   }
 }
 
-export async function setupGateway(configFile: string, args: string[], stateDirectoryDefault: string, secretsDirectory: string): Promise<unknown> {
-  const publicBaseUrl = new URL(requiredOption(args, "public-base-url"));
+export async function setupGateway(configFile: string, args: string[], stateDirectoryDefault: string, secretsDirectory: string, prompt?: GatewaySetupPrompt): Promise<unknown> {
+  let publicBaseUrlValue = option(args, "public-base-url");
+  if (!publicBaseUrlValue) {
+    if (prompt) {
+      publicBaseUrlValue = (await prompt("public-base-url", "Public Gateway URL")).trim();
+    } else if (process.stdin.isTTY && process.stdout.isTTY) {
+      intro("Configure Gateway");
+      const answer = await text({
+        message: "Public Gateway URL",
+        placeholder: "https://your-gateway.example/",
+        validate: (value) => {
+          if (!value?.trim()) return "Public Gateway URL is required";
+          try {
+            const parsed = new URL(value);
+            return parsed.protocol === "http:" || parsed.protocol === "https:" ? undefined : "URL must use http or https";
+          } catch {
+            return "Enter a valid URL";
+          }
+        },
+      });
+      if (isCancel(answer)) {
+        cancel("Gateway setup cancelled");
+        throw new Error("Gateway setup cancelled");
+      }
+      publicBaseUrlValue = String(answer).trim();
+    } else {
+      throw new Error("Public Gateway URL is required in non-interactive mode. Use --public-base-url <url>.");
+    }
+  }
+  const publicBaseUrl = new URL(publicBaseUrlValue);
+  if (publicBaseUrl.protocol !== "http:" && publicBaseUrl.protocol !== "https:") throw new Error("Public Gateway URL must use http or https");
   await secureRuntimeDirectory(path.dirname(configFile));
   await secureRuntimeDirectory(stateDirectoryDefault);
   await secureRuntimeDirectory(secretsDirectory);
