@@ -10,6 +10,13 @@ import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-path
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
+function assertAllowedOptions(args: string[], command: string, allowed: readonly string[]): void {
+  const allowedSet = new Set(allowed.map((name) => `--${name}`));
+  for (const arg of args) {
+    if (!arg.startsWith("--")) continue;
+    if (!allowedSet.has(arg)) throw new Error(`Unknown option "${arg}" for "${command}"`);
+  }
+}
 export type JoinPrompt = (field: "code", message: string) => Promise<string>;
 export type WorkerSetupPrompt = (field: "port", message: string, initialValue: string) => Promise<string>;
 export type GatewaySetupPrompt = (field: "public-base-url", message: string, initialValue?: string) => Promise<string>;
@@ -66,9 +73,6 @@ function validatePort(value: string): string | undefined {
 }
 
 async function resolveJoinInputs(args: string[], prompt?: JoinPrompt): Promise<{ gateway: string; token: string; interactive: boolean }> {
-  if (args.includes("--gateway") || args.includes("--token")) {
-    throw new Error("--gateway and --token are not supported for Worker enrollment; use --join-code or run worker join interactively");
-  }
   const codeArg = option(args, "join-code");
   if (codeArg) {
     const decoded = decodeJoinCode(codeArg);
@@ -165,10 +169,11 @@ export async function copyTextToClipboard(value: string, writer?: ClipboardWrite
 }
 
 export async function createJoinToken(configFile: string, args: string[], clipboardWriter?: ClipboardWriter): Promise<unknown> {
+  assertAllowedOptions(args, "queqiao gateway join-token", ["name", "expires", "json"]);
   const expires = option(args, "expires");
   const response = await managementRequest(configFile, "/join-tokens", {
     method: "POST",
-    body: JSON.stringify({ ...(expires ? { expiresSeconds: Number(expires) } : {}), ...(option(args, "worker-id") ? { workerId: option(args, "worker-id") } : {}), ...(option(args, "environment-id") ? { environmentId: option(args, "environment-id") } : {}) }),
+    body: JSON.stringify({ ...(expires ? { expiresSeconds: Number(expires) } : {}) }),
   });
   const result = await jsonOrThrow(response);
   const runtime = await readRuntimeConfig(configFile);
@@ -268,13 +273,14 @@ async function commitProvisional(state: { marker: string; backupFile?: string })
 }
 
 export async function joinWorker(configFile: string, args: string[], prompt?: JoinPrompt): Promise<unknown> {
+  assertAllowedOptions(args, "queqiao worker join", ["name", "join-code", "json"]);
   const runtime = await readRuntimeConfig(configFile);
   if (!runtime.worker) throw new Error("worker configuration is required");
   if (!runtime.worker.workerId) throw new Error("Worker has no stable workerId; run worker setup or migrate the Worker identity first");
   const inputs = await resolveJoinInputs(args, prompt);
   const joinToken = inputs.token;
   const gateway = new URL(inputs.gateway);
-  const endpoint = new URL(option(args, "endpoint") || `http://127.0.0.1:${runtime.worker.listen.port}/`);
+  const endpoint = new URL(`http://127.0.0.1:${runtime.worker.listen.port}/`);
   if (endpoint.protocol !== "http:" || !["127.0.0.1", "localhost", "::1"].includes(endpoint.hostname)) throw new Error("Worker endpoint must remain loopback HTTP in Security Baseline v2");
   const tokenFile = path.resolve(runtime.worker.tokenFile);
   await recoverStaleJoin(tokenFile);

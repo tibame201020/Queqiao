@@ -207,6 +207,16 @@ Commands:
   workers update
   workers remove`;
 
+const GATEWAY_JOIN_TOKEN_HELP = `Usage: queqiao gateway join-token --name <gateway> [--expires <seconds>] [--json]
+
+Creates a self-contained one-time join code and copies it to the clipboard.
+Default expiry: 300 seconds. Allowed range: 30-3600 seconds.`;
+
+const WORKER_JOIN_HELP = `Usage: queqiao worker join --name <worker> [--join-code <code>] [--json]
+
+Without --join-code, prompts securely for one self-contained join code.
+Gateway URL and Worker endpoint are derived automatically.`;
+
 const GATEWAY_WORKERS_HELP = `Usage: queqiao gateway workers <command> [options]
 
 Commands:
@@ -278,8 +288,12 @@ export function renderCliHelp(input: readonly string[]): string {
   const args = input.filter((arg) => arg !== "--help" && arg !== "-h");
   const [domain, action] = args;
   if (!domain) return ROOT_HELP;
-  if (domain === "gateway") return action === "workers" ? GATEWAY_WORKERS_HELP : GATEWAY_HELP;
+  if (domain === "gateway") {
+    if (action === "join-token") return GATEWAY_JOIN_TOKEN_HELP;
+    return action === "workers" ? GATEWAY_WORKERS_HELP : GATEWAY_HELP;
+  }
   if (domain === "worker") {
+    if (action === "join") return WORKER_JOIN_HELP;
     if (action === "workspace") return WORKER_WORKSPACE_HELP;
     return WORKER_HELP;
   }

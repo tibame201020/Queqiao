@@ -119,6 +119,15 @@ describe("CLI presentation", () => {
     expect(output).toContain("queqiao worker join --name <worker>");
   });
 
+  it("renders a successful Worker join as an operation result", () => {
+    const output = formatCliOutput(["worker", "join", "--name", "wins-worker"], { joined: true, workerId: "worker-1", environmentId: "windows" });
+    expect(output).toBe([
+      "Worker joined Gateway: wins-worker",
+      "  Worker Id: worker-1",
+      "  Environment Id: windows",
+    ].join("\n"));
+  });
+
   it("preserves structured output behind --json", () => {
     const value = { name: "stable", role: "gateway", active: false };
     expect(formatCliOutput(["gateway", "status", "--name", "stable", "--json"], value)).toBe(JSON.stringify(value, null, 2));

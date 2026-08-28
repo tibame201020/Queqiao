@@ -62,6 +62,18 @@ describe("CLI hierarchy consolidation", () => {
     expect(help).not.toMatch(/^\s{2}(workspace|profile|tool|command|permissions|discovery|manifest|config|migrate)\b/m);
   });
 
+  it("documents only the converged enrollment surface", () => {
+    const tokenHelp = renderCliHelp(["gateway", "join-token", "--help"]);
+    expect(tokenHelp).toContain("--expires <seconds>");
+    expect(tokenHelp).not.toContain("--worker-id");
+    expect(tokenHelp).not.toContain("--environment-id");
+    const joinHelp = renderCliHelp(["worker", "join", "--help"]);
+    expect(joinHelp).toContain("--join-code <code>");
+    expect(joinHelp).not.toContain("--gateway");
+    expect(joinHelp).not.toContain("--token");
+    expect(joinHelp).not.toContain("--endpoint");
+  });
+
   it("does not expose the obsolete generic discovery-root resource", () => {
     expect(renderCliHelp(["worker", "--help"])).not.toContain("discovery");
     expect(renderCliHelp(["worker", "discovery", "--help"])).not.toContain("worker discovery");

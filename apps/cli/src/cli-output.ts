@@ -74,6 +74,18 @@ function renderJoinToken(args: readonly string[], value: unknown): string | unde
   return lines.join("\n");
 }
 
+function renderWorkerJoin(args: readonly string[], value: unknown): string | undefined {
+  if (args[0] !== "worker" || args[1] !== "join") return undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const result = value as Record<string, unknown>;
+  if (result.joined !== true) return undefined;
+  const name = option(args, "name") || "worker";
+  const lines = [`Worker joined Gateway: ${name}`];
+  if (typeof result.workerId === "string") lines.push(`  Worker Id: ${result.workerId}`);
+  if (typeof result.environmentId === "string") lines.push(`  Environment Id: ${result.environmentId}`);
+  return lines.join("\n");
+}
+
 function renderStatus(args: readonly string[], value: unknown): string | undefined {
   const [role, action] = args;
   if ((role !== "gateway" && role !== "worker") || action !== "status") return undefined;
@@ -110,6 +122,8 @@ export function formatCliOutput(input: readonly string[], value: unknown): strin
   const args = input.filter((arg) => arg !== "--json");
   const joinToken = renderJoinToken(args, value);
   if (joinToken) return joinToken;
+  const workerJoin = renderWorkerJoin(args, value);
+  if (workerJoin) return workerJoin;
   const status = renderStatus(args, value);
   if (status) return status;
   return renderStructured(value).join("\n");

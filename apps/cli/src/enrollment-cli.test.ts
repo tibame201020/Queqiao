@@ -46,6 +46,14 @@ describe("gateway join-token UX", () => {
       fetchSpy.mockRestore();
     }
   });
+  it("rejects hidden token binding flags", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-join-token-options-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const stateDirectory = path.join(root, "gateway-state");
+    const secretsDirectory = path.join(root, "secrets");
+    await setupGateway(configFile, ["gateway", "setup", "--public-base-url", "https://gateway.example/stable/"], stateDirectory, secretsDirectory);
+    await expect(createJoinToken(configFile, ["gateway", "join-token", "--worker-id", crypto.randomUUID()])).rejects.toThrow(/Unknown option "--worker-id"/);
+  });
 });
 const servers: Server[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve())))); });
@@ -73,6 +81,8 @@ async function fixture(serverWorkerId?: string) {
   const credential = new WorkerCredentialSource(tokenFile);
   const workerApp = await createWorkerApp({ workerId: serverWorkerId || workerId, environmentId, defaultWorkspaceId: "default", workerCredential: credential, workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }] });
   const worker = await listen(workerApp);
+  const workerPort = Number(new URL(worker.url).port);
+  await writeFile(configFile, serializeRuntimeConfig({ version: 1, environments: [], workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }], worker: { workerId, environmentId, listen: { host: "127.0.0.1", port: workerPort }, tokenFile, defaultWorkspaceId: "default" } }), "utf8");
   const memberships = new WorkerMembershipStore(stateDir);
   const enrollment = new EnrollmentService(memberships, stateDir);
   const gatewayConfig = { host: "127.0.0.1" as const, port: 7575, managementPort: 7574, publicBaseUrl: new URL("http://127.0.0.1/"), resourceUrl: "http://127.0.0.1/mcp", stateDir, approvalSecret: "a".repeat(32), jwtSecret: new TextEncoder().encode("j".repeat(48)), trustProxyHops: 0, allowedRedirectOrigins: new Set(["http://127.0.0.1"]), workers: [], extensions: [], configDirectory: root };
@@ -239,7 +249,7 @@ describe("worker join CLI transaction", () => {
     const f = await fixture();
     const joinToken = f.enrollment.createJoinToken().token;
     const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: joinToken });
-    const result: any = await joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode, "--endpoint", f.workerUrl]);
+    const result: any = await joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode]);
     expect(result).toMatchObject({ joined: true, workerId: f.workerId, environmentId: f.environmentId });
     expect((await f.memberships.read()).workers).toHaveLength(1);
     expect((await readFile(f.tokenFile, "utf8")).trim()).not.toBe(f.bootstrap);
@@ -248,16 +258,21 @@ describe("worker join CLI transaction", () => {
 
   it("rejects legacy raw gateway/token enrollment inputs", async () => {
     const f = await fixture();
-    await expect(joinWorker(f.configFile, ["worker", "join", "--token", "raw-token", "--gateway", f.gatewayUrl, "--endpoint", f.workerUrl])).rejects.toThrow(/--gateway and --token are not supported/);
+    await expect(joinWorker(f.configFile, ["worker", "join", "--token", "raw-token", "--gateway", f.gatewayUrl])).rejects.toThrow(/Unknown option "--token"/);
   });
-  it("prompts once for a join code and preserves scripted endpoint input", async () => {
+  it("rejects hidden endpoint overrides", async () => {
+    const f = await fixture();
+    await expect(joinWorker(f.configFile, ["worker", "join", "--endpoint", f.workerUrl])).rejects.toThrow(/Unknown option "--endpoint"/);
+  });
+
+  it("prompts once for a join code and derives the Worker endpoint from named config", async () => {
     const f = await fixture();
     const joinToken = f.enrollment.createJoinToken().token;
     const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: joinToken });
     const prompted: string[] = [];
     const result: any = await joinWorker(
       f.configFile,
-      ["worker", "join", "--endpoint", f.workerUrl],
+      ["worker", "join"],
       async (field) => {
         prompted.push(field);
         return joinCode;
@@ -272,7 +287,7 @@ describe("worker join CLI transaction", () => {
     const f = await fixture(crypto.randomUUID());
     const joinToken = f.enrollment.createJoinToken().token;
     const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: joinToken });
-    await expect(joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode, "--endpoint", f.workerUrl])).rejects.toThrow(/worker_identity_mismatch/);
+    await expect(joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode])).rejects.toThrow(/worker_identity_mismatch/);
     expect((await f.memberships.read()).workers).toEqual([]);
     expect((await readFile(f.tokenFile, "utf8")).trim()).toBe(f.bootstrap);
     await expect(readFile(`${f.tokenFile}.join-provisional.json`, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
