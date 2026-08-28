@@ -191,7 +191,7 @@ authorized child workloads. See the
 The current management CLI supports:
 
 ```text
-queqiao gateway setup --name <gateway> --public-base-url <url> [--port <port>] [--management-port <port>]
+queqiao gateway setup
 queqiao gateway serve --name <gateway> [--bg]
 queqiao gateway stop --name <gateway>
 queqiao gateway status --name <gateway>
@@ -200,7 +200,7 @@ queqiao gateway workers list --name <gateway>
 queqiao gateway workers update --name <gateway> --worker-id <id> --endpoint <loopback-worker-url>
 queqiao gateway workers remove --name <gateway> --worker-id <id>
 
-queqiao worker setup --name <worker> [--port <port>]
+queqiao worker setup
 queqiao worker port --name <worker> [--port <port>]
 queqiao worker serve --name <worker> [--bg]
 queqiao worker stop --name <worker>
@@ -292,8 +292,8 @@ The same compiled CLI runs inside WSL with Linux-native XDG paths and explicit `
 The current CLI exposes the role-level primitives below. A product-level `queqiao setup` onboarding flow is intended to orchestrate these same primitives without merging Gateway and Worker roles or changing Workspace authority semantics:
 
 ```text
-queqiao gateway setup --name <gateway> --public-base-url <url>
-queqiao worker setup --name <worker>
+queqiao gateway setup
+queqiao worker setup
 queqiao worker workspace add --worker <worker>
 queqiao worker serve --name <worker> --bg
 queqiao gateway serve --name <gateway> --bg
@@ -321,12 +321,12 @@ The bundled CLI reports the named-role configuration roots and Extension Hub loc
 npm run queqiao -- doctor paths
 ```
 
-Installed from npm, set up each role explicitly and keep role-local state isolated by `--name`:
+Installed from npm, run each role's interactive setup to choose an existing named instance or create a new one. Lifecycle and management commands continue to address named instances explicitly:
 
 ```shell
 npm install --global @tibame201020/queqiao
-queqiao gateway setup --name shadow --public-base-url https://example.invalid/shadow/
-queqiao worker setup --name windows
+queqiao gateway setup
+queqiao worker setup
 queqiao worker workspace add --worker windows
 queqiao worker serve --name windows --bg
 queqiao gateway serve --name shadow --bg

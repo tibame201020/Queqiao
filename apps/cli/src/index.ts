@@ -10,7 +10,8 @@ import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import { assertCommandOwnership, resolveCommandLayout } from "./command-layout.js";
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
 
-import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, setupGateway, setupWorker, updateJoinedWorkerTransport, updateWorkerPort } from "./enrollment-cli.js";
+import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, updateJoinedWorkerTransport, updateWorkerPort } from "./enrollment-cli.js";
+import { runRoleSetupWizard } from "./setup-wizard.js";
 import { doctorPaths, doctorQueqiao } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 import { addWorkspace } from "./workspace-cli.js";
@@ -55,8 +56,8 @@ async function main() {
   const routeError = renderCliRouteError(commandArgs);
   if (routeError) throw new Error(routeError);
   assertCommandOwnership(args);
-  if (domain === "gateway" && action === "setup") return print(await setupGateway(configFile, args, layout.gatewayStateDir, layout.secretsDir));
-  if (domain === "worker" && action === "setup") return print(await setupWorker(configFile, args, layout.secretsDir));
+  if (domain === "gateway" && action === "setup") return print(await runRoleSetupWizard("gateway", args));
+  if (domain === "worker" && action === "setup") return print(await runRoleSetupWizard("worker", args));
   if (domain === "worker" && action === "port") {
     const status = await runtimeStatus(configFile, layout, "worker", localName);
     if (status.active) throw new Error("Stop the Worker before changing its listener port");

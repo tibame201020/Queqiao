@@ -175,6 +175,44 @@ describe("role setup CLI", () => {
     expect(after.worker?.listen.port).toBe(7577);
     expect(after.workspaces).toEqual(before.workspaces);
   });
+
+  it("edits an existing Gateway without rotating secret paths or resetting untouched listener settings", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-gateway-edit-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const stateDirectory = path.join(root, "gateway-state");
+    const secretsDirectory = path.join(root, "secrets");
+    await setupGateway(configFile, ["gateway", "setup", "--public-base-url", "https://old.example/", "--port", "7654", "--management-port", "7653"], stateDirectory, secretsDirectory);
+    const before = await readRuntimeConfig(configFile);
+    const result: any = await setupGateway(configFile, ["gateway", "setup"], stateDirectory, secretsDirectory, async (_field, _message, initialValue) => {
+      expect(initialValue).toBe("https://old.example/");
+      return "https://new.example/";
+    });
+    const after = await readRuntimeConfig(configFile);
+    expect(result.mode).toBe("edit");
+    expect(after.gateway?.publicBaseUrl).toBe("https://new.example/");
+    expect(after.gateway?.approvalSecretFile).toBe(before.gateway?.approvalSecretFile);
+    expect(after.gateway?.jwtSigningSecretFile).toBe(before.gateway?.jwtSigningSecretFile);
+    expect(after.gateway?.listen.port).toBe(7654);
+    expect(after.gateway?.managementListen.port).toBe(7653);
+  });
+
+  it("edits an existing Worker without rotating identity, credential path, or workspaces", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-edit-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const secretsDirectory = path.join(root, "secrets");
+    await setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory);
+    const before = await readRuntimeConfig(configFile);
+    const result: any = await setupWorker(configFile, ["worker", "setup"], secretsDirectory, async (_field, _message, initialValue) => {
+      expect(initialValue).toBe("7576");
+      return "7676";
+    });
+    const after = await readRuntimeConfig(configFile);
+    expect(result.mode).toBe("edit");
+    expect(after.worker?.workerId).toBe(before.worker?.workerId);
+    expect(after.worker?.tokenFile).toBe(before.worker?.tokenFile);
+    expect(after.worker?.listen.port).toBe(7676);
+    expect(after.workspaces).toEqual(before.workspaces);
+  });
 });
 describe("worker join CLI transaction", () => {
   it("replaces the bootstrap credential only after Gateway confirmation commits membership", async () => {

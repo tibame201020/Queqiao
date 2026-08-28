@@ -45,7 +45,7 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it.each([
-    ["gateway", "setup", "--name", "stable", "--public-base-url", "https://example.invalid/"],
+    ["gateway", "setup"],
     ["gateway", "serve", "--bg", "--name", "stable"],
     ["worker", "serve", "--bg", "--name", "windows"],
     ["extension", "install", "npm:queqiao-mcp", "--worker", "windows"],

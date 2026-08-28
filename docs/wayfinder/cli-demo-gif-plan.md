@@ -50,8 +50,8 @@ The four demos are:
 ### Command sequence
 
 ```powershell
-queqiao gateway setup --name demo-gateway --public-base-url https://example.invalid/queqiao/
-queqiao worker setup --name demo-worker --port 7576
+queqiao gateway setup
+queqiao worker setup
 ```
 
 ### Shot sequence

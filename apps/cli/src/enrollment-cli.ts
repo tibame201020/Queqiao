@@ -12,7 +12,7 @@ function option(args: string[], name: string): string | undefined { const index 
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
 export type JoinPrompt = (field: "code" | "gateway" | "token", message: string) => Promise<string>;
 export type WorkerSetupPrompt = (field: "port", message: string, initialValue: string) => Promise<string>;
-export type GatewaySetupPrompt = (field: "public-base-url", message: string) => Promise<string>;
+export type GatewaySetupPrompt = (field: "public-base-url", message: string, initialValue?: string) => Promise<string>;
 
 type JoinCodeEnvelope = {
   v: 1;
@@ -330,19 +330,25 @@ export async function joinWorker(configFile: string, args: string[], prompt?: Jo
 }
 
 export async function setupGateway(configFile: string, args: string[], stateDirectoryDefault: string, secretsDirectory: string, prompt?: GatewaySetupPrompt): Promise<unknown> {
+  let current: any = { version: 1, workspaces: [] };
+  try { current = await readRuntimeConfig(configFile); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+
+  const existingGateway = current.gateway;
   let publicBaseUrlValue = option(args, "public-base-url");
   if (!publicBaseUrlValue) {
+    const initialValue = existingGateway?.publicBaseUrl;
     if (prompt) {
-      publicBaseUrlValue = (await prompt("public-base-url", "Public Gateway URL")).trim();
+      publicBaseUrlValue = (await prompt("public-base-url", "Public Gateway URL", initialValue)).trim() || initialValue;
     } else if (process.stdin.isTTY && process.stdout.isTTY) {
-      intro("Configure Gateway");
+      intro(existingGateway ? "Edit Gateway" : "Configure Gateway");
       const answer = await text({
         message: "Public Gateway URL",
-        placeholder: "https://your-gateway.example/",
+        ...(initialValue ? { placeholder: initialValue, defaultValue: initialValue } : { placeholder: "https://your-gateway.example/" }),
         validate: (value) => {
-          if (!value?.trim()) return "Public Gateway URL is required";
+          const candidate = value?.trim() || initialValue;
+          if (!candidate) return "Public Gateway URL is required";
           try {
-            const parsed = new URL(value);
+            const parsed = new URL(candidate);
             return parsed.protocol === "http:" || parsed.protocol === "https:" ? undefined : "URL must use http or https";
           } catch {
             return "Enter a valid URL";
@@ -353,19 +359,33 @@ export async function setupGateway(configFile: string, args: string[], stateDire
         cancel("Gateway setup cancelled");
         throw new Error("Gateway setup cancelled");
       }
-      publicBaseUrlValue = String(answer).trim();
+      publicBaseUrlValue = String(answer || initialValue || "").trim();
     } else {
       throw new Error("Public Gateway URL is required in non-interactive mode. Use --public-base-url <url>.");
     }
   }
+  if (!publicBaseUrlValue) throw new Error("Public Gateway URL is required");
   const publicBaseUrl = new URL(publicBaseUrlValue);
   if (publicBaseUrl.protocol !== "http:" && publicBaseUrl.protocol !== "https:") throw new Error("Public Gateway URL must use http or https");
+
   await secureRuntimeDirectory(path.dirname(configFile));
   await secureRuntimeDirectory(stateDirectoryDefault);
   await secureRuntimeDirectory(secretsDirectory);
-  let current: any = { version: 1, workspaces: [] };
-  try { current = await readRuntimeConfig(configFile); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  if (current.gateway) throw new Error("Gateway is already setup in this configuration");
+
+  if (existingGateway) {
+    const next = runtimeConfigSchema.parse({
+      ...current,
+      gateway: {
+        ...existingGateway,
+        publicBaseUrl: publicBaseUrl.href,
+        listen: { ...existingGateway.listen, port: Number(option(args, "port") || existingGateway.listen.port) },
+        managementListen: { ...existingGateway.managementListen, port: Number(option(args, "management-port") || existingGateway.managementListen.port) },
+      },
+    });
+    await persistRuntimeConfig(configFile, next);
+    return { setup: true, mode: "edit", role: "gateway", file: configFile };
+  }
+
   const createSecret = async (name: string, bytes: number) => {
     const file = path.join(secretsDirectory, `${name}.secret`);
     await writeFile(file, `${randomBytes(bytes).toString("base64url")}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
@@ -379,9 +399,8 @@ export async function setupGateway(configFile: string, args: string[], stateDire
   await secureRuntimeFile(managementSecretFile);
   const next = runtimeConfigSchema.parse({ ...current, gateway: { publicBaseUrl: publicBaseUrl.href, listen: { host: "127.0.0.1", port: Number(option(args, "port") || 7575) }, managementListen: { host: "127.0.0.1", port: Number(option(args, "management-port") || 7574) }, trustProxyHops: 1, stateDirectory: stateDirectoryDefault, approvalSecretFile, jwtSigningSecretFile } });
   await persistRuntimeConfig(configFile, next);
-  return { setup: true, role: "gateway", file: configFile };
+  return { setup: true, mode: "create", role: "gateway", file: configFile };
 }
-
 export async function updateWorkerPort(configFile: string, args: string[], prompt?: WorkerSetupPrompt): Promise<unknown> {
   const runtime = await readRuntimeConfig(configFile);
   if (!runtime.worker) throw new Error("worker configuration is required");
@@ -411,35 +430,49 @@ export async function updateWorkerPort(configFile: string, args: string[], promp
 }
 
 export async function setupWorker(configFile: string, args: string[], secretsDirectory: string, prompt?: WorkerSetupPrompt): Promise<unknown> {
-  await secureRuntimeDirectory(path.dirname(configFile));
-  await secureRuntimeDirectory(secretsDirectory);
   let current: any = { version: 1, workspaces: [] };
   try { current = await readRuntimeConfig(configFile); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  if (current.worker) throw new Error("Worker is already setup in this configuration");
-  const environmentId = option(args, "environment-id") || (process.platform === "win32" ? "windows" : "linux");
+
+  const existingWorker = current.worker;
+  await secureRuntimeDirectory(path.dirname(configFile));
+  await secureRuntimeDirectory(secretsDirectory);
+  const environmentId = existingWorker?.environmentId || option(args, "environment-id") || (process.platform === "win32" ? "windows" : "linux");
   const portArg = option(args, "port");
+  const initialPort = String(existingWorker?.listen.port || 7576);
   let portValue = portArg;
   if (!portValue) {
     if (prompt) {
-      portValue = (await prompt("port", "Worker port", "7576")).trim() || "7576";
+      portValue = (await prompt("port", "Worker port", initialPort)).trim() || initialPort;
     } else {
-      intro("Setup worker");
+      intro(existingWorker ? "Edit worker" : "Setup worker");
       portValue = String(assertJoinNotCancelled(await text({
         message: "Worker port",
-        placeholder: "7576",
-        defaultValue: "7576",
-        validate: (value) => validatePort(value || "7576"),
-      }))).trim() || "7576";
+        placeholder: initialPort,
+        defaultValue: initialPort,
+        validate: (value) => validatePort(value || initialPort),
+      }))).trim() || initialPort;
     }
   }
   const portError = validatePort(portValue);
   if (portError) throw new Error(portError);
   const port = Number(portValue);
+
+  if (existingWorker) {
+    const next = runtimeConfigSchema.parse({
+      ...current,
+      worker: { ...existingWorker, listen: { ...existingWorker.listen, port } },
+      workspaces: current.workspaces || [],
+    });
+    await persistRuntimeConfig(configFile, next);
+    if (!portArg && !prompt) outro(`Worker updated: ${environmentId}`);
+    return { setup: true, mode: "edit", role: "worker", file: configFile, workerId: existingWorker.workerId, environmentId, port };
+  }
+
   const tokenFile = path.join(secretsDirectory, `worker-${environmentId}.secret`);
   await writeFile(tokenFile, `${randomBytes(32).toString("base64url")}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
   await secureRuntimeFile(tokenFile);
   const next = runtimeConfigSchema.parse({ ...current, worker: { workerId: randomUUID(), environmentId, listen: { host: "127.0.0.1", port }, tokenFile }, workspaces: current.workspaces || [] });
   await persistRuntimeConfig(configFile, next);
   if (!portArg && !prompt) outro(`Worker setup complete: ${environmentId}`);
-  return { setup: true, role: "worker", file: configFile, workerId: next.worker?.workerId, environmentId, port };
+  return { setup: true, mode: "create", role: "worker", file: configFile, workerId: next.worker?.workerId, environmentId, port };
 }
