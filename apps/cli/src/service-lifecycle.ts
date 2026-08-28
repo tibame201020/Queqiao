@@ -44,6 +44,12 @@ async function health(configFile: string, role: RuntimeRole, fetchImpl: typeof f
     const identityMatches = identity.workerId === expected.workerId && identity.environmentId === expected.environmentId;
     return { reachable: true, healthy: identityMatches, identityMatches, status: response.status, ...(identityMatches ? {} : { error: "Worker identity does not match this configuration" }) };
   } catch (error) {
+    const ioError = error as NodeJS.ErrnoException;
+    if (ioError.code === "ENOENT") {
+      const missing = typeof ioError.path === "string" ? path.basename(ioError.path).toLowerCase() : "";
+      if (missing === "config.yaml") return { reachable: false, healthy: false, identityMatches: false, error: `${role === "gateway" ? "Gateway" : "Worker"} is not configured` };
+      if (role === "worker") return { reachable: false, healthy: false, identityMatches: false, error: "Worker credential is unavailable" };
+    }
     return { reachable: false, healthy: false, identityMatches: false, error: error instanceof Error ? error.message : "Unknown error" };
   }
 }

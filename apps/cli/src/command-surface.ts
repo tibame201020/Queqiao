@@ -55,6 +55,125 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
   return args;
 }
 
+type CommandNode = {
+  children?: Record<string, CommandNode>;
+  terminal?: boolean;
+};
+
+const terminal: CommandNode = { terminal: true };
+const COMMAND_TREE: CommandNode = {
+  children: {
+    gateway: {
+      children: {
+        setup: terminal,
+        serve: terminal,
+        stop: terminal,
+        status: terminal,
+        "join-token": terminal,
+        workers: { children: { list: terminal, update: terminal, remove: terminal } },
+      },
+    },
+    worker: {
+      children: {
+        setup: terminal,
+        port: terminal,
+        serve: terminal,
+        stop: terminal,
+        status: terminal,
+        join: terminal,
+        workspace: {
+          children: {
+            add: terminal,
+            list: terminal,
+            remove: terminal,
+            profile: { children: { set: terminal } },
+            tool: { children: { allow: terminal, deny: terminal } },
+            command: { children: { allow: terminal, deny: terminal } },
+            permissions: { children: { show: terminal } },
+          },
+        },
+      },
+    },
+    extension: {
+      children: {
+        install: terminal,
+        attach: terminal,
+        detach: terminal,
+        uninstall: terminal,
+        list: terminal,
+        show: terminal,
+      },
+    },
+    doctor: {
+      terminal: true,
+      children: {
+        extension: terminal,
+        manifest: { children: { show: terminal } },
+        tool: { children: { explain: terminal } },
+        paths: terminal,
+      },
+    },
+    migrate: { children: { "from-repo": terminal, "runtime-v1": terminal } },
+  },
+};
+
+function editDistance(a: string, b: string): number {
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    let diagonal = previous[0]!;
+    previous[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const above = previous[j]!;
+      previous[j] = Math.min(
+        previous[j]! + 1,
+        previous[j - 1]! + 1,
+        diagonal + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      diagonal = above;
+    }
+  }
+  return previous[b.length]!;
+}
+
+function suggestions(value: string, candidates: string[]): string[] {
+  const ranked = candidates
+    .map((candidate) => ({ candidate, distance: editDistance(value, candidate) }))
+    .sort((left, right) => left.distance - right.distance || left.candidate.localeCompare(right.candidate));
+  if (!ranked.length) return [];
+  const first = ranked[0]!;
+  const best = first.distance;
+  const threshold = Math.max(2, Math.floor(Math.max(value.length, 4) * 0.4));
+  if (best > threshold) return [];
+  return [first.candidate];
+}
+
+export function renderCliRouteError(input: readonly string[]): string | undefined {
+  const args = input.filter((arg) => arg !== "--json" && arg !== "--help" && arg !== "-h");
+  let node = COMMAND_TREE;
+  const context: string[] = [];
+  for (const token of args) {
+    if (token.startsWith("--")) break;
+    const children = node.children || {};
+    if (children[token]) {
+      node = children[token];
+      context.push(token);
+      continue;
+    }
+    if (node.terminal) return undefined;
+    const commandContext = context.length ? `queqiao ${context.join(" ")}` : "queqiao";
+    const nearby = suggestions(token, Object.keys(children));
+    const lines = [`Unknown command \"${token}\" for \"${commandContext}\".`, ""];
+    if (nearby.length) {
+      lines.push(nearby.length === 1 ? "Did you mean this?" : "Did you mean one of these?");
+      for (const candidate of nearby) lines.push(`  ${candidate}`);
+      lines.push("");
+    }
+    lines.push(`Run \"${commandContext} --help\" for available commands.`);
+    return lines.join("\n");
+  }
+  return undefined;
+}
+
 const ROOT_HELP = `Usage: queqiao <command> [options]
 
 Commands:
@@ -62,6 +181,9 @@ Commands:
   worker       Manage a Queqiao Worker
   extension    Manage Queqiao extensions
   doctor       Diagnose Queqiao
+
+Global options:
+  --json       Print machine-readable JSON
 
 Run "queqiao <command> --help" for command details.`;
 

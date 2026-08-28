@@ -1,0 +1,67 @@
+import { describe, expect, it } from "vitest";
+import { renderCliRouteError } from "./command-surface.js";
+import { formatCliOutput } from "./cli-output.js";
+
+describe("CLI presentation", () => {
+  it("suggests a nearby command within the current command context", () => {
+    expect(renderCliRouteError(["gateway", "stas"])).toBe([
+      'Unknown command "stas" for "queqiao gateway".',
+      "",
+      "Did you mean this?",
+      "  status",
+      "",
+      'Run "queqiao gateway --help" for available commands.',
+    ].join("\n"));
+  });
+
+  it("keeps unknown-command errors local instead of dumping root usage", () => {
+    const message = renderCliRouteError(["gateway", "nonesuch"]);
+    expect(message).toContain('Unknown command "nonesuch" for "queqiao gateway".');
+    expect(message).toContain('Run "queqiao gateway --help"');
+    expect(message).not.toContain("worker workspace");
+    expect(message).not.toContain("Usage: queqiao <command>");
+  });
+
+  it("renders an unconfigured Gateway status for humans", () => {
+    const output = formatCliOutput(["gateway", "status", "--name", "stable"], {
+      name: "stable",
+      role: "gateway",
+      active: false,
+      managed: false,
+      health: {
+        reachable: false,
+        healthy: false,
+        identityMatches: false,
+        error: "Gateway is not configured",
+      },
+    });
+    expect(output).toBe([
+      "Gateway stable",
+      "  Status: Not configured",
+      "  Managed: No",
+      "",
+      "Next: queqiao gateway setup --name stable",
+    ].join("\n"));
+  });
+
+  it("renders a running Worker status for humans", () => {
+    const output = formatCliOutput(["worker", "status", "--name", "windows"], {
+      name: "windows",
+      role: "worker",
+      active: true,
+      managed: true,
+      pid: 1234,
+      health: { reachable: true, healthy: true, identityMatches: true, status: 200 },
+    });
+    expect(output).toContain("Worker windows");
+    expect(output).toContain("Status: Running");
+    expect(output).toContain("Managed: Yes");
+    expect(output).toContain("PID: 1234");
+    expect(output).not.toContain("{");
+  });
+
+  it("preserves structured output behind --json", () => {
+    const value = { name: "stable", role: "gateway", active: false };
+    expect(formatCliOutput(["gateway", "status", "--name", "stable", "--json"], value)).toBe(JSON.stringify(value, null, 2));
+  });
+});

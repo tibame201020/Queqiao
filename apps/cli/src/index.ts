@@ -15,7 +15,8 @@ import { doctorPaths, doctorQueqiao } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 import { addWorkspace } from "./workspace-cli.js";
 import { attachExtension, detachExtension, doctorExtensionHub, installNpmExtension, listExtensions, showExtension, uninstallExtension } from "./extension-cli.js";
-import { isRemovedCliRoute, normalizeCliArgs, renderCliHelp } from "./command-surface.js";
+import { formatCliOutput } from "./cli-output.js";
+import { isRemovedCliRoute, normalizeCliArgs, renderCliHelp, renderCliRouteError } from "./command-surface.js";
 
 const managedToolSchema = toolNameSchema;
 const workspaceSchema = z.object({
@@ -29,14 +30,15 @@ const workspaceSchema = z.object({
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
-function print(value: unknown) { process.stdout.write(`${JSON.stringify(value, null, 2)}\n`); }
+function print(value: unknown) { process.stdout.write(`${formatCliOutput(rawArgs, value)}\n`); }
 function unique<T>(values: T[]): T[] { return [...new Set(values)]; }
 
 function operations(config: RuntimeConfig) { return buildOperationsDiagnostics({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, workerProtocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, supportedMcpProtocolVersions: QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions }); }
 
 const rawArgs = process.argv.slice(2);
-const helpRequested = rawArgs.includes("--help") || rawArgs.includes("-h");
-const args = normalizeCliArgs(rawArgs);
+const commandArgs = rawArgs.filter((arg) => arg !== "--json");
+const helpRequested = commandArgs.includes("--help") || commandArgs.includes("-h");
+const args = normalizeCliArgs(commandArgs);
 const domain = args[0];
 const action = args[1];
 const localName = option(args, "name") || "default";
@@ -48,7 +50,9 @@ const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => 
 
 async function main() {
   if (isRemovedCliRoute(args)) throw new Error(args[1]);
-  if (helpRequested) { process.stdout.write(`${renderCliHelp(rawArgs)}\n`); return; }
+  if (helpRequested) { process.stdout.write(`${renderCliHelp(commandArgs)}\n`); return; }
+  const routeError = renderCliRouteError(commandArgs);
+  if (routeError) throw new Error(routeError);
   assertCommandOwnership(args);
   if (domain === "gateway" && action === "setup") return print(await setupGateway(configFile, args, layout.gatewayStateDir, layout.secretsDir));
   if (domain === "worker" && action === "setup") return print(await setupWorker(configFile, args, layout.secretsDir));
