@@ -111,26 +111,42 @@ function Start-Launcher {
   ) -WindowStyle Hidden | Out-Null
 }
 
-function Wait-GlobalPackageRelease {
-  param([int]$TimeoutSeconds = 10)
+function Get-RepoDistProcesses {
+  $distPrefix = ((Join-Path $repoRoot 'dist') -replace '/', '\').TrimEnd('\').ToLowerInvariant() + '\'
+
+  return @(
+    Get-CimInstance Win32_Process | Where-Object {
+      if ($_.Name -ne 'node.exe' -or -not $_.CommandLine) {
+        return $false
+      }
+      $commandLine = ($_.CommandLine -replace '/', '\').ToLowerInvariant()
+      return $commandLine.Contains($distPrefix)
+    }
+  )
+}
+
+function Wait-RepoDistRelease {
+  param([int]$TimeoutSeconds = 3)
 
   $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
   do {
-    $busy = @(
-      Get-CimInstance Win32_Process | Where-Object {
-        $_.Name -eq 'node.exe' -and
-        $_.CommandLine -and
-        $_.CommandLine -match 'node_modules\\@tibame201020\\queqiao\\dist\\queqiao'
-      }
-    )
+    $busy = @(Get-RepoDistProcesses)
     if ($busy.Count -eq 0) {
       return
     }
     Start-Sleep -Milliseconds 250
   } while ([DateTime]::UtcNow -lt $deadline)
 
-  $pids = ($busy | ForEach-Object { $_.ProcessId }) -join ', '
-  throw "Global Queqiao package is still in use by node process(es): $pids. Refusing to relink."
+  $details = $busy | ForEach-Object {
+    "  PID $($_.ProcessId): $($_.CommandLine)"
+  }
+  $message = @(
+    "Cannot refresh Shadow because another Queqiao runtime is using this repository's dist bundle:"
+    $details
+    "Stop the listed Gateway/Worker intentionally, then rerun npm run dev:shadow:refresh."
+    "No unrelated runtime was stopped automatically."
+  ) -join [Environment]::NewLine
+  throw $message
 }
 
 function Resolve-WorkerConfigFromLauncher {
@@ -244,6 +260,9 @@ $backupRoot = Join-Path $env:TEMP ("queqiao-shadow-refresh-" + [guid]::NewGuid()
 $backupDist = Join-Path $backupRoot 'dist'
 $repoDist = Join-Path $repoRoot 'dist'
 $runtimeTouched = $false
+$buildStarted = $false
+$gatewayWasRunning = @(Get-LauncherProcesses -Launcher $gatewayLauncher).Count -eq 1
+$workerWasRunning = @(Get-LauncherProcesses -Launcher $workerLauncher).Count -eq 1
 try {
   if (Test-Path -LiteralPath $repoDist -PathType Container) {
     New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
@@ -254,9 +273,10 @@ try {
     $runtimeTouched = $true
     Stop-LauncherTree -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'"
     Stop-LauncherTree -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'"
-    Wait-GlobalPackageRelease
+    Wait-RepoDistRelease
 
     Write-Host 'Building the current Queqiao package with Shadow stopped...'
+    $buildStarted = $true
     Invoke-Checked -File 'npm.cmd' -Arguments @('run', 'build:package')
 
     Write-Host 'Relinking the global Queqiao command to this repository...'
@@ -273,7 +293,7 @@ try {
       try { Stop-LauncherTree -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'" } catch {}
     }
 
-    if (Test-Path -LiteralPath $backupDist -PathType Container) {
+    if ($buildStarted -and (Test-Path -LiteralPath $backupDist -PathType Container)) {
       Write-Warning 'Shadow refresh failed; restoring the previous dist bundle.'
       if (Test-Path -LiteralPath $repoDist) {
         Remove-Item -LiteralPath $repoDist -Recurse -Force
@@ -282,8 +302,12 @@ try {
     }
 
     if ($runtimeTouched) {
-      try { Start-Launcher -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'" } catch {}
-      try { Start-Launcher -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'" } catch {}
+      if ($gatewayWasRunning) {
+        try { Start-Launcher -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'" } catch {}
+      }
+      if ($workerWasRunning) {
+        try { Start-Launcher -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'" } catch {}
+      }
     }
     throw $failure
   }
