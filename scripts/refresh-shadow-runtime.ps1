@@ -149,19 +149,25 @@ function Wait-RepoDistRelease {
   throw $message
 }
 
-function Resolve-WorkerConfigFromLauncher {
-  param([Parameter(Mandatory = $true)][string]$Launcher)
+function Ensure-WorkerLauncherUsesNamedConfig {
+  param(
+    [Parameter(Mandatory = $true)][string]$Launcher,
+    [Parameter(Mandatory = $true)][string]$NamedConfig
+  )
 
   $content = Get-Content -LiteralPath $Launcher -Raw
-  $match = [regex]::Match(
-    $content,
-    '(?m)^\s*\$env:QUEQIAO_CONFIG_FILE\s*=\s*[''"](?<path>[^''"]+)[''"]'
-  )
-  if ($match.Success) {
-    return $match.Groups['path'].Value
+  $pattern = '(?m)^\s*\$env:QUEQIAO_CONFIG_FILE\s*=\s*[''"][^''"]+[''"]\s*$'
+  $replacement = '$env:QUEQIAO_CONFIG_FILE = ''' + $NamedConfig.Replace("'", "''") + ''''
+  if ($content -match $pattern) {
+    $updated = [regex]::Replace($content, $pattern, $replacement, 1)
+    if ($updated -ne $content) {
+      Set-Content -LiteralPath $Launcher -Value $updated -Encoding utf8NoBOM
+      Write-Host "Updated Shadow Worker launcher to named config: $NamedConfig"
+    }
+    return
   }
 
-  return Join-Path $queqiaoRoot "workers\$WorkerName\config\config.yaml"
+  throw "Shadow Worker launcher does not declare QUEQIAO_CONFIG_FILE: $Launcher"
 }
 
 function Read-WorkerListenPort {
@@ -244,7 +250,8 @@ $gatewayScripts = Join-Path $queqiaoRoot "gateways\$GatewayName\scripts"
 $workerScripts = Join-Path $queqiaoRoot "workers\$WorkerName\scripts"
 $gatewayLauncher = Resolve-Launcher -Directory $gatewayScripts -Role gateway -Name $GatewayName
 $workerLauncher = Resolve-Launcher -Directory $workerScripts -Role worker -Name $WorkerName
-$workerConfig = Resolve-WorkerConfigFromLauncher -Launcher $workerLauncher
+$workerConfig = Join-Path $queqiaoRoot "workers\$WorkerName\config\config.yaml"
+Ensure-WorkerLauncherUsesNamedConfig -Launcher $workerLauncher -NamedConfig $workerConfig
 $workerPort = Read-WorkerListenPort -ConfigFile $workerConfig
 
 if ($PreflightOnly) {

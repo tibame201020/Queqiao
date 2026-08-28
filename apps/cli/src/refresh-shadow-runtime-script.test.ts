@@ -38,4 +38,11 @@ describe("refresh-shadow-runtime script", () => {
     expect(script).toContain("if ($gatewayWasRunning)");
     expect(script).toContain("if ($workerWasRunning)");
   });
+
+  it("treats the named Worker config as authoritative instead of launcher overrides", async () => {
+    const script = await readFile(scriptUrl, "utf8");
+    expect(script).toContain('Join-Path $queqiaoRoot "workers\\$WorkerName\\config\\config.yaml"');
+    expect(script).not.toContain("function Resolve-WorkerConfigFromLauncher");
+    expect(script).not.toContain("$workerConfig = Resolve-WorkerConfigFromLauncher");
+  });
 });
