@@ -26,89 +26,49 @@ function Invoke-Checked {
   }
 }
 
-function Resolve-Launcher {
+function Get-RoleStatus {
   param(
-    [Parameter(Mandatory = $true)][string]$Directory,
     [Parameter(Mandatory = $true)][ValidateSet('gateway', 'worker')][string]$Role,
     [Parameter(Mandatory = $true)][string]$Name
   )
 
-  if (-not (Test-Path -LiteralPath $Directory -PathType Container)) {
-    throw "Queqiao $Role launcher directory does not exist: $Directory"
+  $cli = Join-Path $repoRoot 'dist\queqiao.js'
+  $json = & node $cli $Role status --name $Name --json 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not $json) {
+    throw "Unable to read $Role '$Name' status through the Queqiao CLI."
   }
-
-  $candidates = @(
-    Get-ChildItem -LiteralPath $Directory -Filter '*.ps1' -File | Where-Object {
-      $content = Get-Content -LiteralPath $_.FullName -Raw
-      if ($Role -eq 'gateway') {
-        return $content -match ('gateway\s+serve\s+--name\s+' + [regex]::Escape($Name))
-      }
-      return $content -match 'queqiao-worker\.js'
-    }
-  )
-
-  if ($candidates.Count -ne 1) {
-    throw "Expected exactly one $Role launcher for '$Name' under $Directory, found $($candidates.Count)."
-  }
-
-  return $candidates[0].FullName
+  return (($json -join "`n") | ConvertFrom-Json)
 }
 
-function Get-LauncherProcesses {
-  param([Parameter(Mandatory = $true)][string]$Launcher)
-
-  $needle = $Launcher.ToLowerInvariant()
-  return @(
-    Get-CimInstance Win32_Process | Where-Object {
-      $_.Name -eq 'powershell.exe' -and
-      $_.CommandLine -and
-      $_.CommandLine.ToLowerInvariant().Contains($needle)
-    }
-  )
-}
-
-function Stop-LauncherTree {
+function Stop-NamedRole {
   param(
-    [Parameter(Mandatory = $true)][string]$Launcher,
-    [Parameter(Mandatory = $true)][string]$Label
+    [Parameter(Mandatory = $true)][ValidateSet('gateway', 'worker')][string]$Role,
+    [Parameter(Mandatory = $true)][string]$Name
   )
 
-  $processes = @(Get-LauncherProcesses -Launcher $Launcher)
-  if ($processes.Count -gt 1) {
-    throw "Refusing to stop ${Label}: multiple launcher processes were found."
-  }
-  if ($processes.Count -eq 0) {
-    Write-Host "$Label launcher is not running; continuing."
+  $status = Get-RoleStatus -Role $Role -Name $Name
+  if ($status.active -ne $true) {
+    Write-Host "Shadow $Role '$Name' is not running; continuing."
     return
   }
-
-  $pidValue = [int]$processes[0].ProcessId
-  Write-Host "Stopping $Label (PID $pidValue)..."
-  & "$env:SystemRoot\System32\taskkill.exe" /PID $pidValue /T /F | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    throw "Failed to stop $Label process tree (PID $pidValue)."
+  if ($status.managed -ne $true) {
+    throw "Shadow $role '$Name' is active but unmanaged. Stop that legacy runtime intentionally once, then rerun the refresh so Queqiao can own its lifecycle."
   }
+
+  Write-Host "Stopping Shadow $Role '$Name' through Queqiao lifecycle..."
+  $cli = Join-Path $repoRoot 'dist\queqiao.js'
+  Invoke-Checked -File 'node.exe' -Arguments @($cli, $Role, 'stop', '--name', $Name)
 }
 
-function Start-Launcher {
+function Start-NamedRole {
   param(
-    [Parameter(Mandatory = $true)][string]$Launcher,
-    [Parameter(Mandatory = $true)][string]$Label
+    [Parameter(Mandatory = $true)][ValidateSet('gateway', 'worker')][string]$Role,
+    [Parameter(Mandatory = $true)][string]$Name
   )
 
-  if (@(Get-LauncherProcesses -Launcher $Launcher).Count -gt 0) {
-    Write-Host "$Label launcher is already running."
-    return
-  }
-
-  Write-Host "Starting $Label..."
-  Start-Process -FilePath 'powershell.exe' -ArgumentList @(
-    '-NoLogo',
-    '-NoProfile',
-    '-ExecutionPolicy', 'Bypass',
-    '-WindowStyle', 'Hidden',
-    '-File', $Launcher
-  ) -WindowStyle Hidden | Out-Null
+  Write-Host "Starting Shadow $Role '$Name' through Queqiao lifecycle..."
+  $cli = Join-Path $repoRoot 'dist\queqiao.js'
+  Invoke-Checked -File 'node.exe' -Arguments @($cli, $Role, 'serve', '--bg', '--name', $Name)
 }
 
 function Get-RepoDistProcesses {
@@ -147,27 +107,6 @@ function Wait-RepoDistRelease {
     "No unrelated runtime was stopped automatically."
   ) -join [Environment]::NewLine
   throw $message
-}
-
-function Ensure-WorkerLauncherUsesNamedConfig {
-  param(
-    [Parameter(Mandatory = $true)][string]$Launcher,
-    [Parameter(Mandatory = $true)][string]$NamedConfig
-  )
-
-  $content = Get-Content -LiteralPath $Launcher -Raw
-  $pattern = '(?m)^\s*\$env:QUEQIAO_CONFIG_FILE\s*=\s*[''"][^''"]+[''"]\s*$'
-  $replacement = '$env:QUEQIAO_CONFIG_FILE = ''' + $NamedConfig.Replace("'", "''") + ''''
-  if ($content -match $pattern) {
-    $updated = [regex]::Replace($content, $pattern, $replacement, 1)
-    if ($updated -ne $content) {
-      Set-Content -LiteralPath $Launcher -Value $updated -Encoding utf8NoBOM
-      Write-Host "Updated Shadow Worker launcher to named config: $NamedConfig"
-    }
-    return
-  }
-
-  throw "Shadow Worker launcher does not declare QUEQIAO_CONFIG_FILE: $Launcher"
 }
 
 function Read-WorkerListenPort {
@@ -246,18 +185,13 @@ function Wait-GatewayHealth {
   throw "Gateway '$GatewayName' did not become healthy within $TimeoutSeconds seconds."
 }
 
-$gatewayScripts = Join-Path $queqiaoRoot "gateways\$GatewayName\scripts"
-$workerScripts = Join-Path $queqiaoRoot "workers\$WorkerName\scripts"
-$gatewayLauncher = Resolve-Launcher -Directory $gatewayScripts -Role gateway -Name $GatewayName
-$workerLauncher = Resolve-Launcher -Directory $workerScripts -Role worker -Name $WorkerName
 $workerConfig = Join-Path $queqiaoRoot "workers\$WorkerName\config\config.yaml"
-Ensure-WorkerLauncherUsesNamedConfig -Launcher $workerLauncher -NamedConfig $workerConfig
 $workerPort = Read-WorkerListenPort -ConfigFile $workerConfig
 
 if ($PreflightOnly) {
   Write-Host 'Shadow refresh preflight: PASS'
-  Write-Host "  Gateway launcher: $GatewayName"
-  Write-Host "  Worker launcher:  $WorkerName"
+  Write-Host "  Gateway role: $GatewayName"
+  Write-Host "  Worker role:  $WorkerName"
   Write-Host "  Worker health port: $workerPort"
   exit 0
 }
@@ -268,8 +202,8 @@ $backupDist = Join-Path $backupRoot 'dist'
 $repoDist = Join-Path $repoRoot 'dist'
 $runtimeTouched = $false
 $buildStarted = $false
-$gatewayWasRunning = @(Get-LauncherProcesses -Launcher $gatewayLauncher).Count -eq 1
-$workerWasRunning = @(Get-LauncherProcesses -Launcher $workerLauncher).Count -eq 1
+$gatewayWasRunning = (Get-RoleStatus -Role 'gateway' -Name $GatewayName).active -eq $true
+$workerWasRunning = (Get-RoleStatus -Role 'worker' -Name $WorkerName).active -eq $true
 try {
   if (Test-Path -LiteralPath $repoDist -PathType Container) {
     New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
@@ -278,8 +212,8 @@ try {
 
   try {
     $runtimeTouched = $true
-    Stop-LauncherTree -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'"
-    Stop-LauncherTree -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'"
+    Stop-NamedRole -Role 'worker' -Name $WorkerName
+    Stop-NamedRole -Role 'gateway' -Name $GatewayName
     Wait-RepoDistRelease
 
     Write-Host 'Building the current Queqiao package with Shadow stopped...'
@@ -289,15 +223,15 @@ try {
     Write-Host 'Relinking the global Queqiao command to this repository...'
     Invoke-Checked -File 'npm.cmd' -Arguments @('link')
 
-    Start-Launcher -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'"
-    Start-Launcher -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'"
+    Start-NamedRole -Role 'gateway' -Name $GatewayName
+    Start-NamedRole -Role 'worker' -Name $WorkerName
     Wait-GatewayHealth
     Wait-HttpHealth -Url "http://127.0.0.1:$workerPort/health" -Label "Shadow Worker '$WorkerName'"
   } catch {
     $failure = $_
     if ($runtimeTouched) {
-      try { Stop-LauncherTree -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'" } catch {}
-      try { Stop-LauncherTree -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'" } catch {}
+      try { Stop-NamedRole -Role 'worker' -Name $WorkerName } catch {}
+      try { Stop-NamedRole -Role 'gateway' -Name $GatewayName } catch {}
     }
 
     if ($buildStarted -and (Test-Path -LiteralPath $backupDist -PathType Container)) {
@@ -310,10 +244,10 @@ try {
 
     if ($runtimeTouched) {
       if ($gatewayWasRunning) {
-        try { Start-Launcher -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'" } catch {}
+        try { Start-NamedRole -Role 'gateway' -Name $GatewayName } catch {}
       }
       if ($workerWasRunning) {
-        try { Start-Launcher -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'" } catch {}
+        try { Start-NamedRole -Role 'worker' -Name $WorkerName } catch {}
       }
     }
     throw $failure
@@ -322,7 +256,7 @@ try {
   Write-Host ''
   Write-Host 'Shadow refresh complete.'
   Write-Host "  Gateway: $GatewayName (healthy)"
-  Write-Host "  Worker:  $WorkerName (healthy on current launcher config)"
+  Write-Host "  Worker:  $WorkerName (healthy, managed lifecycle)"
   Write-Host '  Global queqiao command: linked to this repository'
 } finally {
   if (Test-Path -LiteralPath $backupRoot) {

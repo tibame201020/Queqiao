@@ -14,14 +14,15 @@ describe("refresh-shadow-runtime script", () => {
     expect(script).not.toMatch(/taskkill[^\r\n]*Get-RepoDistProcesses/);
   });
 
-  it("stops only resolved Shadow launchers before checking dist", async () => {
+  it("uses named CLI lifecycle for Shadow runtime ownership", async () => {
     const script = await readFile(scriptUrl, "utf8");
-    const workerStop = script.indexOf('Stop-LauncherTree -Launcher $workerLauncher');
-    const gatewayStop = script.indexOf('Stop-LauncherTree -Launcher $gatewayLauncher');
-    const distCheck = script.indexOf("Wait-RepoDistRelease", gatewayStop);
-    expect(workerStop).toBeGreaterThan(-1);
-    expect(gatewayStop).toBeGreaterThan(workerStop);
-    expect(distCheck).toBeGreaterThan(gatewayStop);
+    expect(script).toContain("function Get-RoleStatus");
+    expect(script).toContain("function Stop-NamedRole");
+    expect(script).toContain("function Start-NamedRole");
+    expect(script).toContain("@($cli, $Role, 'stop', '--name', $Name)");
+    expect(script).toContain("@($cli, $Role, 'serve', '--bg', '--name', $Name)");
+    expect(script).not.toContain("Stop-LauncherTree -Launcher $workerLauncher");
+    expect(script).not.toContain("Start-Launcher -Launcher $workerLauncher");
   });
 
   it("does not restore or remove dist when pre-build process detection fails", async () => {
@@ -31,10 +32,10 @@ describe("refresh-shadow-runtime script", () => {
     expect(script).toContain("if ($buildStarted -and (Test-Path -LiteralPath $backupDist -PathType Container))");
   });
 
-  it("restores only launchers that were running before a failed refresh", async () => {
+  it("restores only named roles that were active before a failed refresh", async () => {
     const script = await readFile(scriptUrl, "utf8");
-    expect(script).toContain("$gatewayWasRunning = @(Get-LauncherProcesses -Launcher $gatewayLauncher).Count -eq 1");
-    expect(script).toContain("$workerWasRunning = @(Get-LauncherProcesses -Launcher $workerLauncher).Count -eq 1");
+    expect(script).toContain("$gatewayWasRunning = (Get-RoleStatus -Role 'gateway' -Name $GatewayName).active -eq $true");
+    expect(script).toContain("$workerWasRunning = (Get-RoleStatus -Role 'worker' -Name $WorkerName).active -eq $true");
     expect(script).toContain("if ($gatewayWasRunning)");
     expect(script).toContain("if ($workerWasRunning)");
   });
