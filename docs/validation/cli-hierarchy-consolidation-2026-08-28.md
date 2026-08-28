@@ -41,8 +41,8 @@ Diagnostics consolidated under Doctor:
 
 - `queqiao doctor`
 - `queqiao doctor extension`
-- `queqiao doctor manifest show`
-- `queqiao doctor tool explain <tool>`
+- `queqiao doctor manifest show --gateway <name>`
+- `queqiao doctor tool explain <tool> --gateway <name>`
 - `queqiao doctor paths`
 
 Extension lifecycle remains unchanged:

@@ -38,10 +38,10 @@ This audit distinguishes product-level onboarding from role-level primitives. Fu
 | `extension detach` | KEEP | Removes Worker usage state without uninstalling the package. |
 | `extension list` | KEEP | Hub inventory plus Worker attachment visibility. |
 | `extension show` | KEEP | Detailed package/manifest/attachment inspection. |
-| `doctor` | KEEP / implementation closure needed | Correct product concept, but current implementation still assumes a default config and advertises no Worker-native doctor capability. It should evolve into whole-system named-role diagnostics rather than be removed. |
+| `doctor` | KEEP | Whole-system local diagnostics now enumerate named Gateways and Workers and aggregate Extension Hub integrity. |
 | `doctor extension` | KEEP / advanced | Unique Extension Hub + named-Worker integrity check. Can later be aggregated into root `doctor`. |
-| `doctor manifest show` | KEEP / advanced | Useful composition/debug inspection. Named-deployment resolution needs future closure. |
-| `doctor tool explain` | KEEP / advanced | Useful effective-composition explanation. Named-deployment resolution needs future closure. |
+| `doctor manifest show --gateway <name>` | KEEP / advanced | Gateway-owned composition/debug inspection with explicit named-Gateway resolution. |
+| `doctor tool explain <tool> --gateway <name>` | KEEP / advanced | Effective-composition explanation resolved against an explicit named Gateway. |
 | `doctor paths` | KEEP / advanced | Runtime-layout troubleshooting. |
 | `migrate from-repo` | KEEP HIDDEN | Legacy migration primitive; intentionally absent from primary root help. |
 | `migrate runtime-v1` | KEEP HIDDEN | Legacy runtime-layout migration primitive; intentionally absent from primary root help. |
@@ -70,18 +70,18 @@ Three areas should be improved without deleting the underlying primitives:
 
 1. **Product onboarding:** add `queqiao setup` as orchestration over Gateway setup, local Worker setup, Workspace authority, enrollment, and lifecycle. It must not introduce a Cluster runtime role or merge Gateway and Worker.
 2. **Interactive Worker/Workspace management:** provide a TUI for policy/configuration while retaining granular commands as scriptable primitives where useful.
-3. **Doctor closure:** make root `doctor` enumerate/resolve named Gateway and Worker roles and aggregate extension/composition diagnostics. Current default-layout assumptions are not the intended final operational model.
+3. **Doctor closure:** completed on this branch. Root `doctor` enumerates named Gateway/Worker roles and aggregates Extension Hub integrity; Gateway-owned manifest/tool diagnostics require an explicit Gateway selector.
 
 ## Verification
 
-Final Windows validation after discovery/tombstone removal:
+Final Windows validation after command audit and named-role Doctor closure:
 
 - `npm run typecheck` — PASS
-- `npm test` — 48 files, 240 tests passed
-- `npm run test:security` — 39 files, 175 tests passed
+- `npm test` — 48 files, 244 tests passed
+- `npm run test:security` — 39 files, 179 tests passed
 - `npm run build:package` — PASS
 - `git diff --check` — PASS
-- focused command/config tests — 54 tests passed
+- focused Doctor/layout/command-surface tests — 55 tests passed
 - production/schema scan — no active `runtimeConfig.discovery` or `worker discovery` implementation remains; the only legacy `discovery` config fixture is the regression proving stale state is stripped
 
 ## Resulting primary mental model

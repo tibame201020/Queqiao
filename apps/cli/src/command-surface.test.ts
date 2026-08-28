@@ -35,8 +35,8 @@ describe("CLI hierarchy consolidation", () => {
     [["command", "deny"], "queqiao worker workspace command deny"],
     [["permissions", "show"], "queqiao worker workspace permissions show"],
     [["extension", "doctor"], "queqiao doctor extension"],
-    [["manifest", "show"], "queqiao doctor manifest show"],
-    [["tool", "explain"], "queqiao doctor tool explain"],
+    [["manifest", "show"], "queqiao doctor manifest show --gateway <name>"],
+    [["tool", "explain"], "queqiao doctor tool explain <tool> --gateway <name>"],
     [["config", "paths"], "queqiao doctor paths"],
   ])("rejects removed flat route %j", (input, replacement) => {
     const normalized = normalizeCliArgs(input);

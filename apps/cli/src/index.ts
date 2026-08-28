@@ -11,7 +11,7 @@ import { assertCommandOwnership, resolveCommandLayout } from "./command-layout.j
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
 
 import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, setupGateway, setupWorker, updateJoinedWorkerTransport, updateWorkerPort } from "./enrollment-cli.js";
-import { doctorGateway } from "./doctor.js";
+import { doctorPaths, doctorQueqiao } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 import { addWorkspace } from "./workspace-cli.js";
 import { attachExtension, detachExtension, doctorExtensionHub, installNpmExtension, listExtensions, showExtension, uninstallExtension } from "./extension-cli.js";
@@ -128,11 +128,8 @@ async function main() {
   if ((domain === "gateway" || domain === "worker") && action === "stop") return print(await stopRuntime(layout, domain, localName));
   if ((domain === "gateway" || domain === "worker") && action === "status") return print(await runtimeStatus(configFile, layout, domain, localName));
   if ((domain === "gateway" || domain === "worker") && action === "serve") return print(args.includes("--bg") ? await startRuntime(configFile, layout, domain, localName) : await serveRuntime(configFile, domain, localName));
-  if (domain === "doctor") {
-    const config = await configStore.read(); const state = operations(config); const doctor = await doctorGateway(config);
-    return print({ ...state, ...doctor, ok: state.ok && doctor.ok });
-  }
-  if (domain === "config" && action === "paths") return print(layout);
+  if (domain === "doctor") return print(await doctorQueqiao());
+  if (domain === "config" && action === "paths") return print(doctorPaths());
   if (domain === "migrate" && action === "from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));
   if (domain === "migrate" && action === "runtime-v1") return print(await migrateRuntimeLayoutV1(layout, args.includes("--execute")));
   throw new Error(USAGE);

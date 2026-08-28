@@ -33,4 +33,15 @@ describe("CLI ownership layout", () => {
   it("keeps Gateway-owned Worker membership on the named Gateway config", () => {
     expect(resolveCommandLayout(["worker", "list", "--name", "stable"]).configFile).toBe(resolveRuntimeLayoutForNamedRole("gateway", "stable").configFile);
   });
+
+  it("routes Gateway-owned manifest and tool diagnostics to an explicit named Gateway", () => {
+    const expected = resolveRuntimeLayoutForNamedRole("gateway", "stable").configFile;
+    expect(resolveCommandLayout(["manifest", "show", "--gateway", "stable"]).configFile).toBe(expected);
+    expect(resolveCommandLayout(["tool", "explain", "shell", "--gateway", "stable"]).configFile).toBe(expected);
+  });
+
+  it("rejects Gateway-owned manifest and tool diagnostics without a named Gateway", () => {
+    expect(() => assertCommandOwnership(["manifest", "show"])).toThrow(/--gateway is required/);
+    expect(() => assertCommandOwnership(["tool", "explain", "shell"])).toThrow(/--gateway is required/);
+  });
 });

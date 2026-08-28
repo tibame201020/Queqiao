@@ -29,8 +29,8 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
   if (domain === "command" && ["allow", "deny"].includes(action || "")) return removedRoute(`queqiao worker workspace command ${action}`);
   if (domain === "permissions" && action === "show") return removedRoute("queqiao worker workspace permissions show");
   if (domain === "extension" && action === "doctor") return removedRoute("queqiao doctor extension");
-  if (domain === "manifest" && action === "show") return removedRoute("queqiao doctor manifest show");
-  if (domain === "tool" && action === "explain") return removedRoute("queqiao doctor tool explain");
+  if (domain === "manifest" && action === "show") return removedRoute("queqiao doctor manifest show --gateway <name>");
+  if (domain === "tool" && action === "explain") return removedRoute("queqiao doctor tool explain <tool> --gateway <name>");
   if (domain === "config" && action === "paths") return removedRoute("queqiao doctor paths");
 
   if (domain === "gateway" && action === "workers" && ["list", "update", "remove"].includes(resource || "")) {
@@ -121,8 +121,8 @@ const DOCTOR_HELP = `Usage: queqiao doctor [diagnostic] [options]
 Diagnostics:
   doctor
   doctor extension
-  doctor manifest show
-  doctor tool explain <tool>
+  doctor manifest show --gateway <name>
+  doctor tool explain <tool> --gateway <name>
   doctor paths`;
 
 const MIGRATE_HELP = `Usage: queqiao migrate <command> [options]

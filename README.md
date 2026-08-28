@@ -223,12 +223,14 @@ queqiao extension show <id>
 
 queqiao doctor
 queqiao doctor extension
-queqiao doctor manifest show
-queqiao doctor tool explain <tool>
+queqiao doctor manifest show --gateway <name>
+queqiao doctor tool explain <tool> --gateway <name>
 queqiao doctor paths
 ```
 
 The previous flat command paths are removed from the public CLI surface. Use the hierarchical forms above. Obsolete repository-search discovery-root configuration has also been removed; repository/project discovery belongs to extensions or clients operating inside an explicitly authorized Workspace.
+
+`queqiao doctor` scans the local named Gateways and Workers plus Extension Hub integrity. Manifest/tool composition diagnostics are Gateway-owned and therefore require `--gateway <name>`.
 
 ### External extension contract
 
@@ -313,7 +315,7 @@ workspace package graph.
 ## Runtime configuration
 
 Queqiao never requires secrets or machine-specific paths inside the source checkout.
-The bundled CLI resolves the platform layout and reports it with:
+The bundled CLI reports the named-role configuration roots and Extension Hub location with:
 
 ```powershell
 npm run queqiao -- doctor paths
