@@ -7,17 +7,17 @@ A Queqiao Workspace is an explicit filesystem/process **authority boundary**. It
 Create or add authority only with an explicit directory:
 
 ```text
-queqiao workspace add --worker <worker> [--id <id>] [--root <directory>] [--name <display-name>] [--profile read-only|editor|coding]
-queqiao workspace list --worker <worker>
-queqiao workspace remove --worker <worker> --id <id>
+queqiao worker workspace add --worker <worker> [--id <id>] [--root <directory>] [--name <display-name>] [--profile read-only|editor|coding]
+queqiao worker workspace list --worker <worker>
+queqiao worker workspace remove --worker <worker> --id <id>
 ```
 
-`workspace add` canonicalizes the selected existing directory and rejects files or missing paths. A `.git` marker is neither required nor interpreted. `workspace init` is deprecated; Worker setup creates identity/listener state only, and the first explicit `workspace add` establishes authority and becomes the default Workspace.
+`worker workspace add` canonicalizes the selected existing directory and rejects files or missing paths. A `.git` marker is neither required nor interpreted. `workspace init` is deprecated; Worker setup creates identity/listener state only, and the first explicit `worker workspace add` establishes authority and becomes the default Workspace.
 Existing Workspace roots are never widened because another directory, repository, project marker, or discovery result exists nearby.
 
 ## Deprecated repository-coupled commands
 
-`workspace discover` and `workspace approve` are deprecated and no longer grant authority. They fail with guidance to use `workspace add` for an explicit authority grant.
+`workspace discover` and `workspace approve` are deprecated and no longer grant authority. They fail with guidance to use `worker workspace add` for an explicit authority grant.
 
 Repository and worktree discovery belongs to the Git extension and operates only **inside** an already-authorized Workspace.
 

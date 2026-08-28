@@ -94,7 +94,7 @@ The final frame should make it obvious that Gateway and Worker are distinct role
 Preferred interactive path:
 
 ```powershell
-queqiao workspace add --worker demo-worker
+queqiao worker workspace add --worker demo-worker
 ```
 
 Then enter/select the synthetic directory and stable Workspace ID according to the current CLI prompts.
@@ -102,15 +102,15 @@ Then enter/select the synthetic directory and stable Workspace ID according to t
 Verification:
 
 ```powershell
-queqiao workspace list --worker demo-worker
+queqiao worker workspace list --worker demo-worker
 ```
 
 ### Shot sequence
 
-1. Run `workspace add --worker demo-worker`.
+1. Run `worker workspace add --worker demo-worker`.
 2. Show the interactive path / ID selection using only the synthetic demo directory.
 3. Pause on the success confirmation.
-4. Run `workspace list --worker demo-worker`.
+4. Run `worker workspace list --worker demo-worker`.
 5. End with exactly one demo Workspace visible.
 
 ### Required visual proof
@@ -149,7 +149,7 @@ queqiao worker serve --name demo-worker --bg
 queqiao gateway serve --name demo-gateway --bg
 queqiao gateway join-token --name demo-gateway --copy
 queqiao worker join --name demo-worker
-queqiao worker list --name demo-gateway
+queqiao gateway workers list --name demo-gateway
 ```
 
 ### Shot sequence
@@ -158,7 +158,7 @@ queqiao worker list --name demo-gateway
 2. Start Gateway in background and pause briefly on accepted/running state.
 3. Generate/copy the one-time join code. The secret value must never be visible in the final GIF.
 4. Run `worker join`; if the CLI prompts for the join code, show the prompt but redact the supplied value.
-5. Run `worker list --name demo-gateway`.
+5. Run `gateway workers list --name demo-gateway`.
 6. End with the enrolled/reachable demo Worker visible.
 
 ### Required visual proof
@@ -207,10 +207,10 @@ Primary CLI proof:
 ```powershell
 queqiao gateway status --name demo-gateway
 queqiao worker status --name demo-worker
-queqiao worker list --name demo-gateway
-queqiao workspace list --worker demo-worker
-queqiao permissions show --worker demo-worker
-queqiao manifest show
+queqiao gateway workers list --name demo-gateway
+queqiao worker workspace list --worker demo-worker
+queqiao worker workspace permissions show --worker demo-worker
+queqiao doctor manifest show
 ```
 
 Optional final payoff, only if it can be recorded cleanly without turning the GIF into a second tutorial:
@@ -222,10 +222,10 @@ Optional final payoff, only if it can be recorded cleanly without turning the GI
 
 1. `gateway status` -> running.
 2. `worker status` -> running.
-3. `worker list` -> enrolled/reachable.
-4. `workspace list` -> demo Workspace present.
-5. `permissions show` -> scoped policy visible.
-6. `manifest show` -> stable deployment manifest visible.
+3. `gateway workers list` -> enrolled/reachable.
+4. `worker workspace list` -> demo Workspace present.
+5. `worker workspace permissions show` -> scoped policy visible.
+6. `doctor manifest show` -> stable deployment manifest visible.
 7. Optional final 1-2 second MCP action/result as the payoff.
 
 ### Required visual proof

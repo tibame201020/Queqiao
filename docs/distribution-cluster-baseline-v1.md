@@ -27,14 +27,14 @@ The supported human flow is:
 ```text
 queqiao gateway setup --name <gateway> --public-base-url <url>
 queqiao worker setup --name <worker>
-queqiao workspace add --worker <worker>
+queqiao worker workspace add --worker <worker>
 queqiao worker serve --name <worker> --bg
 queqiao gateway serve --name <gateway> --bg
 queqiao gateway join-token --name <gateway> --copy
 queqiao worker join --name <worker>
 ```
 
-`worker setup` creates Worker identity/listener state only. `workspace add` separately
+`worker setup` creates Worker identity/listener state only. `worker workspace add` separately
 creates Workspace authority. `worker join` separately creates Gateway membership through
 the one-time enrollment transaction defined by ADR-0011.
 

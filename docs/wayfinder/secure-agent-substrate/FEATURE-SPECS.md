@@ -82,10 +82,10 @@ Make the effective public tool graph and extension composition observable withou
 - dependency/cycle/schema/capability/activation errors.
 - supported MCP revision window and Worker Protocol Version.
 - CLI commands/concepts such as:
-  - `queqiao manifest show`
+  - `queqiao doctor manifest show`
   - `queqiao extension list`
-  - `queqiao extension doctor`
-  - `queqiao tool explain <tool>`
+  - `queqiao doctor extension`
+  - `queqiao doctor tool explain <tool>`
   - richer `queqiao doctor`
 
 ### Non-goals

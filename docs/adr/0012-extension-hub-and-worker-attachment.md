@@ -37,7 +37,7 @@ queqiao extension attach <id> --worker <name>
 queqiao extension detach <id> --worker <name>
 queqiao extension list
 queqiao extension show <id>
-queqiao extension doctor
+queqiao doctor extension
 queqiao extension uninstall <id>
 queqiao extension uninstall <id> --force
 ```

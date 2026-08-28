@@ -15,6 +15,7 @@ import { doctorGateway } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 import { addWorkspace } from "./workspace-cli.js";
 import { attachExtension, detachExtension, doctorExtensionHub, installNpmExtension, listExtensions, showExtension, uninstallExtension } from "./extension-cli.js";
+import { isRemovedCliRoute, normalizeCliArgs, renderCliHelp } from "./command-surface.js";
 
 const managedToolSchema = toolNameSchema;
 const workspaceSchema = z.object({
@@ -33,12 +34,13 @@ function unique<T>(values: T[]): T[] { return [...new Set(values)]; }
 
 function operations(config: RuntimeConfig) { return buildOperationsDiagnostics({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, workerProtocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, supportedMcpProtocolVersions: QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions }); }
 
-const args = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+const helpRequested = rawArgs.includes("--help") || rawArgs.includes("-h");
+const args = normalizeCliArgs(rawArgs);
 const domain = args[0];
 const action = args[1];
 const localName = option(args, "name") || "default";
-const helpRequested = args.includes("--help") || args.includes("-h");
-const USAGE = "Usage: queqiao gateway setup|serve [--bg]|stop|status|join-token [--name <gateway>] [--copy], worker setup|port|serve [--bg]|stop|status|join [--name <worker>] [--join-code <code>] [--gateway <url> --token <token>], worker list|update|remove [--name <gateway>|--gateway-name <gateway>], workspace add|list|remove --worker <worker>, config paths, discovery list|add|remove, profile set, tool allow|deny|explain, command allow|deny, permissions show, manifest show, extension install npm:<package> [--worker <name>|--attach-all]|attach <id> --worker <name>|detach <id> --worker <name>|uninstall <id> [--force]|list|show <id>|doctor, doctor";
+const USAGE = renderCliHelp([]);
 
 function resolveCommandLayout() {
   if (domain === "gateway") return resolveRuntimeLayoutForNamedRole("gateway", localName);
@@ -53,7 +55,8 @@ const configFile = path.resolve(option(args, "file") || layout.configFile);
 const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
 
 async function main() {
-  if (helpRequested) { process.stdout.write(`${USAGE}\n`); return; }
+  if (isRemovedCliRoute(args)) throw new Error(args[1]);
+  if (helpRequested) { process.stdout.write(`${renderCliHelp(rawArgs)}\n`); return; }
   if (domain === "gateway" && action === "setup") return print(await setupGateway(configFile, args, layout.gatewayStateDir, layout.secretsDir));
   if (domain === "worker" && action === "setup") return print(await setupWorker(configFile, args, layout.secretsDir));
   if (domain === "worker" && action === "port") {
@@ -68,10 +71,10 @@ async function main() {
   if (domain === "worker" && action === "remove") return print(await removeJoinedWorker(configFile, requiredOption(args, "worker-id")));
   if (domain === "config" && action === "init") throw new Error("config init is deprecated: use gateway setup and/or worker setup explicitly");
   if (domain === "workspace" && action === "list") { requiredOption(args, "worker"); return print({ ...(await configStore.metadata()), workspaces: (await configStore.read()).workspaces }); }
-  if (domain === "workspace" && action === "init") throw new Error("workspace init is deprecated: run worker setup, then workspace add --worker <name>");
+  if (domain === "workspace" && action === "init") throw new Error("workspace init is deprecated: run worker setup, then worker workspace add --worker <name>");
   if (domain === "workspace" && action === "add") { requiredOption(args, "worker"); return print(await addWorkspace(configFile, args)); }
   if (domain === "workspace" && (action === "discover" || action === "approve")) {
-    throw new Error(`workspace ${action} is deprecated: repository discovery does not grant Workspace authority; use workspace add --id <id> --root <directory> for an explicit authority grant`);
+    throw new Error(`workspace ${action} is deprecated: repository discovery does not grant Workspace authority; use worker workspace add --id <id> --root <directory> for an explicit authority grant`);
   }
   if (domain === "workspace" && action === "remove") {
     const id = requiredOption(args, "id");
@@ -98,7 +101,7 @@ async function main() {
     if (!found) throw new Error(`Workspace not found: ${id}`);
     return print({ changed: true, workspaceId: id, command, decision: action, policy: workspaces.find((entry) => entry.id === id)?.commands });
   }
-  if (domain === "environment") throw new Error("environment commands are deprecated: use worker join|list|update|remove for Gateway membership management");
+  if (domain === "environment") throw new Error("environment commands are deprecated: use worker join and gateway workers list|update|remove for Gateway membership management");
   if (domain === "discovery" && action === "list") {
     const discovery = (await configStore.read()).discovery;
     return print({ ...(await configStore.metadata()), discovery, note: "Discovery roots are read-only resource search scopes. They never create or broaden Workspace authority." });

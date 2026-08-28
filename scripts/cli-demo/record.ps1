@@ -92,8 +92,8 @@ function Setup-Gateway {
 function Add-DemoWorkspace {
   New-Item -ItemType Directory -Force -Path $workspaceRoot | Out-Null
   Set-Content -Path (Join-Path $workspaceRoot 'hello.txt') -Value 'hello from Queqiao demo' -Encoding utf8
-  return Invoke-RawNative -FailureLabel 'workspace add' -Action {
-    queqiao workspace add --worker demo-worker --root $workspaceRoot --id demo-workspace --name 'Demo Workspace' --profile read-only
+  return Invoke-RawNative -FailureLabel 'worker workspace add' -Action {
+    queqiao worker workspace add --worker demo-worker --root $workspaceRoot --id demo-workspace --name 'Demo Workspace' --profile read-only
   }
 }
 
@@ -187,14 +187,14 @@ try {
     New-Item -ItemType Directory -Force -Path $workspaceRoot | Out-Null
     Set-Content -Path (Join-Path $workspaceRoot 'hello.txt') -Value 'hello from Queqiao demo' -Encoding utf8
     $steps = @()
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao workspace add --worker demo-worker --root C:\Users\Public\QueqiaoDemo\workspace --id demo-workspace --profile read-only' -Action {
-      queqiao workspace add --worker demo-worker --root $workspaceRoot --id demo-workspace --name 'Demo Workspace' --profile read-only
+    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker workspace add --worker demo-worker --root C:\Users\Public\QueqiaoDemo\workspace --id demo-workspace --profile read-only' -Action {
+      queqiao worker workspace add --worker demo-worker --root $workspaceRoot --id demo-workspace --name 'Demo Workspace' --profile read-only
     } -Project {
       param($o)
       [ordered]@{ added = $o.added; workspace = [ordered]@{ id = $o.workspace.id; root = $o.workspace.root; profile = $o.workspace.profile } }
     } -TypingSeconds 1.55 -HoldSeconds 1.3
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao workspace list --worker demo-worker' -Action {
-      queqiao workspace list --worker demo-worker
+    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker workspace list --worker demo-worker' -Action {
+      queqiao worker workspace list --worker demo-worker
     } -Project {
       param($o)
       [ordered]@{ workspaces = @($o.workspaces | ForEach-Object { [ordered]@{ id = $_.id; root = $_.root; profile = $_.profile } }) }
@@ -240,8 +240,8 @@ try {
       param($o)
       [ordered]@{ joined = $o.joined; workerId = '<worker-id>'; environmentId = $o.environmentId }
     } -TypingSeconds 1.3 -HoldSeconds 1.0
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker list --name demo-gateway' -Action {
-      queqiao worker list --name demo-gateway
+    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao gateway workers list --name demo-gateway' -Action {
+      queqiao gateway workers list --name demo-gateway
     } -Project {
       param($o)
       $w = $o.workers[0]
@@ -272,8 +272,8 @@ try {
       param($o)
       [ordered]@{ name = $o.name; active = $o.active; reachable = $o.health.reachable; healthy = $o.health.healthy }
     } -TypingSeconds 0.9 -HoldSeconds 0.75
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker list --name demo-gateway' -Action {
-      queqiao worker list --name demo-gateway
+    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao gateway workers list --name demo-gateway' -Action {
+      queqiao gateway workers list --name demo-gateway
     } -Project {
       param($o)
       $w = $o.workers[0]
