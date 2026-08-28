@@ -24,6 +24,25 @@ describe("CLI presentation", () => {
     expect(renderCliRouteError(input)).toContain(`  ${expected}`);
   });
 
+  it("lists all matching commands for an ambiguous prefix instead of choosing arbitrarily", () => {
+    const message = renderCliRouteError(["gateway", "st"]);
+    expect(message).toContain("Did you mean one of these?");
+    expect(message).toContain("  status");
+    expect(message).toContain("  stop");
+  });
+
+  it("lists all local prefix matches for a short ambiguous prefix", () => {
+    const message = renderCliRouteError(["gateway", "s"]);
+    for (const candidate of ["serve", "setup", "status", "stop"]) {
+      expect(message).toContain(`  ${candidate}`);
+    }
+  });
+
+  it("keeps a low-confidence unrelated input suggestion-free", () => {
+    const message = renderCliRouteError(["gateway", "nonesuch"]);
+    expect(message).not.toContain("Did you mean");
+  });
+
   it("keeps unknown-command errors local instead of dumping root usage", () => {
     const message = renderCliRouteError(["gateway", "nonesuch"]);
     expect(message).toContain('Unknown command "nonesuch" for "queqiao gateway".');

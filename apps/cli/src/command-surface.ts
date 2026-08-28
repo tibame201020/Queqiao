@@ -137,7 +137,7 @@ function editDistance(a: string, b: string): number {
 
 function suggestions(value: string, candidates: string[]): string[] {
   const prefixMatches = candidates.filter((candidate) => candidate.startsWith(value));
-  if (prefixMatches.length === 1) return [prefixMatches[0]!];
+  if (prefixMatches.length > 0) return prefixMatches.sort((left, right) => left.localeCompare(right));
 
   const ranked = candidates
     .map((candidate) => ({ candidate, distance: editDistance(value, candidate) }))
