@@ -34,6 +34,7 @@
   "scripts": {
     "build": "tsc -b",
     "build:package": "node scripts/build-package.mjs",
+    "dev:shadow:refresh": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/refresh-shadow-runtime.ps1",
     "prepack": "npm run check && npm run build:package",
     "clean": "tsc -b --clean",
     "typecheck": "tsc -b --pretty false",
