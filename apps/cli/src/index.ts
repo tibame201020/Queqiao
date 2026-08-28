@@ -16,7 +16,7 @@ import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./servic
 import { addWorkspace } from "./workspace-cli.js";
 import { attachExtension, detachExtension, doctorExtensionHub, installNpmExtension, listExtensions, showExtension, uninstallExtension } from "./extension-cli.js";
 import { formatCliOutput } from "./cli-output.js";
-import { isRemovedCliRoute, normalizeCliArgs, renderCliHelp, renderCliRouteError } from "./command-surface.js";
+import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, renderCliHelp, renderCliRouteError } from "./command-surface.js";
 
 const managedToolSchema = toolNameSchema;
 const workspaceSchema = z.object({
@@ -51,6 +51,7 @@ const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => 
 async function main() {
   if (isRemovedCliRoute(args)) throw new Error(args[1]);
   if (helpRequested) { process.stdout.write(`${renderCliHelp(commandArgs)}\n`); return; }
+  if (isCliHelpContext(commandArgs)) { process.stdout.write(`${renderCliHelp(commandArgs)}\n`); return; }
   const routeError = renderCliRouteError(commandArgs);
   if (routeError) throw new Error(routeError);
   assertCommandOwnership(args);

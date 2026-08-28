@@ -14,6 +14,16 @@ describe("CLI presentation", () => {
     ].join("\n"));
   });
 
+  it.each([
+    [["g"], "gateway"],
+    [["w"], "worker"],
+    [["e"], "extension"],
+    [["ex"], "extension"],
+    [["extens"], "extension"],
+  ])("suggests a unique command prefix %j", (input, expected) => {
+    expect(renderCliRouteError(input)).toContain(`  ${expected}`);
+  });
+
   it("keeps unknown-command errors local instead of dumping root usage", () => {
     const message = renderCliRouteError(["gateway", "nonesuch"]);
     expect(message).toContain('Unknown command "nonesuch" for "queqiao gateway".');

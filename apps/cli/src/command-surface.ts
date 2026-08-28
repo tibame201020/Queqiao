@@ -136,6 +136,9 @@ function editDistance(a: string, b: string): number {
 }
 
 function suggestions(value: string, candidates: string[]): string[] {
+  const prefixMatches = candidates.filter((candidate) => candidate.startsWith(value));
+  if (prefixMatches.length === 1) return [prefixMatches[0]!];
+
   const ranked = candidates
     .map((candidate) => ({ candidate, distance: editDistance(value, candidate) }))
     .sort((left, right) => left.distance - right.distance || left.candidate.localeCompare(right.candidate));
@@ -190,68 +193,76 @@ Run "queqiao <command> --help" for command details.`;
 const GATEWAY_HELP = `Usage: queqiao gateway <command> [options]
 
 Commands:
-  gateway setup
-  gateway serve [--bg]
-  gateway stop
-  gateway status
-  gateway join-token
-  gateway workers list
-  gateway workers update
-  gateway workers remove`;
+  setup
+  serve [--bg]
+  stop
+  status
+  join-token
+  workers list
+  workers update
+  workers remove`;
 
 const GATEWAY_WORKERS_HELP = `Usage: queqiao gateway workers <command> [options]
 
 Commands:
-  gateway workers list
-  gateway workers update --worker-id <id> --endpoint <loopback-worker-url>
-  gateway workers remove --worker-id <id>`;
+  list
+  update --worker-id <id> --endpoint <loopback-worker-url>
+  remove --worker-id <id>`;
 
 const WORKER_HELP = `Usage: queqiao worker <command> [options]
 
 Commands:
-  worker setup
-  worker port
-  worker serve [--bg]
-  worker stop
-  worker status
-  worker join
-  worker workspace ...`;
+  setup
+  port
+  serve [--bg]
+  stop
+  status
+  join
+  workspace ...`;
 
 const WORKER_WORKSPACE_HELP = `Usage: queqiao worker workspace <command> [options]
 
 Commands:
-  worker workspace add --worker <worker>
-  worker workspace list --worker <worker>
-  worker workspace remove --worker <worker> --id <id>
-  worker workspace profile set --worker <worker> --workspace <id> --profile read-only|editor|coding
-  worker workspace tool allow|deny --worker <worker> --workspace <id> --tool <tool>
-  worker workspace command allow|deny --worker <worker> --workspace <id> --command <executable>
-  worker workspace permissions show --worker <worker> [--workspace <id>]`;
+  add --worker <worker>
+  list --worker <worker>
+  remove --worker <worker> --id <id>
+  profile set --worker <worker> --workspace <id> --profile read-only|editor|coding
+  tool allow|deny --worker <worker> --workspace <id> --tool <tool>
+  command allow|deny --worker <worker> --workspace <id> --command <executable>
+  permissions show --worker <worker> [--workspace <id>]`;
 
 const EXTENSION_HELP = `Usage: queqiao extension <command> [options]
 
 Commands:
-  extension install npm:<package> [--worker <name>|--attach-all]
-  extension attach <id> --worker <name>
-  extension detach <id> --worker <name>
-  extension uninstall <id> [--force]
-  extension list
-  extension show <id>`;
+  install npm:<package> [--worker <name>|--attach-all]
+  attach <id> --worker <name>
+  detach <id> --worker <name>
+  uninstall <id> [--force]
+  list
+  show <id>`;
 
 const DOCTOR_HELP = `Usage: queqiao doctor [diagnostic] [options]
 
 Diagnostics:
-  doctor
-  doctor extension
-  doctor manifest show --gateway <name>
-  doctor tool explain <tool> --gateway <name>
-  doctor paths`;
+  extension
+  manifest show --gateway <name>
+  tool explain <tool> --gateway <name>
+  paths`;
 
 const MIGRATE_HELP = `Usage: queqiao migrate <command> [options]
 
 Advanced compatibility commands:
   migrate from-repo [--repo <directory>] [--execute]
   migrate runtime-v1 [--execute]`;
+
+export function isCliHelpContext(input: readonly string[]): boolean {
+  const args = input.filter((arg) => arg !== "--json" && arg !== "--help" && arg !== "-h" && !arg.startsWith("--"));
+  return (
+    (args.length === 1 && ["gateway", "worker", "extension"].includes(args[0] || "")) ||
+    (args.length === 2 && args[0] === "gateway" && args[1] === "workers") ||
+    (args.length === 2 && args[0] === "worker" && args[1] === "workspace")
+  );
+}
 
 export function renderCliHelp(input: readonly string[]): string {
   const args = input.filter((arg) => arg !== "--help" && arg !== "-h");

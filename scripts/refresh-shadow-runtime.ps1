@@ -240,28 +240,53 @@ if ($PreflightOnly) {
 }
 
 Push-Location $repoRoot
+$backupRoot = Join-Path $env:TEMP ("queqiao-shadow-refresh-" + [guid]::NewGuid().ToString('N'))
+$backupDist = Join-Path $backupRoot 'dist'
+$repoDist = Join-Path $repoRoot 'dist'
+$runtimeTouched = $false
 try {
-  Write-Host 'Building the current Queqiao package before touching Shadow runtime...'
-  Invoke-Checked -File 'npm.cmd' -Arguments @('run', 'build:package')
+  if (Test-Path -LiteralPath $repoDist -PathType Container) {
+    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+    Copy-Item -LiteralPath $repoDist -Destination $backupDist -Recurse -Force
+  }
 
-  $runtimeTouched = $false
   try {
     $runtimeTouched = $true
     Stop-LauncherTree -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'"
     Stop-LauncherTree -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'"
     Wait-GlobalPackageRelease
 
+    Write-Host 'Building the current Queqiao package with Shadow stopped...'
+    Invoke-Checked -File 'npm.cmd' -Arguments @('run', 'build:package')
+
     Write-Host 'Relinking the global Queqiao command to this repository...'
     Invoke-Checked -File 'npm.cmd' -Arguments @('link')
-  } finally {
-    if ($runtimeTouched) {
-      Start-Launcher -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'"
-      Start-Launcher -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'"
-    }
-  }
 
-  Wait-GatewayHealth
-  Wait-HttpHealth -Url "http://127.0.0.1:$workerPort/health" -Label "Shadow Worker '$WorkerName'"
+    Start-Launcher -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'"
+    Start-Launcher -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'"
+    Wait-GatewayHealth
+    Wait-HttpHealth -Url "http://127.0.0.1:$workerPort/health" -Label "Shadow Worker '$WorkerName'"
+  } catch {
+    $failure = $_
+    if ($runtimeTouched) {
+      try { Stop-LauncherTree -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'" } catch {}
+      try { Stop-LauncherTree -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'" } catch {}
+    }
+
+    if (Test-Path -LiteralPath $backupDist -PathType Container) {
+      Write-Warning 'Shadow refresh failed; restoring the previous dist bundle.'
+      if (Test-Path -LiteralPath $repoDist) {
+        Remove-Item -LiteralPath $repoDist -Recurse -Force
+      }
+      Copy-Item -LiteralPath $backupDist -Destination $repoDist -Recurse -Force
+    }
+
+    if ($runtimeTouched) {
+      try { Start-Launcher -Launcher $gatewayLauncher -Label "Shadow Gateway '$GatewayName'" } catch {}
+      try { Start-Launcher -Launcher $workerLauncher -Label "Shadow Worker '$WorkerName'" } catch {}
+    }
+    throw $failure
+  }
 
   Write-Host ''
   Write-Host 'Shadow refresh complete.'
@@ -269,5 +294,8 @@ try {
   Write-Host "  Worker:  $WorkerName (healthy on current launcher config)"
   Write-Host '  Global queqiao command: linked to this repository'
 } finally {
+  if (Test-Path -LiteralPath $backupRoot) {
+    Remove-Item -LiteralPath $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
+  }
   Pop-Location
 }

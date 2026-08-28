@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRemovedCliRoute, normalizeCliArgs, renderCliHelp } from "./command-surface.js";
+import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, renderCliHelp } from "./command-surface.js";
 
 describe("CLI hierarchy consolidation", () => {
   it.each([
@@ -67,10 +67,28 @@ describe("CLI hierarchy consolidation", () => {
     expect(renderCliHelp(["worker", "discovery", "--help"])).not.toContain("worker discovery");
   });
 
-  it("renders contextual help only for canonical nested resources", () => {
-    expect(renderCliHelp(["gateway", "workers", "--help"])).toContain("gateway workers list");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("worker workspace add");
-    expect(renderCliHelp(["doctor", "--help"])).toContain("doctor extension");
+  it("renders scoped help using commands relative to the current context", () => {
+    expect(renderCliHelp(["gateway", "--help"])).toContain("\n  setup\n");
+    expect(renderCliHelp(["gateway", "--help"])).not.toContain("\n  gateway setup\n");
+    expect(renderCliHelp(["gateway", "workers", "--help"])).toContain("\n  list\n");
+    expect(renderCliHelp(["gateway", "workers", "--help"])).not.toContain("gateway workers list");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("\n  add --worker <worker>\n");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).not.toContain("worker workspace add");
+    expect(renderCliHelp(["extension", "--help"])).toContain("\n  install npm:<package>");
+    expect(renderCliHelp(["extension", "--help"])).not.toContain("extension install");
+    expect(renderCliHelp(["doctor", "--help"])).toContain("\n  extension\n");
     expect(renderCliHelp(["workspace", "--help"])).toBe(renderCliHelp([]));
+  });
+
+  it.each([
+    [["gateway"], true],
+    [["gateway", "workers"], true],
+    [["worker"], true],
+    [["worker", "workspace"], true],
+    [["extension"], true],
+    [["gateway", "status"], false],
+    [["doctor"], false],
+  ])("detects implicit help context %j", (input, expected) => {
+    expect(isCliHelpContext(input)).toBe(expected);
   });
 });
