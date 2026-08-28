@@ -47,13 +47,19 @@ function displayRoleChoiceLabel(baseLabel: string, paths: string[]): string {
   const [persistent, runtime] = paths;
   return [
     baseLabel,
-    persistent ? `  Persistent: ${persistent}` : undefined,
-    runtime ? `  Runtime:    ${runtime}` : undefined,
+    persistent ? `    Persistent: ${persistent}` : undefined,
+    runtime ? `    Runtime:    ${runtime}` : undefined,
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
 function displayExtensionHubChoiceLabel(root: string): string {
-  return `Extension Hub\n  Path: ${root}`;
+  return `Extension Hub\n    Path: ${root}`;
+}
+
+function spaceChoiceLabels(choices: CleanupChoice[]): CleanupChoice[] {
+  return choices.map((choice, index) => index < choices.length - 1
+    ? { ...choice, label: `${choice.label}\n` }
+    : choice);
 }
 
 async function defaultSelectTargets(choices: CleanupChoice[]): Promise<string[]> {
@@ -105,7 +111,7 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
   }
 
   const extensionHubRoot = extensionHubOwnedRoot(env, platform);
-  const choices: CleanupChoice[] = [
+  const choices: CleanupChoice[] = spaceChoiceLabels([
     ...instances.map(({ role, name, layout, status }) => ({
       value: `${role}:${name}`,
       label: displayRoleChoiceLabel(
@@ -117,7 +123,7 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
       value: "extension-hub",
       label: displayExtensionHubChoiceLabel(extensionHubRoot),
     },
-  ];
+  ]);
 
   if (!injected) intro("Uninstall Queqiao");
   const selected = await (dependencies.selectTargets ?? defaultSelectTargets)(choices);
