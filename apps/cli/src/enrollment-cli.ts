@@ -272,18 +272,37 @@ async function commitProvisional(state: { marker: string; backupFile?: string })
   await rm(state.marker, { force: true });
 }
 
+async function preflightLocalWorker(endpoint: URL, worker: { workerId: string; environmentId: string }, tokenFile: string, workerName: string): Promise<void> {
+  let currentCredential: string;
+  try { currentCredential = (await readFile(tokenFile, "utf8")).trim(); } catch { throw new Error(`Worker credential is unavailable for ${workerName}; run worker setup first`); }
+  if (Buffer.byteLength(currentCredential) < 32) throw new Error(`Worker credential is invalid for ${workerName}; run worker setup first`);
+  try {
+    const health = await fetch(new URL("health", endpoint), { signal: AbortSignal.timeout(3000) });
+    if (!health.ok) throw new Error(`health returned HTTP ${health.status}`);
+    const identityResponse = await fetch(new URL("enrollment/identity", endpoint), { headers: { "x-queqiao-worker-token": currentCredential }, signal: AbortSignal.timeout(3000) });
+    if (!identityResponse.ok) throw new Error(`identity returned HTTP ${identityResponse.status}`);
+    const identity = await identityResponse.json() as { workerId?: unknown; environmentId?: unknown };
+    if (identity.workerId !== worker.workerId || identity.environmentId !== worker.environmentId) throw new Error("Worker identity does not match the named Worker configuration");
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Worker ${workerName} is not ready for enrollment (${detail}). Start it first: queqiao worker serve --bg --name ${workerName}`);
+  }
+}
+
 export async function joinWorker(configFile: string, args: string[], prompt?: JoinPrompt): Promise<unknown> {
   assertAllowedOptions(args, "queqiao worker join", ["name", "join-code", "json"]);
   const runtime = await readRuntimeConfig(configFile);
   if (!runtime.worker) throw new Error("worker configuration is required");
   if (!runtime.worker.workerId) throw new Error("Worker has no stable workerId; run worker setup or migrate the Worker identity first");
-  const inputs = await resolveJoinInputs(args, prompt);
-  const joinToken = inputs.token;
-  const gateway = new URL(inputs.gateway);
   const endpoint = new URL(`http://127.0.0.1:${runtime.worker.listen.port}/`);
   if (endpoint.protocol !== "http:" || !["127.0.0.1", "localhost", "::1"].includes(endpoint.hostname)) throw new Error("Worker endpoint must remain loopback HTTP in Security Baseline v2");
   const tokenFile = path.resolve(runtime.worker.tokenFile);
   await recoverStaleJoin(tokenFile);
+  const workerName = option(args, "name") || runtime.worker.environmentId;
+  await preflightLocalWorker(endpoint, { workerId: runtime.worker.workerId, environmentId: runtime.worker.environmentId }, tokenFile, workerName);
+  const inputs = await resolveJoinInputs(args, prompt);
+  const joinToken = inputs.token;
+  const gateway = new URL(inputs.gateway);
   const start = await jsonOrThrow(await fetch(new URL("enrollment/join/start", gateway), {
     method: "POST",
     headers: { "content-type": "application/json" },

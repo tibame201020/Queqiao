@@ -87,7 +87,7 @@ async function fixture(serverWorkerId?: string) {
   const enrollment = new EnrollmentService(memberships, stateDir);
   const gatewayConfig = { host: "127.0.0.1" as const, port: 7575, managementPort: 7574, publicBaseUrl: new URL("http://127.0.0.1/"), resourceUrl: "http://127.0.0.1/mcp", stateDir, approvalSecret: "a".repeat(32), jwtSecret: new TextEncoder().encode("j".repeat(48)), trustProxyHops: 0, allowedRedirectOrigins: new Set(["http://127.0.0.1"]), workers: [], extensions: [], configDirectory: root };
   const gateway = await listen(await createGatewayApp(gatewayConfig, enrollment));
-  return { root, tokenFile, bootstrap, workerId, environmentId, configFile, memberships, enrollment, workerUrl: worker.url, gatewayUrl: gateway.url };
+  return { root, tokenFile, bootstrap, workerId, environmentId, configFile, memberships, enrollment, workerUrl: worker.url, workerServer: worker.server, gatewayUrl: gateway.url };
 }
 
 describe("role setup CLI", () => {
@@ -256,6 +256,17 @@ describe("worker join CLI transaction", () => {
     await expect(readFile(`${f.tokenFile}.join-provisional.json`, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("preflights the named Worker before prompting or consuming the one-time join token", async () => {
+    const f = await fixture();
+    const joinToken = f.enrollment.createJoinToken().token;
+    const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: joinToken });
+    await new Promise<void>((resolve) => f.workerServer.close(() => resolve()));
+    const prompted: string[] = [];
+    await expect(joinWorker(f.configFile, ["worker", "join", "--name", "wins-worker"], async (field) => { prompted.push(field); return joinCode; })).rejects.toThrow(/Worker wins-worker is not ready for enrollment.*queqiao worker serve --bg --name wins-worker/);
+    expect(prompted).toEqual([]);
+    expect((await f.memberships.read()).workers).toEqual([]);
+    expect((await readFile(f.tokenFile, "utf8")).trim()).toBe(f.bootstrap);
+  });
   it("rejects legacy raw gateway/token enrollment inputs", async () => {
     const f = await fixture();
     await expect(joinWorker(f.configFile, ["worker", "join", "--token", "raw-token", "--gateway", f.gatewayUrl])).rejects.toThrow(/Unknown option "--token"/);
@@ -283,11 +294,11 @@ describe("worker join CLI transaction", () => {
     expect((await f.memberships.read()).workers).toHaveLength(1);
   });
 
-  it("restores the previous credential when authenticated identity verification fails", async () => {
+  it("rejects a mismatched local Worker identity before consuming the join token", async () => {
     const f = await fixture(crypto.randomUUID());
     const joinToken = f.enrollment.createJoinToken().token;
     const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: joinToken });
-    await expect(joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode])).rejects.toThrow(/worker_identity_mismatch/);
+    await expect(joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode])).rejects.toThrow(/Worker identity does not match the named Worker configuration/);
     expect((await f.memberships.read()).workers).toEqual([]);
     expect((await readFile(f.tokenFile, "utf8")).trim()).toBe(f.bootstrap);
     await expect(readFile(`${f.tokenFile}.join-provisional.json`, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
