@@ -89,6 +89,36 @@ describe("CLI presentation", () => {
     expect(output).not.toContain("{");
   });
 
+  it("renders join-token as a short-lived handoff with the next Worker step", () => {
+    const output = formatCliOutput(["gateway", "join-token", "--name", "stable"], {
+      copied: true,
+      joinCodeVersion: 1,
+      expiresAt: "2026-08-28T14:30:00.000Z",
+      bindings: [],
+    });
+    expect(output).toBe([
+      "Join code copied to clipboard",
+      "  Expires At: 2026-08-28T14:30:00.000Z",
+      "",
+      "Next (before expiry, on the target Worker host):",
+      "  queqiao worker join --name <worker>",
+    ].join("\n"));
+  });
+
+  it("shows the join code when clipboard copy is unavailable", () => {
+    const output = formatCliOutput(["gateway", "join-token", "--name", "stable"], {
+      copied: false,
+      joinCodeVersion: 1,
+      expiresAt: "2026-08-28T14:30:00.000Z",
+      joinCode: "qjq1:test-code",
+      copyError: "Clipboard unavailable",
+      bindings: [],
+    });
+    expect(output).toContain("Join code could not be copied");
+    expect(output).toContain("qjq1:test-code");
+    expect(output).toContain("queqiao worker join --name <worker>");
+  });
+
   it("preserves structured output behind --json", () => {
     const value = { name: "stable", role: "gateway", active: false };
     expect(formatCliOutput(["gateway", "status", "--name", "stable", "--json"], value)).toBe(JSON.stringify(value, null, 2));

@@ -50,6 +50,30 @@ function isNotConfigured(role: string, health: Record<string, unknown>): boolean
   return error === `${role} is not configured` || (/ENOENT/.test(error) && /config\.yaml/.test(error));
 }
 
+function renderJoinToken(args: readonly string[], value: unknown): string | undefined {
+  if (args[0] !== "gateway" || args[1] !== "join-token") return undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const result = value as Record<string, unknown>;
+  const expiresAt = typeof result.expiresAt === "string" ? result.expiresAt : "unknown";
+  const copied = result.copied === true;
+  const lines: string[] = [];
+
+  if (copied) {
+    lines.push("Join code copied to clipboard", `  Expires At: ${expiresAt}`);
+  } else {
+    lines.push("Join code could not be copied", `  Expires At: ${expiresAt}`);
+    if (typeof result.joinCode === "string" && result.joinCode) {
+      lines.push("", "Join code:", `  ${result.joinCode}`);
+    }
+    if (typeof result.copyError === "string" && result.copyError) {
+      lines.push(`  Copy Error: ${result.copyError}`);
+    }
+  }
+
+  lines.push("", "Next (before expiry, on the target Worker host):", "  queqiao worker join --name <worker>");
+  return lines.join("\n");
+}
+
 function renderStatus(args: readonly string[], value: unknown): string | undefined {
   const [role, action] = args;
   if ((role !== "gateway" && role !== "worker") || action !== "status") return undefined;
@@ -84,6 +108,8 @@ function renderStatus(args: readonly string[], value: unknown): string | undefin
 export function formatCliOutput(input: readonly string[], value: unknown): string {
   if (input.includes("--json")) return JSON.stringify(value, null, 2);
   const args = input.filter((arg) => arg !== "--json");
+  const joinToken = renderJoinToken(args, value);
+  if (joinToken) return joinToken;
   const status = renderStatus(args, value);
   if (status) return status;
   return renderStructured(value).join("\n");
