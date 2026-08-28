@@ -1,4 +1,4 @@
-import { resolveRuntimeLayout } from "@queqiao/platform-paths";
+import { requireRuntimeConfigFile } from "@queqiao/platform-paths";
 import { readRuntimeConfig } from "@queqiao/config";
 import { ProcessRunner } from "@queqiao/process-runtime";
 import gitExtension from "@queqiao/extension-git";
@@ -8,8 +8,8 @@ import { createWorkerApp } from "./app.js";
 import { WorkerCredentialSource } from "./worker-credential-source.js";
 import { ReloadableExtensionHost } from "./reloadable-extension-host.js";
 
-const layout = resolveRuntimeLayout();
-const configFile = path.resolve(process.env.QUEQIAO_CONFIG_FILE || layout.configFile);
+
+const configFile = requireRuntimeConfigFile();
 const runtime = await readRuntimeConfig(configFile);
 if (!runtime.worker) throw new Error("worker configuration is required");
 const port = runtime.worker.listen.port;

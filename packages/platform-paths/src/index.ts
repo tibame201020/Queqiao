@@ -34,6 +34,24 @@ export function resolveRuntimeLayoutForInstance(instanceValue: string | undefine
 
 export type RuntimeRole = "gateway" | "worker";
 
+export function resolveExtensionHubRoot(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  const paths = platform === "win32" ? path.win32 : path.posix;
+  const windows = platform === "win32";
+  const home = (windows ? env.USERPROFILE || env.HOME : env.HOME || env.USERPROFILE) || os.homedir();
+  const localAppData = env.LOCALAPPDATA || paths.join(home, "AppData", "Local");
+  const dataRoot = windows
+    ? paths.join(localAppData, "Queqiao", "data")
+    : paths.join(env.XDG_DATA_HOME || paths.join(home, ".local", "share"), "queqiao");
+  return paths.join(dataRoot, "extensions");
+}
+
+export function requireRuntimeConfigFile(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  const configured = env.QUEQIAO_CONFIG_FILE?.trim();
+  if (!configured) throw new Error("QUEQIAO_CONFIG_FILE is required for Queqiao runtime entry points");
+  const paths = platform === "win32" ? path.win32 : path.posix;
+  return paths.resolve(configured);
+}
+
 export function resolveNamedRoleConfigRoot(role: RuntimeRole, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
   const hasExplicitLayout = Boolean(env.QUEQIAO_CONFIG_DIR || env.QUEQIAO_DATA_DIR || env.QUEQIAO_STATE_HOME || env.QUEQIAO_RUNTIME_DIR);
   if (hasExplicitLayout) throw new Error("Named runtime discovery is unavailable when explicit QUEQIAO_* layout overrides are active");

@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { cancel, confirm, intro, isCancel, multiselect, outro } from "@clack/prompts";
-import { resolveRuntimeLayout, resolveRuntimeLayoutForNamedRole, type RuntimeLayout, type RuntimeRole } from "@queqiao/platform-paths";
+import { resolveExtensionHubRoot, resolveRuntimeLayoutForNamedRole, type RuntimeLayout, type RuntimeRole } from "@queqiao/platform-paths";
 import { roleRemoveInternals } from "./role-remove.js";
 import { listNamedRoleInstances } from "./setup-wizard.js";
 import { runtimeStatus, stopRuntime } from "./service-lifecycle.js";
@@ -34,9 +34,8 @@ function standardEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return clean;
 }
 
-function sharedOwnedRoots(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
-  const layout = resolveRuntimeLayout(env, platform);
-  return [...new Set([layout.configDir, layout.dataDir, layout.stateDir])];
+function extensionHubOwnedRoot(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {
+  return resolveExtensionHubRoot(env, platform);
 }
 
 function roleOwnedPaths(layout: RuntimeLayout): string[] {
@@ -96,7 +95,7 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
     }
   }
 
-  const sharedRoots = sharedOwnedRoots(env, platform);
+  const extensionHubRoot = extensionHubOwnedRoot(env, platform);
   const choices: CleanupChoice[] = [
     ...instances.map(({ role, name, layout, status }) => ({
       value: `${role}:${name}`,
@@ -104,9 +103,9 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
       hint: displayPaths(roleOwnedPaths(layout)),
     })),
     {
-      value: "shared",
-      label: "Shared Queqiao data / Extension Hub",
-      hint: displayPaths(sharedRoots),
+      value: "extension-hub",
+      label: "Extension Hub",
+      hint: extensionHubRoot,
     },
   ];
 
@@ -144,12 +143,8 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
       await roleRemoveInternals.removeLayout(instance.layout);
     }
 
-    if (selectedSet.has("shared")) {
-      for (const root of sharedRoots) await rm(root, { recursive: true, force: true });
-      const remainingInstances = instances.filter(({ role, name }) => !selectedSet.has(`${role}:${name}`));
-      if (!remainingInstances.length) {
-        await rm(resolveRuntimeLayout(env, platform).runtimeDir, { recursive: true, force: true });
-      }
+    if (selectedSet.has("extension-hub")) {
+      await rm(extensionHubRoot, { recursive: true, force: true });
     }
     cleaned = true;
   }
@@ -174,4 +169,4 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
   };
 }
 
-export const uninstallInternals = { standardEnvironment, sharedOwnedRoots, roleOwnedPaths };
+export const uninstallInternals = { standardEnvironment, extensionHubOwnedRoot, roleOwnedPaths };

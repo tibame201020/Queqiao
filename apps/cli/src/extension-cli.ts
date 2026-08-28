@@ -60,6 +60,7 @@ const extensionHubSchema = z.object({
 
 type HubExtension = z.infer<typeof hubExtensionSchema>;
 type ExtensionHub = z.infer<typeof extensionHubSchema>;
+type HubLocation = RuntimeLayout | string;
 export type ExtensionWorkerTarget = { name: string; layout: RuntimeLayout; config: RuntimeConfig };
 type WorkerDiscovery = () => Promise<ExtensionWorkerTarget[]>;
 
@@ -109,23 +110,23 @@ function safeInstallDirectoryName(id: string, version: string): string {
   return `${id.replace(/[^a-z0-9._-]/gi, "-")}-${version}-${randomUUID().slice(0, 8)}`;
 }
 
-function hubRoot(layout: RuntimeLayout): string { return path.join(layout.dataDir, "extensions"); }
-function packagesRoot(layout: RuntimeLayout): string { return path.join(hubRoot(layout), "packages"); }
-function hubFile(layout: RuntimeLayout): string { return path.join(hubRoot(layout), "hub.json"); }
+function hubRoot(location: HubLocation): string { return typeof location === "string" ? location : path.join(location.dataDir, "extensions"); }
+function packagesRoot(location: HubLocation): string { return path.join(hubRoot(location), "packages"); }
+function hubFile(location: HubLocation): string { return path.join(hubRoot(location), "hub.json"); }
 
-async function readHub(layout: RuntimeLayout): Promise<ExtensionHub> {
+async function readHub(location: HubLocation): Promise<ExtensionHub> {
   try {
-    return extensionHubSchema.parse(JSON.parse(await readFile(hubFile(layout), "utf8")));
+    return extensionHubSchema.parse(JSON.parse(await readFile(hubFile(location), "utf8")));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, extensions: [] };
     throw error;
   }
 }
 
-async function updateHub(layout: RuntimeLayout, mutator: (current: ExtensionHub) => ExtensionHub): Promise<ExtensionHub> {
-  const root = hubRoot(layout);
+async function updateHub(location: HubLocation, mutator: (current: ExtensionHub) => ExtensionHub): Promise<ExtensionHub> {
+  const root = hubRoot(location);
   await secureRuntimeDirectory(root);
-  const file = hubFile(layout);
+  const file = hubFile(location);
   const lockFile = `${file}.lock`;
   let lock;
   try {
@@ -135,7 +136,7 @@ async function updateHub(layout: RuntimeLayout, mutator: (current: ExtensionHub)
     throw error;
   }
   try {
-    const next = extensionHubSchema.parse(mutator(await readHub(layout)));
+    const next = extensionHubSchema.parse(mutator(await readHub(location)));
     const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
     await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
     await secureRuntimeFile(temporary);
@@ -205,7 +206,7 @@ async function attachHubEntryToWorker(extension: HubExtension, workerName: strin
   return { changed: true, worker: workerName, attached: extension.manifest.id };
 }
 
-export async function attachExtension(hubLayout: RuntimeLayout, id: string, workerName: string, workerLayout: RuntimeLayout = resolveRuntimeLayoutForNamedRole("worker", workerName)): Promise<unknown> {
+export async function attachExtension(hubLayout: HubLocation, id: string, workerName: string, workerLayout: RuntimeLayout = resolveRuntimeLayoutForNamedRole("worker", workerName)): Promise<unknown> {
   const hub = await readHub(hubLayout);
   const extension = hub.extensions.find((entry) => entry.manifest.id === id);
   if (!extension) throw new Error(`Extension is not installed in the Hub: ${id}`);
@@ -224,7 +225,7 @@ export async function detachExtension(id: string, workerName: string, workerLayo
 }
 
 export async function installNpmExtension(
-  hubLayout: RuntimeLayout,
+  hubLayout: HubLocation,
   source: string,
   options: { workerName?: string; attachAll?: boolean } = {},
   npmRunner: NpmRunner = defaultNpmRunner,
@@ -317,7 +318,7 @@ export async function installNpmExtension(
   }
 }
 
-export async function uninstallExtension(hubLayout: RuntimeLayout, id: string, force = false, workerDiscovery: WorkerDiscovery = discoverWorkers): Promise<unknown> {
+export async function uninstallExtension(hubLayout: HubLocation, id: string, force = false, workerDiscovery: WorkerDiscovery = discoverWorkers): Promise<unknown> {
   const hub = await readHub(hubLayout);
   const extension = hub.extensions.find((entry) => entry.manifest.id === id);
   if (!extension) throw new Error(`Extension is not installed in the Hub: ${id}`);
@@ -337,7 +338,7 @@ export async function uninstallExtension(hubLayout: RuntimeLayout, id: string, f
   return { changed: true, removed: id, detachedWorkers: force ? attachedWorkerNames : [], packageCleanup };
 }
 
-export async function listExtensions(hubLayout: RuntimeLayout): Promise<unknown> {
+export async function listExtensions(hubLayout: HubLocation): Promise<unknown> {
   const hub = await readHub(hubLayout);
   const workers = await discoverWorkers();
   return {
@@ -352,7 +353,7 @@ export async function listExtensions(hubLayout: RuntimeLayout): Promise<unknown>
   };
 }
 
-export async function showExtension(hubLayout: RuntimeLayout, id: string): Promise<unknown> {
+export async function showExtension(hubLayout: HubLocation, id: string): Promise<unknown> {
   const hub = await readHub(hubLayout);
   const extension = hub.extensions.find((entry) => entry.manifest.id === id);
   if (!extension) throw new Error(`Extension is not installed in the Hub: ${id}`);
@@ -372,7 +373,7 @@ export async function showExtension(hubLayout: RuntimeLayout, id: string): Promi
   };
 }
 
-export async function doctorExtensionHub(hubLayout: RuntimeLayout): Promise<unknown> {
+export async function doctorExtensionHub(hubLayout: HubLocation): Promise<unknown> {
   const hub = await readHub(hubLayout);
   const workers = await discoverWorkers();
   const issues: string[] = [];

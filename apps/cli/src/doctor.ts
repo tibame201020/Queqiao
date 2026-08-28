@@ -2,6 +2,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { readRuntimeConfig, type RuntimeConfig } from "@queqiao/config";
 import {
+  resolveExtensionHubRoot,
   resolveNamedRoleConfigRoot,
   resolveRuntimeLayout,
   resolveRuntimeLayoutForNamedRole,
@@ -45,7 +46,7 @@ type DoctorDependencies = {
   roleNames?: (role: RuntimeRole) => Promise<string[]>;
   resolveNamedLayout?: typeof resolveRuntimeLayoutForNamedRole;
   status?: (configFile: string, layout: RuntimeLayout, role: RuntimeRole, name: string) => Promise<RuntimeStatusResult>;
-  extensionDoctor?: (layout: RuntimeLayout) => Promise<unknown>;
+  extensionDoctor?: (location: RuntimeLayout | string) => Promise<unknown>;
 };
 
 function hasExplicitLayout(env: NodeJS.ProcessEnv): boolean {
@@ -79,7 +80,7 @@ export async function doctorGateway(config: RuntimeConfig, fetchImpl: typeof fet
   }
 }
 
-export async function doctorQueqiao(hubLayout: RuntimeLayout = resolveRuntimeLayout(), dependencies: DoctorDependencies = {}): Promise<QueqiaoDoctorResult> {
+export async function doctorQueqiao(hubLocation: RuntimeLayout | string = resolveExtensionHubRoot(), dependencies: DoctorDependencies = {}): Promise<QueqiaoDoctorResult> {
   const env = dependencies.env || process.env;
   const platform = dependencies.platform || process.platform;
   const readConfig = dependencies.readConfig || readRuntimeConfig;
@@ -129,7 +130,7 @@ export async function doctorQueqiao(hubLayout: RuntimeLayout = resolveRuntimeLay
   let extensions: unknown;
   let extensionsOk = false;
   try {
-    extensions = await extensionDoctor(hubLayout);
+    extensions = await extensionDoctor(hubLocation);
     extensionsOk = Boolean((extensions as { ok?: unknown }).ok);
   } catch (error) {
     extensions = { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -144,12 +145,11 @@ export async function doctorQueqiao(hubLayout: RuntimeLayout = resolveRuntimeLay
 }
 
 export function doctorPaths(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): unknown {
-  const layout = resolveRuntimeLayout(env, platform);
-  if (hasExplicitLayout(env)) return { mode: "explicit-layout", layout };
+  if (hasExplicitLayout(env)) return { mode: "explicit-layout", layout: resolveRuntimeLayout(env, platform) };
   return {
     mode: "named-roles",
     gateways: resolveNamedRoleConfigRoot("gateway", env, platform),
     workers: resolveNamedRoleConfigRoot("worker", env, platform),
-    extensionHub: path.join(layout.dataDir, "extensions"),
+    extensionHub: resolveExtensionHubRoot(env, platform),
   };
 }

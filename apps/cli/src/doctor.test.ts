@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { runtimeConfigSchema } from "@queqiao/config";
 import type { RuntimeLayout } from "@queqiao/platform-paths";
-import { doctorGateway, doctorQueqiao } from "./doctor.js";
+import { doctorGateway, doctorPaths, doctorQueqiao } from "./doctor.js";
 
 const config = runtimeConfigSchema.parse({
   version: 1,
@@ -96,5 +96,14 @@ describe("doctorQueqiao", () => {
     });
     expect(result.ok).toBe(false);
     expect(result.extensions).toEqual({ ok: false, issues: ["broken"] });
+  });
+
+  it("reports only named role roots and the Extension Hub in normal mode", () => {
+    expect(doctorPaths({ LOCALAPPDATA: "C:\\Users\\owner\\AppData\\Local", TEMP: "C:\\Temp" }, "win32")).toEqual({
+      mode: "named-roles",
+      gateways: "C:\\Users\\owner\\AppData\\Local\\Queqiao\\gateways",
+      workers: "C:\\Users\\owner\\AppData\\Local\\Queqiao\\workers",
+      extensionHub: "C:\\Users\\owner\\AppData\\Local\\Queqiao\\data\\extensions",
+    });
   });
 });

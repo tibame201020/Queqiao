@@ -2,7 +2,7 @@ import { access, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveRuntimeLayout, resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
+import { resolveExtensionHubRoot, resolveRuntimeLayout, resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
 import { uninstallQueqiao } from "./uninstall-cli.js";
 
 describe("Queqiao uninstall", () => {
@@ -17,9 +17,14 @@ describe("Queqiao uninstall", () => {
       await mkdir(path.dirname(layout.configFile), { recursive: true });
       await writeFile(layout.configFile, "version: 1\nworkspaces: []\n", "utf8");
     }
-    const hub = resolveRuntimeLayout(env, process.platform);
-    await mkdir(path.join(hub.dataDir, "extensions"), { recursive: true });
-    await writeFile(path.join(hub.dataDir, "extensions", "marker"), "owned", "utf8");
+    const legacyGlobal = resolveRuntimeLayout(env, process.platform);
+    const hubRoot = resolveExtensionHubRoot(env, process.platform);
+    await mkdir(hubRoot, { recursive: true });
+    await writeFile(path.join(hubRoot, "marker"), "owned", "utf8");
+    await mkdir(legacyGlobal.configDir, { recursive: true });
+    await mkdir(legacyGlobal.stateDir, { recursive: true });
+    await writeFile(path.join(legacyGlobal.configDir, "legacy-marker"), "legacy", "utf8");
+    await writeFile(path.join(legacyGlobal.stateDir, "legacy-marker"), "legacy", "utf8");
 
     const seenChoices: Array<{ value: string; label: string; hint?: string }> = [];
     const confirmations: string[] = [];
@@ -30,7 +35,7 @@ describe("Queqiao uninstall", () => {
       platform: process.platform,
       selectTargets: async (choices) => {
         seenChoices.push(...choices);
-        return ["gateway:stable", "shared"];
+        return ["gateway:stable", "extension-hub"];
       },
       confirmCleanup: async (message) => { confirmations.push(message); return true; },
       confirmPackageUninstall: async (message) => { confirmations.push(message); return true; },
@@ -42,7 +47,7 @@ describe("Queqiao uninstall", () => {
     expect(seenChoices.map((choice) => choice.value)).toEqual([
       "gateway:stable",
       "worker:windows",
-      "shared",
+      "extension-hub",
     ]);
     expect(seenChoices.every((choice) => choice.hint && choice.hint.length > 0)).toBe(true);
     expect(seenChoices.find((choice) => choice.value === "gateway:stable")?.hint).toContain(path.dirname(gateway.configDir));
@@ -54,14 +59,16 @@ describe("Queqiao uninstall", () => {
     expect(npmCalls).toEqual([["uninstall", "--global", "@tibame201020/queqiao"]]);
     await expect(access(gateway.configFile)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(access(worker.configFile)).resolves.toBeUndefined();
-    await expect(access(path.join(hub.dataDir, "extensions", "marker"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(hubRoot, "marker"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(legacyGlobal.configDir, "legacy-marker"))).resolves.toBeUndefined();
+    await expect(access(path.join(legacyGlobal.stateDir, "legacy-marker"))).resolves.toBeUndefined();
     expect(result).toMatchObject({ uninstalled: true, cleaned: true, package: "@tibame201020/queqiao" });
   });
 
   it("can clean selected local state while keeping the global npm package", async () => {
     const npmCalls: string[][] = [];
     const result = await uninstallQueqiao(["uninstall"], {
-      selectTargets: async () => ["shared"],
+      selectTargets: async () => ["extension-hub"],
       confirmCleanup: async () => true,
       confirmPackageUninstall: async () => false,
       runNpm: async (args) => { npmCalls.push(args); },
@@ -85,7 +92,7 @@ describe("Queqiao uninstall", () => {
   it("requires cleanup confirmation before deleting selected paths", async () => {
     const npmCalls: string[][] = [];
     const result = await uninstallQueqiao(["uninstall"], {
-      selectTargets: async () => ["shared"],
+      selectTargets: async () => ["extension-hub"],
       confirmCleanup: async () => false,
       confirmPackageUninstall: async () => false,
       runNpm: async (args) => { npmCalls.push(args); },

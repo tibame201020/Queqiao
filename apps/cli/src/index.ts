@@ -7,6 +7,7 @@ import { CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core
 import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "@queqiao/mcp-compat";
 import { buildDeploymentManifest, buildOperationsDiagnostics, explainTool } from "@queqiao/operations";
 import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
+import { resolveExtensionHubRoot } from "@queqiao/platform-paths";
 import { assertCommandOwnership, resolveCommandLayout } from "./command-layout.js";
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
 
@@ -47,9 +48,6 @@ const action = args[1];
 const localName = option(args, "name") || "default";
 const USAGE = renderCliHelp([]);
 
-const layout = resolveCommandLayout(args);
-const configFile = path.resolve(layout.configFile);
-const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
 
 async function main() {
   if (isRemovedCliRoute(args)) throw new Error(args[1]);
@@ -63,6 +61,36 @@ async function main() {
   if (domain === "worker" && action === "setup") return print(await runRoleSetupWizard("worker", args));
   if (domain === "worker" && action === "remove") return print(await removeRoleInstance("worker", args));
   if (domain === "uninstall") return print(await uninstallQueqiao(args));
+  if (domain === "extension" && action === "install") {
+    const source = args[2] || option(args, "source");
+    if (!source) throw new Error("Extension source is required, for example: npm:queqiao-mcp");
+    const workerName = option(args, "worker");
+    return print(await installNpmExtension(resolveExtensionHubRoot(), source, { ...(workerName ? { workerName } : {}), attachAll: args.includes("--attach-all") }));
+  }
+  if (domain === "extension" && action === "attach") {
+    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    return print(await attachExtension(resolveExtensionHubRoot(), id, requiredOption(args, "worker")));
+  }
+  if (domain === "extension" && action === "detach") {
+    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    return print(await detachExtension(id, requiredOption(args, "worker")));
+  }
+  if (domain === "extension" && action === "uninstall") {
+    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    return print(await uninstallExtension(resolveExtensionHubRoot(), id, args.includes("--force")));
+  }
+  if (domain === "extension" && action === "list") return print(await listExtensions(resolveExtensionHubRoot()));
+  if (domain === "extension" && action === "show") {
+    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    return print(await showExtension(resolveExtensionHubRoot(), id));
+  }
+  if (domain === "extension" && action === "doctor") return print(await doctorExtensionHub(resolveExtensionHubRoot()));
+  if (domain === "doctor") return print(await doctorQueqiao());
+  if (domain === "config" && action === "paths") return print(doctorPaths());
+
+  const layout = resolveCommandLayout(args);
+  const configFile = path.resolve(layout.configFile);
+  const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
   if (domain === "worker" && action === "port") {
     const status = await runtimeStatus(configFile, layout, "worker", localName);
     if (status.active) throw new Error("Stop the Worker before changing its listener port");
@@ -109,38 +137,12 @@ async function main() {
     const config = await configStore.read(); const state = operations(config);
     return print({ ok: state.ok, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint, supportedMcpProtocolVersions: state.supportedMcpProtocolVersions, manifest: state.ok ? buildDeploymentManifest({ coreManifestRevision: state.coreManifestRevision, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions }) : null, ...(state.compositionFailure ? { compositionFailure: state.compositionFailure } : {}) });
   }
-  if (domain === "extension" && action === "install") {
-    const source = args[2] || option(args, "source");
-    if (!source) throw new Error("Extension source is required, for example: npm:queqiao-mcp");
-    const workerName = option(args, "worker");
-    return print(await installNpmExtension(layout, source, { ...(workerName ? { workerName } : {}), attachAll: args.includes("--attach-all") }));
-  }
-  if (domain === "extension" && action === "attach") {
-    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
-    return print(await attachExtension(layout, id, requiredOption(args, "worker")));
-  }
-  if (domain === "extension" && action === "detach") {
-    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
-    return print(await detachExtension(id, requiredOption(args, "worker")));
-  }
-  if (domain === "extension" && action === "uninstall") {
-    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
-    return print(await uninstallExtension(layout, id, args.includes("--force")));
-  }
-  if (domain === "extension" && action === "list") return print(await listExtensions(layout));
-  if (domain === "extension" && action === "show") {
-    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
-    return print(await showExtension(layout, id));
-  }
-  if (domain === "extension" && action === "doctor") return print(await doctorExtensionHub(layout));
   if (domain === "tool" && action === "explain") {
     const toolName = toolNameSchema.parse(args[2] || option(args, "tool")); const state = operations(await configStore.read()); const explanation = explainTool(state, toolName); if (!explanation) throw new Error(`Tool not found in effective composition: ${toolName}`); return print({ ...explanation, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint });
   }
   if ((domain === "gateway" || domain === "worker") && action === "stop") return print(await stopRuntime(layout, domain, localName));
   if ((domain === "gateway" || domain === "worker") && action === "status") return print(await runtimeStatus(configFile, layout, domain, localName));
   if ((domain === "gateway" || domain === "worker") && action === "serve") return print(args.includes("--bg") ? await startRuntime(configFile, layout, domain, localName) : await serveRuntime(configFile, domain, localName));
-  if (domain === "doctor") return print(await doctorQueqiao());
-  if (domain === "config" && action === "paths") return print(doctorPaths());
   if (domain === "migrate" && action === "from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));
   if (domain === "migrate" && action === "runtime-v1") return print(await migrateRuntimeLayoutV1(layout, args.includes("--execute")));
   throw new Error(USAGE);
