@@ -2,7 +2,7 @@ import { access, open, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { cancel, group, intro, isCancel, outro, password, text } from "@clack/prompts";
+import { cancel, intro, isCancel, outro, password, text } from "@clack/prompts";
 import { runtimeConfigSchema, readRuntimeConfig, type RuntimeConfig } from "@queqiao/config";
 import { AtomicConfigStore } from "./atomic-config-store.js";
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
@@ -10,7 +10,7 @@ import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-path
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
-export type JoinPrompt = (field: "code" | "gateway" | "token", message: string) => Promise<string>;
+export type JoinPrompt = (field: "code", message: string) => Promise<string>;
 export type WorkerSetupPrompt = (field: "port", message: string, initialValue: string) => Promise<string>;
 export type GatewaySetupPrompt = (field: "public-base-url", message: string, initialValue?: string) => Promise<string>;
 
@@ -66,38 +66,13 @@ function validatePort(value: string): string | undefined {
 }
 
 async function resolveJoinInputs(args: string[], prompt?: JoinPrompt): Promise<{ gateway: string; token: string; interactive: boolean }> {
-  const gatewayArg = option(args, "gateway");
-  const tokenArg = option(args, "token");
+  if (args.includes("--gateway") || args.includes("--token")) {
+    throw new Error("--gateway and --token are not supported for Worker enrollment; use --join-code or run worker join interactively");
+  }
   const codeArg = option(args, "join-code");
   if (codeArg) {
     const decoded = decodeJoinCode(codeArg);
     return { gateway: decoded.gateway, token: decoded.token, interactive: false };
-  }
-  if (gatewayArg && tokenArg) return { gateway: gatewayArg, token: tokenArg, interactive: false };
-
-  if (gatewayArg || tokenArg) {
-    if (prompt) {
-      const gateway = gatewayArg || (await prompt("gateway", "Gateway URL")).trim();
-      const token = tokenArg || (await prompt("token", "Join token")).trim();
-      if (!gateway) throw new Error("Gateway URL is required");
-      const gatewayError = validateGatewayUrl(gateway);
-      if (gatewayError) throw new Error(gatewayError);
-      if (!token) throw new Error("Join token is required");
-      return { gateway, token, interactive: true };
-    }
-    intro("Join worker");
-    const answers = await group({
-      gateway: async () => gatewayArg || assertJoinNotCancelled(await text({
-        message: "Gateway URL",
-        placeholder: "http://127.0.0.1:7575/",
-        validate: (value) => !value ? "Gateway URL is required" : validateGatewayUrl(value),
-      })),
-      token: async () => tokenArg || assertJoinNotCancelled(await password({
-        message: "Join token",
-        validate: (value) => value?.trim() ? undefined : "Join token is required",
-      })),
-    }, { onCancel: () => cancel("Worker join cancelled") });
-    return { gateway: String(answers.gateway).trim(), token: String(answers.token).trim(), interactive: true };
   }
 
   if (prompt) {
@@ -196,7 +171,6 @@ export async function createJoinToken(configFile: string, args: string[], clipbo
     body: JSON.stringify({ ...(expires ? { expiresSeconds: Number(expires) } : {}), ...(option(args, "worker-id") ? { workerId: option(args, "worker-id") } : {}), ...(option(args, "environment-id") ? { environmentId: option(args, "environment-id") } : {}) }),
   });
   const result = await jsonOrThrow(response);
-  if (!args.includes("--copy")) return result;
   const runtime = await readRuntimeConfig(configFile);
   if (!runtime.gateway) throw new Error("gateway configuration is required");
   const joinCode = encodeJoinCode({
@@ -206,11 +180,12 @@ export async function createJoinToken(configFile: string, args: string[], clipbo
     ...(typeof result.expiresAt === "string" ? { expiresAt: result.expiresAt } : {}),
   });
   const safeResult = { expiresAt: result.expiresAt, bindings: result.bindings, joinCodeVersion: 1 };
+  if (args.includes("--json")) return { ...safeResult, joinCode };
   try {
     await copyTextToClipboard(joinCode, clipboardWriter);
     return { ...safeResult, copied: true };
   } catch (error) {
-    return { ...safeResult, copied: false, copyError: error instanceof Error ? error.message : String(error) };
+    return { ...safeResult, copied: false, joinCode, copyError: error instanceof Error ? error.message : String(error) };
   }
 }
 

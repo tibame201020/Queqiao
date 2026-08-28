@@ -25,6 +25,8 @@ export function assertCommandOwnership(args: readonly string[]): void {
   if (option(args, "file")) throw new Error("--file is not supported; Queqiao role ownership determines the config layout");
   if (isWorkerOwnedRoute(args) && !option(args, "worker")) throw new Error("--worker is required for Worker-owned configuration");
   if (isGatewayDiagnosticRoute(args) && !option(args, "gateway")) throw new Error("--gateway is required for Gateway-owned diagnostics");
+  if (args[0] === "gateway" && args[1] === "join-token" && !option(args, "name")) throw new Error("--name is required for Gateway enrollment");
+  if (args[0] === "worker" && args[1] === "join" && !option(args, "name")) throw new Error("--name is required for Worker enrollment");
 }
 
 export function resolveCommandLayout(args: readonly string[]): RuntimeLayout {

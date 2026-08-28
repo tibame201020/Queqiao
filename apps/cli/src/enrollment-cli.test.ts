@@ -2,14 +2,14 @@ import { mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Server } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readRuntimeConfig, serializeRuntimeConfig } from "@queqiao/config";
 import { createGatewayApp } from "../../gateway/src/app.js";
 import { EnrollmentService } from "../../gateway/src/enrollment-service.js";
 import { WorkerMembershipStore } from "../../gateway/src/worker-membership-store.js";
 import { createWorkerApp } from "../../worker/src/app.js";
 import { WorkerCredentialSource } from "../../worker/src/worker-credential-source.js";
-import { copyTextToClipboard, decodeJoinCode, encodeJoinCode, joinWorker, setupGateway, setupWorker, updateWorkerPort } from "./enrollment-cli.js";
+import { copyTextToClipboard, createJoinToken, decodeJoinCode, encodeJoinCode, joinWorker, setupGateway, setupWorker, updateWorkerPort } from "./enrollment-cli.js";
 import { addWorkspace } from "./workspace-cli.js";
 
 
@@ -25,6 +25,26 @@ describe("clipboard helper", () => {
     let copied = "";
     await copyTextToClipboard("one-time-token", async (value) => { copied = value; });
     expect(copied).toBe("one-time-token");
+  });
+});
+
+describe("gateway join-token UX", () => {
+  it("copies a self-contained join code by default and does not expose the raw token", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-join-token-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const stateDirectory = path.join(root, "gateway-state");
+    const secretsDirectory = path.join(root, "secrets");
+    await setupGateway(configFile, ["gateway", "setup", "--public-base-url", "https://gateway.example/stable/"], stateDirectory, secretsDirectory);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ token: "one-time-token", expiresAt: "2026-08-28T14:30:00.000Z", bindings: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+    let copied = "";
+    try {
+      const result: any = await createJoinToken(configFile, ["gateway", "join-token"], async (value) => { copied = value; });
+      expect(decodeJoinCode(copied)).toEqual({ v: 1, gateway: "https://gateway.example/stable/", token: "one-time-token", expiresAt: "2026-08-28T14:30:00.000Z" });
+      expect(result).toMatchObject({ copied: true, joinCodeVersion: 1, expiresAt: "2026-08-28T14:30:00.000Z", bindings: [] });
+      expect(result).not.toHaveProperty("token");
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
 const servers: Server[] = [];
@@ -218,13 +238,18 @@ describe("worker join CLI transaction", () => {
   it("replaces the bootstrap credential only after Gateway confirmation commits membership", async () => {
     const f = await fixture();
     const joinToken = f.enrollment.createJoinToken().token;
-    const result: any = await joinWorker(f.configFile, ["worker", "join", "--token", joinToken, "--gateway", f.gatewayUrl, "--endpoint", f.workerUrl]);
+    const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: joinToken });
+    const result: any = await joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode, "--endpoint", f.workerUrl]);
     expect(result).toMatchObject({ joined: true, workerId: f.workerId, environmentId: f.environmentId });
     expect((await f.memberships.read()).workers).toHaveLength(1);
     expect((await readFile(f.tokenFile, "utf8")).trim()).not.toBe(f.bootstrap);
     await expect(readFile(`${f.tokenFile}.join-provisional.json`, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("rejects legacy raw gateway/token enrollment inputs", async () => {
+    const f = await fixture();
+    await expect(joinWorker(f.configFile, ["worker", "join", "--token", "raw-token", "--gateway", f.gatewayUrl, "--endpoint", f.workerUrl])).rejects.toThrow(/--gateway and --token are not supported/);
+  });
   it("prompts once for a join code and preserves scripted endpoint input", async () => {
     const f = await fixture();
     const joinToken = f.enrollment.createJoinToken().token;
@@ -246,7 +271,8 @@ describe("worker join CLI transaction", () => {
   it("restores the previous credential when authenticated identity verification fails", async () => {
     const f = await fixture(crypto.randomUUID());
     const joinToken = f.enrollment.createJoinToken().token;
-    await expect(joinWorker(f.configFile, ["worker", "join", "--token", joinToken, "--gateway", f.gatewayUrl, "--endpoint", f.workerUrl])).rejects.toThrow(/worker_identity_mismatch/);
+    const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: joinToken });
+    await expect(joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode, "--endpoint", f.workerUrl])).rejects.toThrow(/worker_identity_mismatch/);
     expect((await f.memberships.read()).workers).toEqual([]);
     expect((await readFile(f.tokenFile, "utf8")).trim()).toBe(f.bootstrap);
     await expect(readFile(`${f.tokenFile}.join-provisional.json`, "utf8")).rejects.toMatchObject({ code: "ENOENT" });

@@ -26,6 +26,13 @@ describe("CLI ownership layout", () => {
     expect(() => assertCommandOwnership([domain, action])).toThrow(/--worker is required/);
   });
 
+  it("requires an explicit named role for enrollment commands", () => {
+    expect(() => assertCommandOwnership(["gateway", "join-token"])).toThrow(/--name is required/);
+    expect(() => assertCommandOwnership(["worker", "join"])).toThrow(/--name is required/);
+    expect(() => assertCommandOwnership(["gateway", "join-token", "--name", "stable"])).not.toThrow();
+    expect(() => assertCommandOwnership(["worker", "join", "--name", "wins-worker"])).not.toThrow();
+  });
+
   it("rejects generic config-file overrides that could bypass role ownership", () => {
     expect(() => assertCommandOwnership(["workspace", "list", "--worker", "windows", "--file", "other.yaml"])).toThrow(/--file is not supported/);
   });
