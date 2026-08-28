@@ -43,8 +43,17 @@ function roleOwnedPaths(layout: RuntimeLayout): string[] {
   return [...new Set([stateRoot, layout.runtimeDir])];
 }
 
-function displayPaths(paths: string[]): string {
-  return paths.join(" | ");
+function displayRoleChoiceLabel(baseLabel: string, paths: string[]): string {
+  const [persistent, runtime] = paths;
+  return [
+    baseLabel,
+    persistent ? `  Persistent: ${persistent}` : undefined,
+    runtime ? `  Runtime:    ${runtime}` : undefined,
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function displayExtensionHubChoiceLabel(root: string): string {
+  return `Extension Hub\n  Path: ${root}`;
 }
 
 async function defaultSelectTargets(choices: CleanupChoice[]): Promise<string[]> {
@@ -99,13 +108,14 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
   const choices: CleanupChoice[] = [
     ...instances.map(({ role, name, layout, status }) => ({
       value: `${role}:${name}`,
-      label: `${role === "gateway" ? "Gateway" : "Worker"}: ${name}${status.active ? status.managed ? " (running)" : " (running unmanaged)" : ""}`,
-      hint: displayPaths(roleOwnedPaths(layout)),
+      label: displayRoleChoiceLabel(
+        `${role === "gateway" ? "Gateway" : "Worker"}: ${name}${status.active ? status.managed ? " (running)" : " (running unmanaged)" : ""}`,
+        roleOwnedPaths(layout),
+      ),
     })),
     {
       value: "extension-hub",
-      label: "Extension Hub",
-      hint: extensionHubRoot,
+      label: displayExtensionHubChoiceLabel(extensionHubRoot),
     },
   ];
 
@@ -127,7 +137,7 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
 
     const selectedLines = choices
       .filter((choice) => selectedSet.has(choice.value))
-      .map((choice) => `  - ${choice.label}\n    ${choice.hint ?? ""}`);
+      .map((choice) => `  - ${choice.label.replaceAll("\n", "\n    ")}`);
     const approveCleanup = dependencies.confirmCleanup ?? defaultConfirm;
     const confirmed = await approveCleanup(`Remove the selected local Queqiao data?\n${selectedLines.join("\n")}`);
     if (!confirmed) {

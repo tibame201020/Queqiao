@@ -49,9 +49,13 @@ describe("Queqiao uninstall", () => {
       "worker:windows",
       "extension-hub",
     ]);
-    expect(seenChoices.every((choice) => choice.hint && choice.hint.length > 0)).toBe(true);
-    expect(seenChoices.find((choice) => choice.value === "gateway:stable")?.hint).toContain(path.dirname(gateway.configDir));
-    expect(seenChoices.find((choice) => choice.value === "gateway:stable")?.hint).toContain(gateway.runtimeDir);
+    const gatewayChoice = seenChoices.find((choice) => choice.value === "gateway:stable");
+    expect(gatewayChoice?.hint).toBeUndefined();
+    expect(gatewayChoice?.label).toContain(`\n  Persistent: ${path.dirname(gateway.configDir)}`);
+    expect(gatewayChoice?.label).toContain(`\n  Runtime:    ${gateway.runtimeDir}`);
+    const hubChoice = seenChoices.find((choice) => choice.value === "extension-hub");
+    expect(hubChoice?.hint).toBeUndefined();
+    expect(hubChoice?.label).toContain(`\n  Path: ${hubRoot}`);
     expect(seenChoices.some((choice) => choice.value === "package")).toBe(false);
     expect(confirmations[0]).toMatch(/remove the selected local Queqiao data/i);
     expect(confirmations[1]).toMatch(/uninstall.*@tibame201020\/queqiao.*global npm/i);
