@@ -53,16 +53,20 @@ async function health(configFile: string, role: RuntimeRole, fetchImpl: typeof f
     return { reachable: false, healthy: false, identityMatches: false, error: error instanceof Error ? error.message : "Unknown error" };
   }
 }
-async function readPid(file: string) { try { const parsed = JSON.parse(await readFile(file, "utf8")) as { pid?: unknown }; return Number.isInteger(parsed.pid) && Number(parsed.pid) > 0 ? Number(parsed.pid) : undefined; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; } }
+type ManagedPidMetadata = { pid: number; entryPoint?: string; configFile?: string; startedAt?: string };
+async function readPid(file: string): Promise<ManagedPidMetadata | undefined> { try { const parsed = JSON.parse(await readFile(file, "utf8")) as { pid?: unknown; entryPoint?: unknown; configFile?: unknown; startedAt?: unknown }; if (!Number.isInteger(parsed.pid) || Number(parsed.pid) <= 0) return undefined; return { pid: Number(parsed.pid), ...(typeof parsed.entryPoint === "string" ? { entryPoint: parsed.entryPoint } : {}), ...(typeof parsed.configFile === "string" ? { configFile: parsed.configFile } : {}), ...(typeof parsed.startedAt === "string" ? { startedAt: parsed.startedAt } : {}) }; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; } }
 async function processCommandLine(pid: number, platform: NodeJS.Platform, env: NodeJS.ProcessEnv, execFile: ExecFile) {
   if (platform === "win32") { const ps = windowsSystemExecutable("WindowsPowerShell\\v1.0\\powershell.exe", env); const query = `$p=Get-CimInstance Win32_Process -Filter \"ProcessId = ${pid}\" -ErrorAction SilentlyContinue; if($p){[Console]::Out.Write($p.CommandLine)}`; return (await execFile(ps, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query])).stdout.trim(); }
   try { return (await execFile("ps", ["-p", String(pid), "-o", "args="])).stdout.trim(); } catch { return ""; }
 }
 async function reconcileManagedPid(layout: RuntimeLayout, role: RuntimeRole, dependencies: Dependencies = {}) {
-  const platform = dependencies.platform || process.platform; const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const entryPoint = path.resolve(dependencies.entryPoints?.[role] || packageEntryPoint(role)); const p = pathsFor(layout, role); const pid = await readPid(p.pidFile); if (!pid) return undefined;
-  const command = await processCommandLine(pid, platform, env, execFile);
-  if (!command || !command.toLowerCase().includes(entryPoint.toLowerCase())) { await rm(p.pidFile, { force: true }); return undefined; }
-  return pid;
+  const platform = dependencies.platform || process.platform; const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const currentEntryPoint = path.resolve(dependencies.entryPoints?.[role] || packageEntryPoint(role)); const p = pathsFor(layout, role); const metadata = await readPid(p.pidFile); if (!metadata) return undefined;
+  const recordedConfig = metadata.configFile ? path.resolve(metadata.configFile) : undefined;
+  if (recordedConfig && recordedConfig.toLowerCase() !== path.resolve(layout.configFile).toLowerCase()) { await rm(p.pidFile, { force: true }); return undefined; }
+  const ownedEntryPoint = path.resolve(metadata.entryPoint || currentEntryPoint);
+  const command = await processCommandLine(metadata.pid, platform, env, execFile);
+  if (!command || !command.toLowerCase().includes(ownedEntryPoint.toLowerCase())) { await rm(p.pidFile, { force: true }); return undefined; }
+  return metadata.pid;
 }
 async function stopManaged(layout: RuntimeLayout, role: RuntimeRole, dependencies: Dependencies = {}) {
   const platform = dependencies.platform || process.platform; const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const p = pathsFor(layout, role); const pid = await reconcileManagedPid(layout, role, dependencies); if (!pid) return false;
