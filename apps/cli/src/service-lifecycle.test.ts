@@ -7,7 +7,7 @@ import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./servic
 
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-runtime-lifecycle-")); const layout = resolveRuntimeLayout({ LOCALAPPDATA: root, TEMP: root, USERPROFILE: root }, "win32"); await import("node:fs/promises").then(({ mkdir }) => mkdir(layout.configDir, { recursive: true }));
-  const config = { version: 1, gateway: { publicBaseUrl: "https://example.invalid/shadow/", listen: { host: "127.0.0.1", port: 7675 }, managementListen: { host: "127.0.0.1", port: 7674 }, trustProxyHops: 1, stateDirectory: path.join(root,"state"), approvalSecretFile: path.join(root,"a"), jwtSigningSecretFile: path.join(root,"j") }, workspaces: [], discovery: { roots: [] }, extensions: [] };
+  const config = { version: 1, gateway: { publicBaseUrl: "https://example.invalid/shadow/", listen: { host: "127.0.0.1", port: 7675 }, managementListen: { host: "127.0.0.1", port: 7674 }, trustProxyHops: 1, stateDirectory: path.join(root,"state"), approvalSecretFile: path.join(root,"a"), jwtSigningSecretFile: path.join(root,"j") }, workspaces: [], extensions: [] };
   await writeFile(layout.configFile, JSON.stringify(config), "utf8"); return { root, layout };
 }
 
@@ -26,7 +26,7 @@ describe("runtime lifecycle", () => {
     const { root, layout } = await fixture();
     const workerId = "11111111-1111-4111-8111-111111111111";
     await writeFile(path.join(root,"worker.secret"), "w".repeat(43), "utf8");
-    await writeFile(layout.configFile, JSON.stringify({ version: 1, worker: { workerId, environmentId: "windows", listen: { host: "127.0.0.1", port: 7576 }, tokenFile: path.join(root,"worker.secret"), defaultWorkspaceId: "one" }, workspaces: [{ id: "one", displayName: "One", root }], discovery: { roots: [] }, extensions: [] }), "utf8");
+    await writeFile(layout.configFile, JSON.stringify({ version: 1, worker: { workerId, environmentId: "windows", listen: { host: "127.0.0.1", port: 7576 }, tokenFile: path.join(root,"worker.secret"), defaultWorkspaceId: "one" }, workspaces: [{ id: "one", displayName: "One", root }], extensions: [] }), "utf8");
     const fetchImpl = async (input: string | URL | Request, init?: RequestInit) => {
       if (String(input).endsWith("/health")) return new Response(JSON.stringify({ ok: true }), { status: 200 });
       expect(new Headers(init?.headers).get("x-queqiao-worker-token")).toBe("w".repeat(43));
@@ -39,7 +39,7 @@ describe("runtime lifecycle", () => {
     const { root, layout } = await fixture();
     const workerId = "11111111-1111-4111-8111-111111111111";
     await writeFile(path.join(root,"worker.secret"), "w".repeat(43), "utf8");
-    await writeFile(layout.configFile, JSON.stringify({ version: 1, worker: { workerId, environmentId: "windows", listen: { host: "127.0.0.1", port: 7576 }, tokenFile: path.join(root,"worker.secret"), defaultWorkspaceId: "one" }, workspaces: [{ id: "one", displayName: "One", root }], discovery: { roots: [] }, extensions: [] }), "utf8");
+    await writeFile(layout.configFile, JSON.stringify({ version: 1, worker: { workerId, environmentId: "windows", listen: { host: "127.0.0.1", port: 7576 }, tokenFile: path.join(root,"worker.secret"), defaultWorkspaceId: "one" }, workspaces: [{ id: "one", displayName: "One", root }], extensions: [] }), "utf8");
     const fetchImpl = async (input: string | URL | Request) => String(input).endsWith("/health")
       ? new Response(JSON.stringify({ ok: true }), { status: 200 })
       : new Response(JSON.stringify({ workerId: "22222222-2222-4222-8222-222222222222", environmentId: "windows" }), { status: 200 });

@@ -191,11 +191,6 @@ export const runtimeConfigSchema = z.object({
     tokenFile: z.string().min(1), defaultWorkspaceId: workspaceIdSchema.optional(),
   }).optional(),
   extensions: z.array(installedExtensionSchema).default([]),
-  discovery: z.object({
-    roots: z.array(z.string().min(1)).default([]),
-    maxDepth: z.number().int().min(1).max(8).default(4),
-    exclude: z.array(z.string().min(1).max(128)).default(["node_modules", ".cache", ".config", ".local", ".ssh", ".gnupg", ".aws", ".azure", ".npm", ".nvm"]),
-  }).default({ roots: [], maxDepth: 4, exclude: ["node_modules", ".cache", ".config", ".local", ".ssh", ".gnupg", ".aws", ".azure", ".npm", ".nvm"] }),
   workspaces: z.array(workspaceConfigSchema).default([]),
 }).superRefine((config, ctx) => {
   if (config.worker?.defaultWorkspaceId && !config.workspaces.some((workspace) => workspace.id === config.worker?.defaultWorkspaceId)) {

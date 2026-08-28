@@ -1,5 +1,7 @@
 # CLI hierarchy consolidation acceptance — 2026-08-28
 
+> Follow-up: the same-day command audit subsequently removed the obsolete `worker discovery` surface and `runtimeConfig.discovery` dead state, and removed hidden legacy tombstone handlers. See `cli-command-audit-2026-08-28.md`. The hierarchy evidence below records the earlier consolidation step.
+
 ## Scope
 
 This change reorganizes the public CLI command hierarchy without changing command handlers, runtime configuration semantics, Gateway/Worker lifecycle behavior, Workspace authority, Extension Hub behavior, OAuth, Worker-authoritative policy enforcement, or the public MCP manifest.

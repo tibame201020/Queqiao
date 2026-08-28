@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveRuntimeLayout, resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
+import { resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
 import { assertCommandOwnership, resolveCommandLayout } from "./command-layout.js";
 
 describe("CLI ownership layout", () => {
@@ -12,13 +12,6 @@ describe("CLI ownership layout", () => {
     expect(resolveCommandLayout(["permissions", "show", "--worker", "windows"]).configFile).toBe(expected);
   });
 
-  it("routes Worker discovery to the named Worker config instead of the default global layout", () => {
-    const worker = resolveRuntimeLayoutForNamedRole("worker", "windows").configFile;
-    const global = resolveRuntimeLayout().configFile;
-    expect(resolveCommandLayout(["discovery", "list", "--worker", "windows"]).configFile).toBe(worker);
-    expect(worker).not.toBe(global);
-  });
-
   it.each([
     ["workspace", "add"],
     ["workspace", "list"],
@@ -29,9 +22,6 @@ describe("CLI ownership layout", () => {
     ["command", "allow"],
     ["command", "deny"],
     ["permissions", "show"],
-    ["discovery", "list"],
-    ["discovery", "add"],
-    ["discovery", "remove"],
   ])("rejects Worker-owned route %s %s without a named Worker", (domain, action) => {
     expect(() => assertCommandOwnership([domain, action])).toThrow(/--worker is required/);
   });

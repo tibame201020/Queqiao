@@ -28,7 +28,6 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
   if (domain === "tool" && ["allow", "deny"].includes(action || "")) return removedRoute(`queqiao worker workspace tool ${action}`);
   if (domain === "command" && ["allow", "deny"].includes(action || "")) return removedRoute(`queqiao worker workspace command ${action}`);
   if (domain === "permissions" && action === "show") return removedRoute("queqiao worker workspace permissions show");
-  if (domain === "discovery" && ["list", "add", "remove"].includes(action || "")) return removedRoute(`queqiao worker discovery ${action} --worker <worker>`);
   if (domain === "extension" && action === "doctor") return removedRoute("queqiao doctor extension");
   if (domain === "manifest" && action === "show") return removedRoute("queqiao doctor manifest show");
   if (domain === "tool" && action === "explain") return removedRoute("queqiao doctor tool explain");
@@ -44,10 +43,6 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
     if (resource === "tool" && ["allow", "deny"].includes(subaction || "")) return replacePrefix(args, 4, ["tool", subaction!]);
     if (resource === "command" && ["allow", "deny"].includes(subaction || "")) return replacePrefix(args, 4, ["command", subaction!]);
     if (resource === "permissions" && subaction === "show") return replacePrefix(args, 4, ["permissions", "show"]);
-  }
-
-  if (domain === "worker" && action === "discovery" && ["list", "add", "remove"].includes(resource || "")) {
-    return replacePrefix(args, 3, ["discovery", resource!]);
   }
 
   if (domain === "doctor") {
@@ -98,8 +93,7 @@ Commands:
   worker stop
   worker status
   worker join
-  worker workspace ...
-  worker discovery ...`;
+  worker workspace ...`;
 
 const WORKER_WORKSPACE_HELP = `Usage: queqiao worker workspace <command> [options]
 
@@ -111,13 +105,6 @@ Commands:
   worker workspace tool allow|deny --worker <worker> --workspace <id> --tool <tool>
   worker workspace command allow|deny --worker <worker> --workspace <id> --command <executable>
   worker workspace permissions show --worker <worker> [--workspace <id>]`;
-
-const WORKER_DISCOVERY_HELP = `Usage: queqiao worker discovery <command> [options]
-
-Commands:
-  worker discovery list --worker <worker>
-  worker discovery add --worker <worker> --root <directory>
-  worker discovery remove --worker <worker> --root <directory>`;
 
 const EXTENSION_HELP = `Usage: queqiao extension <command> [options]
 
@@ -151,7 +138,6 @@ export function renderCliHelp(input: readonly string[]): string {
   if (domain === "gateway") return action === "workers" ? GATEWAY_WORKERS_HELP : GATEWAY_HELP;
   if (domain === "worker") {
     if (action === "workspace") return WORKER_WORKSPACE_HELP;
-    if (action === "discovery") return WORKER_DISCOVERY_HELP;
     return WORKER_HELP;
   }
   if (domain === "extension") return EXTENSION_HELP;

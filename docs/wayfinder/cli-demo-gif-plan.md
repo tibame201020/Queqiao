@@ -119,7 +119,6 @@ The reader should see that Workspace authority is a separate, explicit grant and
 
 ### Exclude
 
-- Discovery roots, because they are read-only search scopes and would blur the Workspace-authority message.
 - Tool / command permissions; those belong in the verification or advanced docs layer.
 - Any real developer repository path.
 

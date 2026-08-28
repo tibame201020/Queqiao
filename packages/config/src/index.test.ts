@@ -40,6 +40,10 @@ describe("extension config schema", () => {
     expect(() => runtimeConfigSchema.parse({ ...base, extensions: [0, 1].map(() => ({ trusted: true, source: { kind: "local-module", module: "x.mjs" }, manifest })) })).toThrow(/unique/);
   });
 
+  it("drops obsolete discovery-root state from runtime config", () => {
+    const parsed = runtimeConfigSchema.parse({ ...base, discovery: { roots: ["C:/legacy"], maxDepth: 4, exclude: [] } });
+    expect("discovery" in parsed).toBe(false);
+  });
   it("keeps the verified Gateway listener loopback-only and liveness polling low-frequency", () => {
     const gateway = { publicBaseUrl: "https://queqiao.example/", listen: { host: "127.0.0.1", port: 7575 }, stateDirectory: "state", approvalSecretFile: "approval.secret", jwtSigningSecretFile: "jwt.secret" };
     const parsed = runtimeConfigSchema.parse({ ...base, gateway });

@@ -62,13 +62,8 @@ async function main() {
   if (domain === "worker" && action === "list") return print(await listJoinedWorkers(configFile));
   if (domain === "worker" && action === "update") return print(await updateJoinedWorkerTransport(configFile, requiredOption(args, "worker-id"), requiredOption(args, "endpoint")));
   if (domain === "worker" && action === "remove") return print(await removeJoinedWorker(configFile, requiredOption(args, "worker-id")));
-  if (domain === "config" && action === "init") throw new Error("config init is deprecated: use gateway setup and/or worker setup explicitly");
   if (domain === "workspace" && action === "list") { requiredOption(args, "worker"); return print({ ...(await configStore.metadata()), workspaces: (await configStore.read()).workspaces }); }
-  if (domain === "workspace" && action === "init") throw new Error("workspace init is deprecated: run worker setup, then worker workspace add --worker <name>");
   if (domain === "workspace" && action === "add") { requiredOption(args, "worker"); return print(await addWorkspace(configFile, args)); }
-  if (domain === "workspace" && (action === "discover" || action === "approve")) {
-    throw new Error(`workspace ${action} is deprecated: repository discovery does not grant Workspace authority; use worker workspace add --id <id> --root <directory> for an explicit authority grant`);
-  }
   if (domain === "workspace" && action === "remove") {
     const id = requiredOption(args, "id");
     const config = await configStore.update((current) => { const next = current.workspaces.filter((entry) => entry.id !== id); if (next.length === current.workspaces.length) throw new Error(`Workspace not found: ${id}`); return { ...current, workspaces: next }; }); const workspaces = config.workspaces;
@@ -93,18 +88,6 @@ async function main() {
     const config = await configStore.update((current) => ({ ...current, workspaces: current.workspaces.map((entry) => { if (entry.id !== id) return entry; found = true; const allow = entry.commands.allow.filter((item) => item !== command); return { ...entry, commands: { allow: action === "allow" ? unique([...allow, command]) : allow } }; }) })); const workspaces = config.workspaces;
     if (!found) throw new Error(`Workspace not found: ${id}`);
     return print({ changed: true, workspaceId: id, command, decision: action, policy: workspaces.find((entry) => entry.id === id)?.commands });
-  }
-  if (domain === "environment") throw new Error("environment commands are deprecated: use worker join and gateway workers list|update|remove for Gateway membership management");
-  if (domain === "discovery" && action === "list") {
-    requiredOption(args, "worker");
-    const discovery = (await configStore.read()).discovery;
-    return print({ ...(await configStore.metadata()), discovery, note: "Discovery roots are read-only resource search scopes. They never create or broaden Workspace authority." });
-  }
-  if (domain === "discovery" && (action === "add" || action === "remove")) {
-    requiredOption(args, "worker");
-    const root = await realpathDirectory(requiredOption(args, "root"));
-    const config = await configStore.update((current) => ({ ...current, discovery: { ...current.discovery, roots: action === "add" ? unique([...current.discovery.roots, root]) : current.discovery.roots.filter((entry) => path.resolve(entry) !== root) } }));
-    return print({ changed: true, decision: action, root, discovery: config.discovery, note: "Discovery roots are read-only resource search scopes. They never create or broaden Workspace authority." });
   }
   if (domain === "permissions" && action === "show") {
     const config = await configStore.read(); const id = option(args, "workspace"); const selected = id ? config.workspaces.filter((entry) => entry.id === id) : config.workspaces; if (id && !selected.length) throw new Error(`Workspace not found: ${id}`);
@@ -153,13 +136,6 @@ async function main() {
   if (domain === "migrate" && action === "from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));
   if (domain === "migrate" && action === "runtime-v1") return print(await migrateRuntimeLayoutV1(layout, args.includes("--execute")));
   throw new Error(USAGE);
-}
-
-async function realpathDirectory(value: string): Promise<string> {
-  const resolved = path.resolve(value);
-  const info = await import("node:fs/promises").then(({ stat }) => stat(resolved));
-  if (!info.isDirectory()) throw new Error(`Discovery root is not a directory: ${resolved}`);
-  return import("node:fs/promises").then(({ realpath }) => realpath(resolved));
 }
 
 main().catch((error) => { process.stderr.write(`${error instanceof Error ? error.message : error}\n`); process.exitCode = 1; });

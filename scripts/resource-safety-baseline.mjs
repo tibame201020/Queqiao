@@ -187,7 +187,6 @@ try {
       allowedRedirectOrigins: ["https://chatgpt.com", "http://127.0.0.1", "http://localhost"],
     },
     worker: { workerId, environmentId: "resource-ci", listen: { host: "127.0.0.1", port: workerPort }, tokenFile, defaultWorkspaceId: "fixture" },
-    discovery: { roots: [], maxDepth: 4, exclude: ["node_modules", ".cache", ".config", ".local", ".ssh", ".gnupg"] },
     workspaces: [{ id: "fixture", displayName: "Fixture", root: workspaceDir, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] }, stepUp: [] }],
   };
   await writeFile(configFile, `${JSON.stringify(config, null, 2)}\n`);

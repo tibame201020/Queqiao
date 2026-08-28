@@ -12,20 +12,22 @@ queqiao worker workspace list --worker <worker>
 queqiao worker workspace remove --worker <worker> --id <id>
 ```
 
-`worker workspace add` canonicalizes the selected existing directory and rejects files or missing paths. A `.git` marker is neither required nor interpreted. `workspace init` is deprecated; Worker setup creates identity/listener state only, and the first explicit `worker workspace add` establishes authority and becomes the default Workspace.
+`worker workspace add` canonicalizes the selected existing directory and rejects files or missing paths. A `.git` marker is neither required nor interpreted. The former `workspace init` command is removed; Worker setup creates identity/listener state only, and the first explicit `worker workspace add` establishes authority and becomes the default Workspace.
 Existing Workspace roots are never widened because another directory, repository, project marker, or discovery result exists nearby.
 
-## Deprecated repository-coupled commands
+## Removed repository-coupled commands
 
-`workspace discover` and `workspace approve` are deprecated and no longer grant authority. They fail with guidance to use `worker workspace add` for an explicit authority grant.
+The former `workspace discover` and `workspace approve` commands are removed. Workspace authority is created only through explicit `worker workspace add` operations.
 
 Repository and worktree discovery belongs to the Git extension and operates only **inside** an already-authorized Workspace.
 
-## Discovery roots
+## Domain discovery
 
-The retained `worker discovery list|add|remove --worker <worker>` configuration is a read-only resource-search scope owned by that named Worker for clients/extensions that choose to use it. A discovery root is not an authority wildcard and never creates or broadens a Workspace.
+Queqiao no longer keeps a generic discovery-root configuration. The old root list had no runtime consumer after repository-coupled Workspace discovery was retired, so retaining it only preserved dead state.
 
-The named Worker's role-local `config.yaml` stores `worker`, `workspaces`, `discovery`, and attached `extensions` as sibling fields. That storage shape is not an ownership model: Workspaces, Workspace policy, discovery roots, and extension attachments remain Worker-owned. Gateway role-local configuration never grants Workspace authority.
+Repository, worktree, project, skill, and framework discovery belong to their owning extension/client and operate only inside an explicitly authorized Workspace using bounded Core filesystem primitives. Discovery never creates or broadens Workspace authority.
+
+The named Worker's role-local `config.yaml` stores `worker`, `workspaces`, and attached `extensions` as sibling fields. That storage shape is not an ownership model: Workspaces, Workspace policy, and extension attachments remain Worker-owned. Gateway role-local configuration never grants Workspace authority.
 
 ## Hot reload
 

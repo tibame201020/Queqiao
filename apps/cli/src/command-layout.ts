@@ -13,8 +13,7 @@ function isWorkerOwnedRoute(args: readonly string[]): boolean {
     (domain === "profile" && action === "set") ||
     (domain === "tool" && ["allow", "deny"].includes(action || "")) ||
     (domain === "command" && ["allow", "deny"].includes(action || "")) ||
-    (domain === "permissions" && action === "show") ||
-    (domain === "discovery" && ["list", "add", "remove"].includes(action || ""))
+    (domain === "permissions" && action === "show")
   );
 }
 

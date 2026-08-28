@@ -213,9 +213,6 @@ queqiao worker workspace profile set --worker <worker> --workspace <id> --profil
 queqiao worker workspace tool allow|deny --worker <worker> --workspace <id> --tool <tool>
 queqiao worker workspace command allow|deny --worker <worker> --workspace <id> --command <executable>
 queqiao worker workspace permissions show --worker <worker> [--workspace <id>]
-queqiao worker discovery list --worker <worker>
-queqiao worker discovery add --worker <worker> --root <directory>
-queqiao worker discovery remove --worker <worker> --root <directory>
 
 queqiao extension install npm:<package> [--worker <name>|--attach-all]
 queqiao extension attach <id> --worker <name>
@@ -231,7 +228,7 @@ queqiao doctor tool explain <tool>
 queqiao doctor paths
 ```
 
-The previous flat command paths are removed from the public CLI surface. Use the hierarchical forms above; they reuse the existing command handlers, so configuration semantics and runtime behavior are unchanged.
+The previous flat command paths are removed from the public CLI surface. Use the hierarchical forms above. Obsolete repository-search discovery-root configuration has also been removed; repository/project discovery belongs to extensions or clients operating inside an explicitly authorized Workspace.
 
 ### External extension contract
 
@@ -280,7 +277,7 @@ Revision 7 Extension Hub installation accepts Worker-hosted registry npm package
 
 A running Worker hot-reloads attachment config generation-by-generation. A candidate ExtensionHost must load and validate before atomic replacement; rejected candidates preserve the last-known-good generation. In-flight requests retain the generation they started with, and retired extensions receive `dispose()` only after the final lease completes.
 
-Discovery roots are optional read-only search scopes, never Workspace grants. Core Workspace authority is created only through explicit `worker workspace add --worker <name>` operations against an existing directory. Repository/worktree discovery and lifecycle semantics belong to the Git extension and never broaden the selected Workspace authority boundary.
+Core Workspace authority is created only through explicit `worker workspace add --worker <name>` operations against an existing directory. Generic discovery-root state has been removed; repository/worktree/project discovery belongs to the owning extension or client and operates only inside an already-authorized Workspace using bounded Core filesystem primitives.
 
 Configuration changes use an exclusive lock, validated temporary file, and atomic
 rename. A Worker validates every new root before replacing its in-memory catalog; a
@@ -290,8 +287,7 @@ The same compiled CLI runs inside WSL with Linux-native XDG paths and explicit `
 
 ### First-time setup contract
 
-There is deliberately no generic `queqiao setup`. Gateway, Worker, Workspace authority,
-and enrollment are separate operations so no command silently broadens execution authority:
+The current CLI exposes the role-level primitives below. A product-level `queqiao setup` onboarding flow is intended to orchestrate these same primitives without merging Gateway and Worker roles or changing Workspace authority semantics:
 
 ```text
 queqiao gateway setup --name <gateway> --public-base-url <url>
@@ -336,7 +332,7 @@ queqiao gateway join-token --name shadow --copy
 queqiao worker join --name windows
 ```
 
-`gateway join-token --copy` copies a versioned join code that contains the Gateway public base URL plus the one-time enrollment token. Interactive `worker join` accepts that single join code. The join code is bearer-secret material and is only for Worker CLI → Gateway enrollment; it does not publish or authorize the Gateway → Worker runtime transport.
+`gateway join-token --copy` copies a versioned join code that contains the Gateway public base URL plus the one-time enrollment token. Interactive `worker join` accepts that single join code. The join code is bearer-secret material and is only for Worker CLI ??Gateway enrollment; it does not publish or authorize the Gateway ??Worker runtime transport.
 
 The package is self-contained and exposes independent Gateway and Worker process roles. Installing it does not create an OS service, autostart entry, Run key, or systemd unit. Runtime lifecycle is explicit:
 
@@ -354,7 +350,7 @@ Worker listeners remain loopback-only. Within one Gateway membership registry, e
 
 On Windows, named Gateway and Worker layouts are stored below `%LOCALAPPDATA%\Queqiao\gateways\<name>` and `%LOCALAPPDATA%\Queqiao\workers\<name>`. Linux and WSL use the corresponding XDG role-scoped layout. Secrets remain separate files referenced by `config.yaml`; OAuth client registrations and other internal state remain implementation-owned data.
 
-The frozen HTTP transport baseline permits only loopback Worker endpoints. Windows↔WSL localhost forwarding may make a WSL loopback Worker visible to the Windows Gateway through the Windows WSL relay, but Queqiao does not expose the Worker through the Gateway public base URL.
+The frozen HTTP transport baseline permits only loopback Worker endpoints. Windows?SL localhost forwarding may make a WSL loopback Worker visible to the Windows Gateway through the Windows WSL relay, but Queqiao does not expose the Worker through the Gateway public base URL.
 
 To migrate an older checkout safely, preview the non-overwriting plan and then execute it:
 
