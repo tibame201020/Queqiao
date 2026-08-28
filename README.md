@@ -213,7 +213,9 @@ queqiao worker workspace profile set --worker <worker> --workspace <id> --profil
 queqiao worker workspace tool allow|deny --worker <worker> --workspace <id> --tool <tool>
 queqiao worker workspace command allow|deny --worker <worker> --workspace <id> --command <executable>
 queqiao worker workspace permissions show --worker <worker> [--workspace <id>]
-queqiao worker discovery list|add|remove
+queqiao worker discovery list --worker <worker>
+queqiao worker discovery add --worker <worker> --root <directory>
+queqiao worker discovery remove --worker <worker> --root <directory>
 
 queqiao extension install npm:<package> [--worker <name>|--attach-all]
 queqiao extension attach <id> --worker <name>

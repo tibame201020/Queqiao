@@ -7,7 +7,7 @@ import { CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core
 import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "@queqiao/mcp-compat";
 import { buildDeploymentManifest, buildOperationsDiagnostics, explainTool } from "@queqiao/operations";
 import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
-import { resolveRuntimeLayout, resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
+import { assertCommandOwnership, resolveCommandLayout } from "./command-layout.js";
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
 
 import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, setupGateway, setupWorker, updateJoinedWorkerTransport, updateWorkerPort } from "./enrollment-cli.js";
@@ -42,21 +42,14 @@ const action = args[1];
 const localName = option(args, "name") || "default";
 const USAGE = renderCliHelp([]);
 
-function resolveCommandLayout() {
-  if (domain === "gateway") return resolveRuntimeLayoutForNamedRole("gateway", localName);
-  if (domain === "worker" && ["setup", "serve", "stop", "status", "join", "port"].includes(action || "")) return resolveRuntimeLayoutForNamedRole("worker", localName);
-  if (domain === "worker" && ["list", "update", "remove"].includes(action || "")) return resolveRuntimeLayoutForNamedRole("gateway", option(args, "gateway-name") || option(args, "name") || "default");
-  if (["workspace", "profile", "tool", "command", "permissions"].includes(domain || "") && option(args, "worker")) return resolveRuntimeLayoutForNamedRole("worker", option(args, "worker"));
-  return resolveRuntimeLayout();
-}
-
-const layout = resolveCommandLayout();
-const configFile = path.resolve(option(args, "file") || layout.configFile);
+const layout = resolveCommandLayout(args);
+const configFile = path.resolve(layout.configFile);
 const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
 
 async function main() {
   if (isRemovedCliRoute(args)) throw new Error(args[1]);
   if (helpRequested) { process.stdout.write(`${renderCliHelp(rawArgs)}\n`); return; }
+  assertCommandOwnership(args);
   if (domain === "gateway" && action === "setup") return print(await setupGateway(configFile, args, layout.gatewayStateDir, layout.secretsDir));
   if (domain === "worker" && action === "setup") return print(await setupWorker(configFile, args, layout.secretsDir));
   if (domain === "worker" && action === "port") {
@@ -103,10 +96,12 @@ async function main() {
   }
   if (domain === "environment") throw new Error("environment commands are deprecated: use worker join and gateway workers list|update|remove for Gateway membership management");
   if (domain === "discovery" && action === "list") {
+    requiredOption(args, "worker");
     const discovery = (await configStore.read()).discovery;
     return print({ ...(await configStore.metadata()), discovery, note: "Discovery roots are read-only resource search scopes. They never create or broaden Workspace authority." });
   }
   if (domain === "discovery" && (action === "add" || action === "remove")) {
+    requiredOption(args, "worker");
     const root = await realpathDirectory(requiredOption(args, "root"));
     const config = await configStore.update((current) => ({ ...current, discovery: { ...current.discovery, roots: action === "add" ? unique([...current.discovery.roots, root]) : current.discovery.roots.filter((entry) => path.resolve(entry) !== root) } }));
     return print({ changed: true, decision: action, root, discovery: config.discovery, note: "Discovery roots are read-only resource search scopes. They never create or broaden Workspace authority." });

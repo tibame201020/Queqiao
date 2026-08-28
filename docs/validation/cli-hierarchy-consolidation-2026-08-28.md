@@ -31,7 +31,9 @@ Worker-owned Workspace authority and policy:
 
 Worker-local discovery surface:
 
-- `queqiao worker discovery list|add|remove`
+- `queqiao worker discovery list|add|remove --worker <worker>`
+
+The Worker selector is required so discovery state resolves to that named Worker's role-local config rather than the default/global runtime layout.
 
 Diagnostics consolidated under Doctor:
 
@@ -74,8 +76,8 @@ Each rejected route returns a concise replacement pointing to the canonical hier
 Local Windows validation passed:
 
 - `npm run typecheck`
-- `npm test` — 47 files, 231 tests passed
-- `npm run test:security` — 38 files, 162 tests passed
+- `npm test` — 48 files, 247 tests passed
+- `npm run test:security` — 39 files, 178 tests passed
 - `npm run build:package`
 - `git diff --check`
 - `apps/cli/src/command-surface.test.ts` — 41 hierarchy/removal tests passed

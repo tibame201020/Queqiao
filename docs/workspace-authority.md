@@ -23,7 +23,9 @@ Repository and worktree discovery belongs to the Git extension and operates only
 
 ## Discovery roots
 
-The retained `discovery list|add|remove` configuration is a read-only resource-search scope for clients/extensions that choose to use it. A discovery root is not an authority wildcard and never creates or broadens a Workspace.
+The retained `worker discovery list|add|remove --worker <worker>` configuration is a read-only resource-search scope owned by that named Worker for clients/extensions that choose to use it. A discovery root is not an authority wildcard and never creates or broadens a Workspace.
+
+The named Worker's role-local `config.yaml` stores `worker`, `workspaces`, `discovery`, and attached `extensions` as sibling fields. That storage shape is not an ownership model: Workspaces, Workspace policy, discovery roots, and extension attachments remain Worker-owned. Gateway role-local configuration never grants Workspace authority.
 
 ## Hot reload
 

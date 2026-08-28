@@ -28,7 +28,7 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
   if (domain === "tool" && ["allow", "deny"].includes(action || "")) return removedRoute(`queqiao worker workspace tool ${action}`);
   if (domain === "command" && ["allow", "deny"].includes(action || "")) return removedRoute(`queqiao worker workspace command ${action}`);
   if (domain === "permissions" && action === "show") return removedRoute("queqiao worker workspace permissions show");
-  if (domain === "discovery" && ["list", "add", "remove"].includes(action || "")) return removedRoute(`queqiao worker discovery ${action}`);
+  if (domain === "discovery" && ["list", "add", "remove"].includes(action || "")) return removedRoute(`queqiao worker discovery ${action} --worker <worker>`);
   if (domain === "extension" && action === "doctor") return removedRoute("queqiao doctor extension");
   if (domain === "manifest" && action === "show") return removedRoute("queqiao doctor manifest show");
   if (domain === "tool" && action === "explain") return removedRoute("queqiao doctor tool explain");
@@ -115,9 +115,9 @@ Commands:
 const WORKER_DISCOVERY_HELP = `Usage: queqiao worker discovery <command> [options]
 
 Commands:
-  worker discovery list
-  worker discovery add --root <directory>
-  worker discovery remove --root <directory>`;
+  worker discovery list --worker <worker>
+  worker discovery add --worker <worker> --root <directory>
+  worker discovery remove --worker <worker> --root <directory>`;
 
 const EXTENSION_HELP = `Usage: queqiao extension <command> [options]
 
