@@ -122,8 +122,16 @@ export const COMMAND_TREE: CommandNode = {
   },
 };
 
+export type CliHandlerKey =
+  | "list-role-instances" | "role-setup" | "role-remove" | "runtime-serve" | "runtime-stop" | "runtime-status"
+  | "gateway-join-token" | "membership-list" | "membership-update" | "membership-remove" | "worker-port" | "worker-join"
+  | "workspace-add" | "workspace-list" | "workspace-remove" | "workspace-profile-set" | "workspace-tool-policy" | "workspace-command-policy" | "workspace-permissions-show"
+  | "extension-install" | "extension-attach" | "extension-detach" | "extension-uninstall" | "extension-list" | "extension-show" | "extension-doctor"
+  | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
+
 type CliLeafContract = {
   route: string;
+  handler: CliHandlerKey;
   options: readonly string[];
   valueOptions?: readonly string[];
   positionals?: number;
@@ -131,54 +139,61 @@ type CliLeafContract = {
 
 /** Public parser contract. Keep handler-only compatibility flags explicit here. */
 export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
-  { route: "gateway list", options: [] },
-  { route: "gateway setup", options: [] },
-  { route: "gateway remove", options: ["gateway"], valueOptions: ["gateway"] },
-  { route: "gateway serve", options: ["bg", "gateway"], valueOptions: ["gateway"] },
-  { route: "gateway stop", options: ["gateway"], valueOptions: ["gateway"] },
-  { route: "gateway status", options: ["gateway"], valueOptions: ["gateway"] },
-  { route: "gateway join-token", options: ["gateway", "expires"], valueOptions: ["gateway", "expires"] },
-  { route: "gateway workers list", options: ["gateway"], valueOptions: ["gateway"] },
-  { route: "gateway workers update", options: ["gateway", "worker-id", "endpoint"], valueOptions: ["gateway", "worker-id", "endpoint"] },
-  { route: "gateway workers remove", options: ["gateway", "worker-id"], valueOptions: ["gateway", "worker-id"] },
-  { route: "worker list", options: [] },
-  { route: "worker setup", options: [] },
-  { route: "worker remove", options: ["worker"], valueOptions: ["worker"] },
-  { route: "worker port", options: ["worker", "port"], valueOptions: ["worker", "port"] },
-  { route: "worker serve", options: ["bg", "worker"], valueOptions: ["worker"] },
-  { route: "worker stop", options: ["worker"], valueOptions: ["worker"] },
-  { route: "worker status", options: ["worker"], valueOptions: ["worker"] },
-  { route: "worker join", options: ["worker", "join-code"], valueOptions: ["worker", "join-code"] },
-  { route: "worker workspace add", options: ["worker", "root", "display-name", "profile"], valueOptions: ["worker", "root", "display-name", "profile"] },
-  { route: "worker workspace list", options: ["worker"], valueOptions: ["worker"] },
-  { route: "worker workspace remove", options: ["worker", "id"], valueOptions: ["worker", "id"] },
-  { route: "worker workspace profile set", options: ["worker", "workspace", "profile"], valueOptions: ["worker", "workspace", "profile"] },
-  { route: "worker workspace tool allow", options: ["worker", "workspace", "tool"], valueOptions: ["worker", "workspace", "tool"] },
-  { route: "worker workspace tool deny", options: ["worker", "workspace", "tool"], valueOptions: ["worker", "workspace", "tool"] },
-  { route: "worker workspace command allow", options: ["worker", "workspace", "command"], valueOptions: ["worker", "workspace", "command"] },
-  { route: "worker workspace command deny", options: ["worker", "workspace", "command"], valueOptions: ["worker", "workspace", "command"] },
-  { route: "worker workspace permissions show", options: ["worker", "workspace"], valueOptions: ["worker", "workspace"] },
-  { route: "extension install", options: ["source", "worker", "attach-all"], valueOptions: ["source", "worker"], positionals: 1 },
-  { route: "extension attach", options: ["id", "worker"], valueOptions: ["id", "worker"], positionals: 1 },
-  { route: "extension detach", options: ["id", "worker"], valueOptions: ["id", "worker"], positionals: 1 },
-  { route: "extension uninstall", options: ["id", "force"], valueOptions: ["id"], positionals: 1 },
-  { route: "extension list", options: [] },
-  { route: "extension show", options: ["id"], valueOptions: ["id"], positionals: 1 },
-  { route: "doctor", options: [] },
-  { route: "doctor extension", options: [] },
-  { route: "doctor manifest show", options: ["gateway"], valueOptions: ["gateway"] },
-  { route: "doctor tool explain", options: ["gateway", "tool"], valueOptions: ["gateway", "tool"], positionals: 1 },
-  { route: "doctor paths", options: [] },
-  { route: "uninstall", options: [] },
-  { route: "migrate from-repo", options: ["repo", "execute"], valueOptions: ["repo"] },
-  { route: "migrate runtime-v1", options: ["execute"] },
+  { route: "gateway list", handler: "list-role-instances", options: [] },
+  { route: "gateway setup", handler: "role-setup", options: [] },
+  { route: "gateway remove", handler: "role-remove", options: ["gateway"], valueOptions: ["gateway"] },
+  { route: "gateway serve", handler: "runtime-serve", options: ["bg", "gateway"], valueOptions: ["gateway"] },
+  { route: "gateway stop", handler: "runtime-stop", options: ["gateway"], valueOptions: ["gateway"] },
+  { route: "gateway status", handler: "runtime-status", options: ["gateway"], valueOptions: ["gateway"] },
+  { route: "gateway join-token", handler: "gateway-join-token", options: ["gateway", "expires"], valueOptions: ["gateway", "expires"] },
+  { route: "gateway workers list", handler: "membership-list", options: ["gateway"], valueOptions: ["gateway"] },
+  { route: "gateway workers update", handler: "membership-update", options: ["gateway", "worker-id", "endpoint"], valueOptions: ["gateway", "worker-id", "endpoint"] },
+  { route: "gateway workers remove", handler: "membership-remove", options: ["gateway", "worker-id"], valueOptions: ["gateway", "worker-id"] },
+  { route: "worker list", handler: "list-role-instances", options: [] },
+  { route: "worker setup", handler: "role-setup", options: [] },
+  { route: "worker remove", handler: "role-remove", options: ["worker"], valueOptions: ["worker"] },
+  { route: "worker port", handler: "worker-port", options: ["worker", "port"], valueOptions: ["worker", "port"] },
+  { route: "worker serve", handler: "runtime-serve", options: ["bg", "worker"], valueOptions: ["worker"] },
+  { route: "worker stop", handler: "runtime-stop", options: ["worker"], valueOptions: ["worker"] },
+  { route: "worker status", handler: "runtime-status", options: ["worker"], valueOptions: ["worker"] },
+  { route: "worker join", handler: "worker-join", options: ["worker", "join-code"], valueOptions: ["worker", "join-code"] },
+  { route: "worker workspace add", handler: "workspace-add", options: ["worker", "root", "display-name", "profile"], valueOptions: ["worker", "root", "display-name", "profile"] },
+  { route: "worker workspace list", handler: "workspace-list", options: ["worker"], valueOptions: ["worker"] },
+  { route: "worker workspace remove", handler: "workspace-remove", options: ["worker", "id"], valueOptions: ["worker", "id"] },
+  { route: "worker workspace profile set", handler: "workspace-profile-set", options: ["worker", "workspace", "profile"], valueOptions: ["worker", "workspace", "profile"] },
+  { route: "worker workspace tool allow", handler: "workspace-tool-policy", options: ["worker", "workspace", "tool"], valueOptions: ["worker", "workspace", "tool"] },
+  { route: "worker workspace tool deny", handler: "workspace-tool-policy", options: ["worker", "workspace", "tool"], valueOptions: ["worker", "workspace", "tool"] },
+  { route: "worker workspace command allow", handler: "workspace-command-policy", options: ["worker", "workspace", "command"], valueOptions: ["worker", "workspace", "command"] },
+  { route: "worker workspace command deny", handler: "workspace-command-policy", options: ["worker", "workspace", "command"], valueOptions: ["worker", "workspace", "command"] },
+  { route: "worker workspace permissions show", handler: "workspace-permissions-show", options: ["worker", "workspace"], valueOptions: ["worker", "workspace"] },
+  { route: "extension install", handler: "extension-install", options: ["source", "worker", "attach-all"], valueOptions: ["source", "worker"], positionals: 1 },
+  { route: "extension attach", handler: "extension-attach", options: ["id", "worker"], valueOptions: ["id", "worker"], positionals: 1 },
+  { route: "extension detach", handler: "extension-detach", options: ["id", "worker"], valueOptions: ["id", "worker"], positionals: 1 },
+  { route: "extension uninstall", handler: "extension-uninstall", options: ["id", "force"], valueOptions: ["id"], positionals: 1 },
+  { route: "extension list", handler: "extension-list", options: [] },
+  { route: "extension show", handler: "extension-show", options: ["id"], valueOptions: ["id"], positionals: 1 },
+  { route: "doctor", handler: "doctor", options: [] },
+  { route: "doctor extension", handler: "extension-doctor", options: [] },
+  { route: "doctor manifest show", handler: "manifest-show", options: ["gateway"], valueOptions: ["gateway"] },
+  { route: "doctor tool explain", handler: "tool-explain", options: ["gateway", "tool"], valueOptions: ["gateway", "tool"], positionals: 1 },
+  { route: "doctor paths", handler: "doctor-paths", options: [] },
+  { route: "uninstall", handler: "uninstall", options: [] },
+  { route: "migrate from-repo", handler: "migrate-from-repo", options: ["repo", "execute"], valueOptions: ["repo"] },
+  { route: "migrate runtime-v1", handler: "migrate-runtime-v1", options: ["execute"] },
 ];
 
 export type ParsedCliLeafArguments = {
   route: string;
+  handler: CliHandlerKey;
   positionals: string[];
   options: Readonly<Record<string, string | true>>;
 };
+
+export type CliDispatch = ParsedCliLeafArguments;
+
+export function resolveCliDispatch(input: readonly string[]): CliDispatch | undefined {
+  return parseCliLeafArguments(input);
+}
 
 export function parseCliLeafArguments(input: readonly string[]): ParsedCliLeafArguments | undefined {
   const tokens = input.filter((token) => token !== "--json" && token !== "--help" && token !== "-h");
@@ -209,7 +224,7 @@ export function parseCliLeafArguments(input: readonly string[]): ParsedCliLeafAr
     }
     options[name] = true;
   }
-  return { route: contract.route, positionals, options };
+  return { route: contract.route, handler: contract.handler, positionals, options };
 }
 
 export function validateCliArgs(input: readonly string[]): void {
