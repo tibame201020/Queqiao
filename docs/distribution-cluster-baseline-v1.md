@@ -13,8 +13,9 @@ This baseline freezes the production distribution, native-Worker, and CLI-lifecy
 
 ## Process roles
 
-The package exposes `queqiao`, `queqiao-gateway`, and `queqiao-worker`. Installation does
-not enable or launch a role. A host may run Gateway, Worker, both, or neither.
+The package exposes only the public `queqiao` command. Gateway and Worker remain internal
+runtime entry artifacts launched by `queqiao`; installation does not enable or launch a role.
+A host may run Gateway, Worker, both, or neither.
 
 Named Gateway and Worker runtimes use role-local state. Lifecycle is explicit:
 `serve [--bg]`, `stop`, and `status`. `--bg` starts a background process but does not
@@ -25,20 +26,21 @@ install an OS service or autostart mechanism.
 The supported human flow is:
 
 ```text
-queqiao gateway setup --name <gateway> --public-base-url <url>
-queqiao worker setup --name <worker>
-queqiao workspace add --worker <worker>
-queqiao worker serve --name <worker> --bg
-queqiao gateway serve --name <gateway> --bg
-queqiao gateway join-token --name <gateway> --copy
-queqiao worker join --name <worker>
+queqiao gateway setup
+queqiao worker setup
+queqiao worker serve --worker <worker> --bg
+queqiao gateway serve --gateway <gateway> --bg
+queqiao gateway join-token --gateway <gateway>
+queqiao worker join --worker <worker>
 ```
 
-`worker setup` creates Worker identity/listener state only. `workspace add` separately
-creates Workspace authority. `worker join` separately creates Gateway membership through
+The setup commands are interactive instance choosers; `worker setup` also creates the first
+Workspace authority. Use `worker workspace add` for additional Workspaces. `worker join` separately creates Gateway membership through
 the one-time enrollment transaction defined by ADR-0011.
 
-There is no generic `queqiao setup` and Worker startup does not auto-register.
+There is no generic `queqiao setup` and Worker startup does not auto-register. A future
+Workstation TUI may compose these existing management primitives into one persistent operator
+surface, but it does not merge runtime roles or create a second management model.
 
 ## Enrollment, membership, and Worker validation
 

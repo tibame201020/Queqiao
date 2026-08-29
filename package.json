@@ -1,6 +1,6 @@
 {
   "name": "@tibame201020/queqiao",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": false,
   "type": "module",
   "exports": {
@@ -34,20 +34,24 @@
   "scripts": {
     "build": "tsc -b",
     "build:package": "node scripts/build-package.mjs",
+    "dev:shadow:refresh": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/refresh-shadow-runtime.ps1",
     "prepack": "npm run check && npm run build:package",
     "clean": "tsc -b --clean",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
-    "test:security": "vitest run packages/config/src/index.test.ts packages/platform-paths/src/index.test.ts apps/cli/src/runtime-migration.test.ts apps/cli/src/secure-runtime-paths.test.ts apps/cli/src/service-lifecycle.test.ts apps/cli/src/workspace-authority.test.ts apps/gateway/src/security-baseline.test.ts apps/gateway/src/config.test.ts apps/gateway/src/request-budget.test.ts apps/gateway/src/liveness-monitor.test.ts apps/cli/src/doctor.test.ts packages/worker-protocol/src/index.test.ts apps/gateway/src/worker-client.test.ts apps/gateway/src/worker-membership-registry.test.ts apps/gateway/src/membership-routing.test.ts apps/gateway/src/worker-membership-store.test.ts apps/gateway/src/static-membership-migration.test.ts apps/gateway/src/enrollment-service.test.ts apps/gateway/src/management-app.test.ts apps/cli/src/enrollment-cli.test.ts apps/worker/src/worker-credential-source.test.ts apps/gateway/src/worker-registry.test.ts apps/worker/src/permission.test.ts apps/worker/src/extension-authority.test.ts apps/worker/src/reloadable-extension-host.test.ts packages/policy/src/index.test.ts packages/operations/src/index.test.ts packages/security/src/approval.test.ts packages/security/src/canonical-request.test.ts packages/workspace/src/index.test.ts packages/process-runtime/src/index.test.ts apps/gateway/src/cancellation-registry.test.ts apps/gateway/src/async-security.test.ts apps/cli/src/workspace-authority-migration.test.ts apps/worker/src/workspace-catalog.test.ts apps/worker/src/git-extension.test.ts apps/gateway/src/git-extension.test.ts apps/gateway/src/path-base.test.ts",
+    "test:security": "vitest run packages/config/src/index.test.ts packages/platform-paths/src/index.test.ts apps/cli/src/runtime-migration.test.ts apps/cli/src/secure-runtime-paths.test.ts apps/cli/src/service-lifecycle.test.ts apps/cli/src/role-remove.test.ts apps/cli/src/uninstall-cli.test.ts apps/cli/src/setup-port-contract.test.ts apps/cli/src/setup-configured-port-collision.test.ts apps/cli/src/access-configuration.test.ts apps/cli/src/access-configuration-flow.test.ts apps/cli/src/workspace-cli.test.ts apps/cli/src/access-profile-store.test.ts apps/cli/src/command-history-input.test.ts apps/cli/src/command-layout.test.ts apps/cli/src/workspace-authority.test.ts apps/gateway/src/security-baseline.test.ts apps/gateway/src/config.test.ts apps/gateway/src/request-budget.test.ts apps/gateway/src/liveness-monitor.test.ts apps/cli/src/doctor.test.ts packages/worker-protocol/src/index.test.ts apps/gateway/src/worker-client.test.ts apps/gateway/src/worker-membership-registry.test.ts apps/gateway/src/membership-routing.test.ts apps/gateway/src/worker-membership-store.test.ts apps/gateway/src/static-membership-migration.test.ts apps/gateway/src/enrollment-service.test.ts apps/gateway/src/management-app.test.ts apps/cli/src/enrollment-cli.test.ts apps/worker/src/worker-credential-source.test.ts apps/gateway/src/worker-registry.test.ts apps/worker/src/permission.test.ts apps/worker/src/extension-authority.test.ts apps/worker/src/reloadable-extension-host.test.ts packages/policy/src/index.test.ts packages/operations/src/index.test.ts packages/security/src/approval.test.ts packages/security/src/canonical-request.test.ts packages/workspace/src/index.test.ts packages/process-runtime/src/index.test.ts apps/gateway/src/cancellation-registry.test.ts apps/gateway/src/async-security.test.ts apps/cli/src/workspace-authority-migration.test.ts apps/worker/src/workspace-catalog.test.ts apps/worker/src/git-extension.test.ts apps/gateway/src/git-extension.test.ts apps/gateway/src/path-base.test.ts apps/worker/src/extension-distribution.test.ts apps/cli/src/extension-cli.test.ts apps/cli/src/command-surface.test.ts apps/cli/src/cli-dispatch-coverage.test.ts apps/cli/src/cli-isolated-acceptance.test.ts apps/cli/src/tui-viewport.test.ts apps/cli/src/enrollment-cli-cancel.test.ts",
     "test:cluster": "vitest run packages/worker-protocol/src/index.test.ts apps/gateway/src/worker-client.test.ts apps/gateway/src/worker-registry.test.ts apps/gateway/src/worker-membership-registry.test.ts apps/gateway/src/membership-routing.test.ts apps/gateway/src/liveness-monitor.test.ts apps/worker/src/permission.test.ts apps/gateway/src/app.test.ts",
-    "test:cli-setup": "vitest run apps/cli/src/enrollment-cli.test.ts apps/cli/src/workspace-cli.test.ts",
+    "test:cli-setup": "vitest run apps/cli/src/enrollment-cli.test.ts apps/cli/src/workspace-cli.test.ts apps/cli/src/setup-wizard.test.ts apps/cli/src/access-configuration.test.ts apps/cli/src/access-configuration-flow.test.ts apps/cli/src/access-profile-store.test.ts apps/cli/src/command-history-input.test.ts apps/cli/src/tui-choice-renderer.test.ts apps/cli/src/tui-multiselect.test.ts apps/cli/src/tui-select.test.ts",
     "security:gate": "npm run typecheck && npm run test:security && npm audit --omit=dev --audit-level=moderate",
     "resource:gate": "npm run build:package && node scripts/resource-safety-baseline.mjs",
     "resource:soak": "npm run build:package && node scripts/resource-safety-baseline.mjs --soak",
     "check": "npm run clean && npm run typecheck && npm test",
     "start:worker": "tsx apps/worker/src/index.ts",
     "start:gateway": "tsx apps/gateway/src/index.ts",
-    "queqiao": "tsx apps/cli/src/index.ts"
+    "queqiao": "tsx apps/cli/src/index.ts",
+    "test:cli-acceptance": "vitest run apps/cli/src/cli-isolated-acceptance.test.ts apps/cli/src/tui-viewport.test.ts apps/cli/src/enrollment-cli-cancel.test.ts",
+    "docs:cli:components": "python scripts/cli-demo/render_components.py docs/assets/cli/components",
+    "docs:cli:flows": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/cli-demo/record.ps1 -Demo all"
   },
   "engines": {
     "node": ">=22.19 <25",
@@ -76,9 +80,7 @@
     "esbuild@0.28.2": true
   },
   "bin": {
-    "queqiao": "dist/queqiao.js",
-    "queqiao-gateway": "dist/queqiao-gateway.js",
-    "queqiao-worker": "dist/queqiao-worker.js"
+    "queqiao": "dist/queqiao.js"
   },
   "files": [
     "dist/",

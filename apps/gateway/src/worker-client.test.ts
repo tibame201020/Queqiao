@@ -43,7 +43,7 @@ describe("WorkerClient rolling upgrade", () => {
   it("accepts 3.0 membership Workers with no optional capabilities", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(membershipHello), { status: 200, headers: { "content-type": "application/json" } }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ environmentId: "windows", defaultWorkspaceId: "one", workspaces: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ environmentId: "windows", workspaces: [] }), { status: 200, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetch);
     await expect(new WorkerClient(membershipConfig).listWorkspaces()).resolves.toMatchObject({ environmentId: "windows" });
   });
@@ -70,7 +70,7 @@ describe("WorkerClient rolling upgrade", () => {
       execute: vi.fn(async (request: { operation: string }) => {
         if (request.operation === "health") throw new Error("temporary liveness failure");
         if (request.operation === "hello") return membershipHello;
-        if (request.operation === "list-workspaces") return { environmentId: "windows", defaultWorkspaceId: "one", workspaces: [] };
+        if (request.operation === "list-workspaces") return { environmentId: "windows", workspaces: [] };
         throw new Error(`unexpected operation: ${request.operation}`);
       }),
     };

@@ -256,10 +256,10 @@ Extend CLI operations so operators can inspect composition without log archaeolo
 
 Target command surface may include:
 
-- `queqiao manifest show`
+- `queqiao doctor manifest show --gateway <name>`
 - `queqiao extension list`
-- `queqiao extension doctor`
-- `queqiao tool explain <tool>`
+- `queqiao doctor extension`
+- `queqiao doctor tool explain <tool> --gateway <name>`
 - richer `queqiao doctor`
 
 Exact spelling may be adjusted for CLI consistency during implementation.

@@ -26,7 +26,6 @@ describe("membership-backed Worker routing", () => {
     const worker = await createWorkerApp({
       workerId,
       environmentId: "windows",
-      defaultWorkspaceId: "fixture",
       workerCredential: { current: async () => credential },
       workspaces: [{ id: "fixture", displayName: "Fixture", root: workspaceRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }],
     });
@@ -55,5 +54,15 @@ describe("membership-backed Worker routing", () => {
       workspaces: [{ workspaceId: "fixture", environmentId: "windows" }],
     });
     await expect(registry.workspaceInfo("fixture")).resolves.toMatchObject({ workspaceId: "fixture", environmentId: "windows" });
+
+    await memberships.updateTransport(workerId, { type: "http", endpoint: "http://127.0.0.1:1/" });
+    expect((await source.current()).configuredEnvironmentIds()).toEqual(["windows"]);
+    await expect((await source.current()).listEnvironments()).resolves.toMatchObject([{ environmentId: "windows", online: false }]);
+
+    await memberships.updateTransport(workerId, { type: "http", endpoint: `http://127.0.0.1:${address.port}/` });
+    await expect((await source.current()).listEnvironments()).resolves.toMatchObject([{ environmentId: "windows", online: true }]);
+
+    await memberships.remove(workerId);
+    expect((await source.current()).configuredEnvironmentIds()).toEqual([]);
   });
 });

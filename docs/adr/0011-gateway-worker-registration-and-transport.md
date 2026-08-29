@@ -45,7 +45,7 @@ queqiao gateway join-token
 queqiao worker join
 ```
 
-`gateway setup` initializes the Gateway. `worker setup` initializes Worker identity/listener state. Neither command implicitly enrolls another environment or grants Workspace authority. Workspace authority is created separately with `queqiao workspace add --worker <name>` against an existing directory.
+`gateway setup` initializes the Gateway. `worker setup` initializes Worker identity/listener state. Neither command implicitly enrolls another environment or grants Workspace authority. Workspace authority is created separately with `queqiao worker workspace add --worker <name>` against an existing directory.
 
 `worker join` is the explicit operation that adds a Worker to a Gateway. Worker runtime startup does not auto-register, re-register, poll for registration, or maintain a registration lease.
 

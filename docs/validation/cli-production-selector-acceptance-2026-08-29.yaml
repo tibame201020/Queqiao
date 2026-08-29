@@ -1,0 +1,65 @@
+validation:
+  date: 2026-08-29
+  status: passed
+  scope: production CLI instance inventory and selector convergence
+
+product_capabilities:
+  result: closed
+  reused_without_semantic_change:
+    - named role storage and discovery
+    - Gateway and Worker lifecycle
+    - enrollment and membership
+    - Workspace authority and policy
+    - Extension Hub and Worker attachment
+    - diagnostics and migration
+
+canonical_interface:
+  public_bins:
+    - queqiao
+  internal_runtime_artifacts:
+    - dist/queqiao-gateway.js
+    - dist/queqiao-worker.js
+  inventory:
+    - queqiao gateway list
+    - queqiao worker list
+  selectors:
+    gateway: --gateway <name>
+    worker: --worker <name>
+    workspace_display: --display-name <name>
+  tty:
+    missing_selector: select existing instance
+    one_instance: auto-select and display target
+  automation:
+    missing_selector_exit: 2
+    json_interaction: disabled
+  removed:
+    - role selector --name
+    - implicit default named instance
+    - selector compatibility aliases
+
+safety:
+  inventory_urls: userinfo, query, and fragment removed
+  secrets_in_inventory: false
+  destructive_remove: target selection followed by bound confirmation
+  json_stdout: machine-readable only
+  cancellation_exit: 130
+
+evidence:
+  typecheck: passed
+  tests:
+    files: 64
+    tests: 373
+    result: passed
+  isolated_package_build: passed
+  packaged_cli_smoke: passed
+  live_smoke:
+    - Gateway inventory
+    - Worker inventory
+    - explicit Gateway status
+    - JSON missing-selector error
+    - removed-selector tombstone
+
+note:
+  - An isolated output directory first proved the production bundle without interrupting active runtimes.
+  - dev:shadow:refresh then stopped managed runtimes, rebuilt the normal dist, relinked the package, and restored verified Gateway/Worker processes.
+  - Gateway refresh readiness verifies reachability and identity; aggregate Gateway health may remain 503 when another registered Worker is offline.

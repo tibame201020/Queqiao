@@ -21,7 +21,6 @@ function config() {
       environmentId: "windows",
       listen: { host: "127.0.0.1", port: 7576 },
       tokenFile: "C:/secure/windows.secret",
-      defaultWorkspaceId: "default",
     },
     environments: [
       { environmentId: "windows", url: "http://127.0.0.1:7576", tokenFile: "C:/secure/windows.secret" },

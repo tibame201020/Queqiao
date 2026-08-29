@@ -3,7 +3,7 @@ import { MAX_TEXT_MUTATION_BYTES, extensionIdSchema, processExecutionModeSchema,
 import { MAX_PROCESS_TIMEOUT_MS } from "@queqiao/process-runtime";
 import type { ToolAnnotations, ToolCapability, ToolRisk } from "@queqiao/contracts";
 
-export const QUEQIAO_CORE_MANIFEST_REVISION = 7 as const;
+export const QUEQIAO_CORE_MANIFEST_REVISION = 8 as const;
 
 export type CorePublicToolContract = {
   name: string;
@@ -25,12 +25,12 @@ const readAnnotations = {
 export const CORE_PUBLIC_TOOL_CONTRACTS = {
   workspace_info: {
     name: "workspace_info", title: "Workspace information",
-    description: "Show one configured workspace and its native environment. Omit workspaceId to use the default workspace.",
+    description: "Show one configured workspace and its native environment. Omit workspaceId only when exactly one Workspace is available.",
     inputSchema: z.object({ workspaceId: z.string().min(1).max(64).optional() }), requiredCapabilities: ["workspace:read"], risk: "read", annotations: readAnnotations,
   },
   read_file: {
     name: "read_file", title: "Read text file",
-    description: "Read UTF-8 text from a workspace-relative path in a configured workspace. Omit workspaceId to use the default workspace.",
+    description: "Read UTF-8 text from a workspace-relative path in a configured workspace. Omit workspaceId only when exactly one Workspace is available.",
     inputSchema: z.object({ workspaceId: z.string().min(1).optional(), path: z.string().min(1).max(4096), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(5000).default(500) }),
     requiredCapabilities: ["workspace:read"], risk: "read", annotations: readAnnotations,
   },
@@ -89,13 +89,13 @@ export const CORE_PUBLIC_TOOL_CONTRACTS = {
   },
   list_directory: {
     name: "list_directory", title: "List directory",
-    description: "List bounded workspace-relative directory entries. Omit workspaceId to use the default workspace.",
+    description: "List bounded workspace-relative directory entries. Omit workspaceId only when exactly one Workspace is available.",
     inputSchema: z.object({ workspaceId: z.string().min(1).max(64).optional(), path: z.string().min(1).max(4096).default("."), depth: z.number().int().min(1).max(5).default(1), limit: z.number().int().min(1).max(1000).default(500), cursor: z.string().max(128).optional(), includeHidden: z.boolean().default(false) }),
     requiredCapabilities: ["workspace:read"], risk: "read", annotations: readAnnotations,
   },
   search_text: {
     name: "search_text", title: "Search text",
-    description: "Search for a literal string in bounded UTF-8 workspace files. Omit workspaceId to use the default workspace.",
+    description: "Search for a literal string in bounded UTF-8 workspace files. Omit workspaceId only when exactly one Workspace is available.",
     inputSchema: z.object({ workspaceId: z.string().min(1).max(64).optional(), query: z.string().min(1).max(4096), path: z.string().min(1).max(4096).default("."), globs: z.array(z.string().min(1).max(256)).max(32).default([]), maxResults: z.number().int().min(1).max(500).default(100), caseSensitive: z.boolean().default(false), timeoutMs: z.number().int().min(100).max(30_000).default(10_000) }),
     requiredCapabilities: ["workspace:read"], risk: "read", annotations: readAnnotations,
   },

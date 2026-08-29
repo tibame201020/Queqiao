@@ -2,7 +2,7 @@ import { WorkerClient, type WorkerClientConfig } from "./worker-client.js";
 import { QueqiaoError } from "./errors.js";
 
 export type WorkspaceRoute = { environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] }; online: true };
-export type EnvironmentState = { environmentId: string; online: boolean; defaultWorkspaceId?: string; workspaces: WorkspaceRoute[] };
+export type EnvironmentState = { environmentId: string; online: boolean; workspaces: WorkspaceRoute[] };
 export type WorkerLivenessState = { environmentId: string; reachable: boolean; checkedAt?: string; lastSuccessAt?: string };
 
 type ReachabilityRecord = { reachable: boolean; checkedAt?: string; lastSuccessAt?: string };
@@ -45,7 +45,7 @@ export class WorkerRegistry {
       try {
         const state = await worker.listWorkspaces();
         if (state.environmentId !== worker.environmentId) throw new Error("Worker identity mismatch");
-        return { environmentId: worker.environmentId, online: true, defaultWorkspaceId: state.defaultWorkspaceId, workspaces: state.workspaces.map((workspace) => ({ ...workspace, online: true as const })) };
+        return { environmentId: worker.environmentId, online: true, workspaces: state.workspaces.map((workspace) => ({ ...workspace, online: true as const })) };
       } catch { return { environmentId: worker.environmentId, online: false, workspaces: [] }; }
     }));
   }
@@ -55,11 +55,18 @@ export class WorkerRegistry {
     return { environments, workspaces: environments.flatMap((environment) => environment.workspaces) };
   }
 
-  async defaultRoute(): Promise<{ worker: WorkerClient; workspaceId: string }> {
+  async implicitRoute(): Promise<{ worker: WorkerClient; workspaceId: string }> {
+    const matches: Array<{ worker: WorkerClient; workspaceId: string }> = [];
     for (const worker of this.workers) {
-      try { const state = await worker.listWorkspaces(); if (state.environmentId === worker.environmentId) return { worker, workspaceId: state.defaultWorkspaceId }; } catch { /* advisory liveness never vetoes a real route attempt */ }
+      try {
+        const state = await worker.listWorkspaces();
+        if (state.environmentId !== worker.environmentId) continue;
+        for (const workspace of state.workspaces) matches.push({ worker, workspaceId: workspace.workspaceId });
+      } catch { /* advisory liveness never vetoes a real route attempt */ }
     }
-    throw new QueqiaoError("worker_unavailable", "No Queqiao Worker is online", "gateway", true);
+    if (!matches.length) throw new QueqiaoError("worker_unavailable", "No Queqiao Workspace is online", "gateway", true);
+    if (matches.length > 1) throw new QueqiaoError("workspace_required", "workspaceId is required when more than one Workspace is available");
+    return matches[0]!;
   }
 
   async route(workspaceId: string): Promise<WorkerClient> {

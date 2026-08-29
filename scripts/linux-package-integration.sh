@@ -41,7 +41,6 @@ worker:
   environmentId: linux-ci
   listen: { host: 127.0.0.1, port: 17576 }
   tokenFile: $test_root/data/secrets/worker.secret
-  defaultWorkspaceId: fixture
 workspaces:
   - id: fixture
     displayName: Fixture
@@ -61,8 +60,8 @@ cat > "$test_root/data/gateway/worker-memberships.json" <<EOF
 }
 EOF
 config_file="$test_root/home/.config/queqiao/config.yaml"
-QUEQIAO_CONFIG_FILE="$config_file" "$test_root/install/node_modules/.bin/queqiao-worker" >"$test_root/worker.log" 2>&1 & worker_pid=$!
-QUEQIAO_CONFIG_FILE="$config_file" "$test_root/install/node_modules/.bin/queqiao-gateway" >"$test_root/gateway.log" 2>&1 & gateway_pid=$!
+QUEQIAO_CONFIG_FILE="$config_file" node "$test_root/install/node_modules/@tibame201020/queqiao/dist/queqiao-worker.js" >"$test_root/worker.log" 2>&1 & worker_pid=$!
+QUEQIAO_CONFIG_FILE="$config_file" node "$test_root/install/node_modules/@tibame201020/queqiao/dist/queqiao-gateway.js" >"$test_root/gateway.log" 2>&1 & gateway_pid=$!
 health=
 for attempt in $(seq 1 120); do
   kill -0 "$worker_pid" 2>/dev/null || exit 1

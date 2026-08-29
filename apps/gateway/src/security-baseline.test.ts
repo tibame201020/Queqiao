@@ -179,7 +179,7 @@ describe("Security Baseline v1 adversarial gate", () => {
   });
 
   it("requires the Worker credential using a timing-safe comparison path", async () => {
-    const worker = await createWorkerApp({ environmentId: "windows", defaultWorkspaceId: "fixture", workspaces: [{ id: "fixture", displayName: "Fixture", root: temporary }], workerToken: "worker-secret" });
+    const worker = await createWorkerApp({ environmentId: "windows", workspaces: [{ id: "fixture", displayName: "Fixture", root: temporary }], workerToken: "worker-secret" });
     await request(worker).get("/v1/workspaces").expect(401);
     await request(worker).get("/v1/workspaces").set("x-queqiao-worker-token", "wrong").expect(401);
     await request(worker).get("/v1/workspaces").set("x-queqiao-worker-token", "worker-secret").expect(200);

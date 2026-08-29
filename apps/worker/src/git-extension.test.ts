@@ -46,7 +46,7 @@ describe("first-party Git extension", () => {
     const repo = path.join(temporary, "repo");
     await initializeRepo(repo);
     await mkdir(path.join(temporary, "worktrees"));
-    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", defaultWorkspaceId: "coding", workerToken: "test-worker-token", extensionHost: await host(), workspaces: [{ id: "coding", displayName: "Coding", root: temporary, profile: "coding", commands: { allow: ["git"] } }] });
+    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", workerToken: "test-worker-token", extensionHost: await host(), workspaces: [{ id: "coding", displayName: "Coding", root: temporary, profile: "coding", commands: { allow: ["git"] } }] });
 
     const discovered = await tool(app, "git_repositories", { workspaceId: "coding", path: ".", depth: 3 });
     expect(discovered.body.result.repositories).toEqual(expect.arrayContaining([expect.objectContaining({ path: "repo", kind: "repository" })]));
@@ -78,7 +78,7 @@ describe("first-party Git extension", () => {
   it("keeps Git execution behind coding profile and command allow policy", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-git-policy-"));
     await initializeRepo(path.join(temporary, "repo"));
-    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", defaultWorkspaceId: "editor", workerToken: "test-worker-token", extensionHost: await host(), workspaces: [
+    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", workerToken: "test-worker-token", extensionHost: await host(), workspaces: [
       { id: "editor", displayName: "Editor", root: temporary, profile: "editor", commands: { allow: ["git"] } },
       { id: "coding-denied", displayName: "Coding denied", root: temporary, profile: "coding", commands: { allow: [] } },
     ] });
@@ -96,7 +96,7 @@ describe("first-party Git extension", () => {
     await initializeRepo(insideRepo);
     const linked = path.join(temporary, "linked");
     await symlink(insideRepo, linked, process.platform === "win32" ? "junction" : "dir");
-    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", defaultWorkspaceId: "coding", workerToken: "test-worker-token", extensionHost: await host(), workspaces: [{ id: "coding", displayName: "Coding", root: temporary, profile: "coding", commands: { allow: ["git"] } }] });
+    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", workerToken: "test-worker-token", extensionHost: await host(), workspaces: [{ id: "coding", displayName: "Coding", root: temporary, profile: "coding", commands: { allow: ["git"] } }] });
     await tool(app, "git_status", { workspaceId: "coding", repositoryPath: "external-backed" }, 400);
     await tool(app, "git_status", { workspaceId: "coding", repositoryPath: "linked" }, 400);
     await tool(app, "git_status", { workspaceId: "coding", repositoryPath: "../outside" }, 400);

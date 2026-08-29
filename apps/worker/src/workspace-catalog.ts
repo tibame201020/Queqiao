@@ -18,7 +18,6 @@ export class WorkspaceCatalog {
   private loading: Promise<void> | undefined;
 
   constructor(
-    private readonly defaultWorkspaceId: string,
     private readonly source: { file: string } | { workspaces: readonly WorkerWorkspaceConfig[] },
   ) {}
 
@@ -41,7 +40,8 @@ export class WorkspaceCatalog {
       const info = await stat(this.source.file);
       if (!force && info.mtimeMs === this.loadedMtimeMs) return;
       mtimeMs = info.mtimeMs;
-      raw = (parse(await readFile(this.source.file, "utf8")) as { workspaces?: unknown }).workspaces;
+      const parsed = parse(await readFile(this.source.file, "utf8")) as { workspaces?: unknown };
+      raw = parsed.workspaces;
     } else {
       if (!force) return;
       raw = this.source.workspaces;
@@ -54,7 +54,6 @@ export class WorkspaceCatalog {
       await reader.initialize();
       next.set(config.id, { config, reader });
     }
-    if (!next.has(this.defaultWorkspaceId)) throw new Error(`Default workspace not found: ${this.defaultWorkspaceId}`);
     this.entries = next;
     this.loadedMtimeMs = mtimeMs;
   }

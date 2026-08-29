@@ -1,27 +1,25 @@
-import { resolveRuntimeLayout } from "@queqiao/platform-paths";
+import { requireRuntimeConfigFile } from "@queqiao/platform-paths";
 import { readRuntimeConfig } from "@queqiao/config";
 import { ProcessRunner } from "@queqiao/process-runtime";
-import gitExtension from "@queqiao/extension-git";
 import { getWorkerCoreToolDefinitions } from "./core-tools.js";
 import path from "node:path";
 import { createWorkerApp } from "./app.js";
 import { WorkerCredentialSource } from "./worker-credential-source.js";
 import { ReloadableExtensionHost } from "./reloadable-extension-host.js";
 
-const layout = resolveRuntimeLayout();
-const configFile = path.resolve(process.env.QUEQIAO_CONFIG_FILE || layout.configFile);
+
+const configFile = requireRuntimeConfigFile();
 const runtime = await readRuntimeConfig(configFile);
 if (!runtime.worker) throw new Error("worker configuration is required");
 const port = runtime.worker.listen.port;
-const defaultWorkspaceId = runtime.worker.defaultWorkspaceId;
-if (!defaultWorkspaceId) throw new Error("Worker has no Workspace; add one before serving");
+if (runtime.workspaces.length < 1) throw new Error("Worker has no Workspace; run worker setup to configure one before serving");
 const credentialFile = path.resolve(runtime.worker.tokenFile);
 const credential = new WorkerCredentialSource(credentialFile);
 await credential.current();
 const extensionRuntime = new ReloadableExtensionHost(
   configFile,
   runtime.worker.environmentId,
-  async (specifier) => specifier === "@queqiao/extension-git" ? { default: gitExtension } : import(specifier),
+  async (specifier) => import(specifier),
   getWorkerCoreToolDefinitions().map((tool) => tool.name),
 );
 await extensionRuntime.initialize();
@@ -29,7 +27,6 @@ const processes = new ProcessRunner();
 const app = await createWorkerApp({
   ...(runtime.worker.workerId ? { workerId: runtime.worker.workerId } : {}),
   environmentId: runtime.worker.environmentId,
-  defaultWorkspaceId,
   workspacesFile: configFile,
   workerCredential: credential,
   processes,

@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-13
 - Refines: ADR-0006
+- 2026-08-28 follow-up: the generic discovery-root configuration was removed after repository/project discovery moved fully to extensions/clients; bounded Core filesystem primitives remain.
 
 ## Context
 

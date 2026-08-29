@@ -21,7 +21,7 @@ async function tempStore() {
 
 async function workerServer(workerId: string, environmentId: string, credential: { value: string }) {
   const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-enrollment-worker-"));
-  const app = await createWorkerApp({ workerId, environmentId, defaultWorkspaceId: "default", workerCredential: { current: async () => credential.value }, workspaces: [{ id: "default", displayName: "default", root, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }] });
+  const app = await createWorkerApp({ workerId, environmentId, workerCredential: { current: async () => credential.value }, workspaces: [{ id: "default", displayName: "default", root, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }] });
   const server = await new Promise<Server>((resolve) => {
     const listening = app.listen(0, "127.0.0.1", () => resolve(listening));
   });

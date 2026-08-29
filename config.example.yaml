@@ -19,21 +19,6 @@ worker:
     host: 127.0.0.1
     port: 7576
   tokenFile: /replace/with/queqiao/data/secrets/worker-token.secret
-  defaultWorkspaceId: project
-discovery:
-  roots: []
-  maxDepth: 4
-  exclude:
-    - node_modules
-    - .cache
-    - .config
-    - .local
-    - .ssh
-    - .gnupg
-    - .aws
-    - .azure
-    - .npm
-    - .nvm
 workspaces:
   - id: project
     displayName: Project

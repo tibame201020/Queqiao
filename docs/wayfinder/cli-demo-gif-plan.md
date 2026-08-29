@@ -1,6 +1,8 @@
 # Quick CLI Demo GIF Plan
 
-Status: implementation candidates for GIFs 1-4 exist in the isolated demo worktree. The current README is still unchanged, and the legacy GIF remains in place until the four-part set is reviewed and accepted.
+> **Superseded visual plan (2026-08-29):** The four flow GIFs described below were recorded on 2026-08-20 and predate the current selector, Access Profile, Workspace authority, Extension Hub, and TUI design-system contracts. They have been retired from production documentation. Current user-facing visual documentation lives under `docs/cli/`; reusable component GIFs are generated from the production TUI grammar, while future flow GIFs require a fresh real packaged-CLI transcript. The remainder of this file is retained as recording/design history.
+
+Status: superseded by `docs/cli/README.md` and `docs/cli/components/README.md`.
 
 ## Goal
 
@@ -50,8 +52,8 @@ The four demos are:
 ### Command sequence
 
 ```powershell
-queqiao gateway setup --name demo-gateway --public-base-url https://example.invalid/queqiao/
-queqiao worker setup --name demo-worker --port 7576
+queqiao gateway setup
+queqiao worker setup
 ```
 
 ### Shot sequence
@@ -94,7 +96,7 @@ The final frame should make it obvious that Gateway and Worker are distinct role
 Preferred interactive path:
 
 ```powershell
-queqiao workspace add --worker demo-worker
+queqiao worker workspace add --worker demo-worker
 ```
 
 Then enter/select the synthetic directory and stable Workspace ID according to the current CLI prompts.
@@ -102,15 +104,15 @@ Then enter/select the synthetic directory and stable Workspace ID according to t
 Verification:
 
 ```powershell
-queqiao workspace list --worker demo-worker
+queqiao worker workspace list --worker demo-worker
 ```
 
 ### Shot sequence
 
-1. Run `workspace add --worker demo-worker`.
+1. Run `worker workspace add --worker demo-worker`.
 2. Show the interactive path / ID selection using only the synthetic demo directory.
 3. Pause on the success confirmation.
-4. Run `workspace list --worker demo-worker`.
+4. Run `worker workspace list --worker demo-worker`.
 5. End with exactly one demo Workspace visible.
 
 ### Required visual proof
@@ -119,7 +121,6 @@ The reader should see that Workspace authority is a separate, explicit grant and
 
 ### Exclude
 
-- Discovery roots, because they are read-only search scopes and would blur the Workspace-authority message.
 - Tool / command permissions; those belong in the verification or advanced docs layer.
 - Any real developer repository path.
 
@@ -145,20 +146,20 @@ The reader should see that Workspace authority is a separate, explicit grant and
 ### Command sequence
 
 ```powershell
-queqiao worker serve --name demo-worker --bg
-queqiao gateway serve --name demo-gateway --bg
-queqiao gateway join-token --name demo-gateway --copy
-queqiao worker join --name demo-worker
-queqiao worker list --name demo-gateway
+queqiao worker serve --worker demo-worker --bg
+queqiao gateway serve --gateway demo-gateway --bg
+queqiao gateway join-token --gateway demo-gateway
+queqiao worker join --worker demo-worker
+queqiao gateway workers list --gateway demo-gateway
 ```
 
 ### Shot sequence
 
 1. Start Worker in background and pause briefly on accepted/running state.
 2. Start Gateway in background and pause briefly on accepted/running state.
-3. Generate/copy the one-time join code. The secret value must never be visible in the final GIF.
+3. Generate the one-time join code (clipboard copy is attempted automatically). The secret value must never be visible in the final GIF.
 4. Run `worker join`; if the CLI prompts for the join code, show the prompt but redact the supplied value.
-5. Run `worker list --name demo-gateway`.
+5. Run `gateway workers list --gateway demo-gateway`.
 6. End with the enrolled/reachable demo Worker visible.
 
 ### Required visual proof
@@ -205,12 +206,12 @@ The sequence must communicate three boundaries:
 Primary CLI proof:
 
 ```powershell
-queqiao gateway status --name demo-gateway
-queqiao worker status --name demo-worker
-queqiao worker list --name demo-gateway
-queqiao workspace list --worker demo-worker
-queqiao permissions show --worker demo-worker
-queqiao manifest show
+queqiao gateway status --gateway demo-gateway
+queqiao worker status --worker demo-worker
+queqiao gateway workers list --gateway demo-gateway
+queqiao worker workspace list --worker demo-worker
+queqiao worker workspace permissions show --worker demo-worker
+queqiao doctor manifest show --gateway demo-gateway
 ```
 
 Optional final payoff, only if it can be recorded cleanly without turning the GIF into a second tutorial:
@@ -222,10 +223,10 @@ Optional final payoff, only if it can be recorded cleanly without turning the GI
 
 1. `gateway status` -> running.
 2. `worker status` -> running.
-3. `worker list` -> enrolled/reachable.
-4. `workspace list` -> demo Workspace present.
-5. `permissions show` -> scoped policy visible.
-6. `manifest show` -> stable deployment manifest visible.
+3. `gateway workers list` -> enrolled/reachable.
+4. `worker workspace list` -> demo Workspace present.
+5. `worker workspace permissions show` -> scoped policy visible.
+6. `doctor manifest show --gateway demo-gateway` -> stable deployment manifest visible.
 7. Optional final 1-2 second MCP action/result as the payoff.
 
 ### Required visual proof

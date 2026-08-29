@@ -126,6 +126,7 @@ export const extensionPackageMetadataSchema = z.object({
 
 export const extensionSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("local-module"), module: z.string().min(1).max(4096) }),
+  z.object({ kind: z.literal("local"), package: z.string().min(1).max(214), version: semanticVersionSchema, root: z.string().min(1).max(4096), module: z.string().min(1).max(4096) }),
   z.object({
     kind: z.literal("npm"),
     package: z.string().min(1).max(214),
@@ -173,7 +174,7 @@ export type ExtensionPackageMetadata = z.infer<typeof extensionPackageMetadataSc
 export type ExtensionSource = z.infer<typeof extensionSourceSchema>;
 export type InstalledExtensionConfig = z.infer<typeof installedExtensionSchema>;
 
-export const runtimeConfigSchema = z.object({
+const runtimeConfigBaseSchema = z.object({
   version: z.literal(QUEQIAO_CONFIG_VERSION),
   gateway: z.object({
     publicBaseUrl: z.url(),
@@ -188,19 +189,13 @@ export const runtimeConfigSchema = z.object({
     workerId: workerIdSchema.optional(),
     environmentId: environmentIdSchema,
     listen: z.object({ host: z.literal("127.0.0.1").default("127.0.0.1"), port: z.number().int().min(1).max(65535).default(7576) }),
-    tokenFile: z.string().min(1), defaultWorkspaceId: workspaceIdSchema.optional(),
+    tokenFile: z.string().min(1),
   }).optional(),
   extensions: z.array(installedExtensionSchema).default([]),
-  discovery: z.object({
-    roots: z.array(z.string().min(1)).default([]),
-    maxDepth: z.number().int().min(1).max(8).default(4),
-    exclude: z.array(z.string().min(1).max(128)).default(["node_modules", ".cache", ".config", ".local", ".ssh", ".gnupg", ".aws", ".azure", ".npm", ".nvm"]),
-  }).default({ roots: [], maxDepth: 4, exclude: ["node_modules", ".cache", ".config", ".local", ".ssh", ".gnupg", ".aws", ".azure", ".npm", ".nvm"] }),
   workspaces: z.array(workspaceConfigSchema).default([]),
-}).superRefine((config, ctx) => {
-  if (config.worker?.defaultWorkspaceId && !config.workspaces.some((workspace) => workspace.id === config.worker?.defaultWorkspaceId)) {
-    ctx.addIssue({ code: "custom", path: ["worker", "defaultWorkspaceId"], message: "Default workspace must exist in workspaces" });
-  }
+});
+
+export const runtimeConfigRepairSchema = runtimeConfigBaseSchema.superRefine((config, ctx) => {
   const workspaceIds = new Set<string>();
   for (const [index, workspace] of config.workspaces.entries()) {
     if (workspaceIds.has(workspace.id)) ctx.addIssue({ code: "custom", path: ["workspaces", index, "id"], message: "Workspace id must be unique" });
@@ -220,6 +215,14 @@ export const runtimeConfigSchema = z.object({
     }
   }
 });
+
+export const runtimeConfigSchema = runtimeConfigRepairSchema.superRefine((config, ctx) => {
+  if (config.worker && config.workspaces.length < 1) {
+    ctx.addIssue({ code: "custom", path: ["workspaces"], message: "Worker must have at least one Workspace" });
+  }
+});
 export type RuntimeConfig = z.infer<typeof runtimeConfigSchema>;
+export type RepairRuntimeConfig = z.infer<typeof runtimeConfigRepairSchema>;
 export async function readRuntimeConfig(file: string): Promise<RuntimeConfig> { return runtimeConfigSchema.parse(parse(await readFile(file, "utf8"))); }
+export async function readRuntimeConfigForRepair(file: string): Promise<RepairRuntimeConfig> { return runtimeConfigRepairSchema.parse(parse(await readFile(file, "utf8"))); }
 export function serializeRuntimeConfig(value: unknown): string { return stringify(runtimeConfigSchema.parse(value), { lineWidth: 0 }); }

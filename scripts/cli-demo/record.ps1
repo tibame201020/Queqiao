@@ -1,7 +1,7 @@
 param(
-  [ValidateSet('01','02','03','04')]
-  [string]$Demo = '01',
-  [string]$PackageVersion = '0.7.0'
+  [ValidateSet('all','01','02','03','04')]
+  [string]$Demo = 'all',
+  [string]$PackageTarball = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,22 +9,15 @@ $ErrorActionPreference = 'Stop'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 Set-Location $repo
 
-$root = 'C:\Users\Public\QueqiaoDemo'
-$workspaceRoot = Join-Path $root 'workspace'
 $generated = Join-Path $PSScriptRoot 'generated'
-$gatewayPort = 18775
-$managementPort = 18774
-$workerPort = 18776
-New-Item -ItemType Directory -Force -Path $generated | Out-Null
+$outDir = Join-Path $repo 'docs\assets\cli\flows'
+New-Item -ItemType Directory -Force -Path $generated,$outDir | Out-Null
 
-function Sanitize-Output {
-  param([string]$Text)
-  $sanitized = $Text.TrimEnd()
-  $sanitized = [regex]::Replace($sanitized, '(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b', '<worker-id>')
-  $sanitized = [regex]::Replace($sanitized, '(?i)("?pid"?\s*:\s*)\d+', '$1"<pid>"')
-  $sanitized = [regex]::Replace($sanitized, '(?i)("?(?:token|credential|joinCode)"?\s*:\s*")[^"]+("?)', '$1<redacted>$2')
-  $sanitized = [regex]::Replace($sanitized, '(?i)(token|secret)\s*[:=]\s*[^\s,}\"]+', '$1=<redacted>')
-  return $sanitized
+function Get-FreePort {
+  $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+  $listener.Start()
+  try { return ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port }
+  finally { $listener.Stop() }
 }
 
 function Invoke-RawNative {
@@ -40,17 +33,32 @@ function Invoke-RawNative {
   return [pscustomobject]@{ raw = $raw.TrimEnd(); durationMs = $elapsed }
 }
 
+function Sanitize-Output {
+  param([string]$Text, [string]$Root)
+  $sanitized = $Text.TrimEnd()
+  if ($Root) {
+    $sanitized = $sanitized.Replace($Root, 'C:\QueqiaoDemo')
+    $sanitized = $sanitized.Replace($Root.Replace('\','/'), 'C:/QueqiaoDemo')
+  }
+  $sanitized = [regex]::Replace($sanitized, '(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b', '<worker-id>')
+  $sanitized = [regex]::Replace($sanitized, '(?i)("?pid"?\s*:\s*)\d+', '$1"<pid>"')
+  $sanitized = [regex]::Replace($sanitized, '(?i)("?(?:token|credential|joinCode)"?\s*:\s*")[^"]+("?)', '$1<redacted>$2')
+  $sanitized = [regex]::Replace($sanitized, '(?i)(join code|token|secret)\s*[:=]\s*[^\s,}\"]+', '$1=<redacted>')
+  return $sanitized
+}
+
 function New-Step {
   param(
     [Parameter(Mandatory = $true)][string]$DisplayCommand,
     [Parameter(Mandatory = $true)][scriptblock]$Action,
-    [double]$TypingSeconds = 1.15,
-    [double]$HoldSeconds = 1.0
+    [Parameter(Mandatory = $true)][string]$Root,
+    [double]$TypingSeconds = 1.05,
+    [double]$HoldSeconds = 0.9
   )
   $result = Invoke-RawNative -FailureLabel $DisplayCommand -Action $Action
   return [ordered]@{
     command = $DisplayCommand
-    output = Sanitize-Output $result.raw
+    output = Sanitize-Output -Text $result.raw -Root $Root
     durationMs = $result.durationMs
     typingSeconds = $TypingSeconds
     holdSeconds = $HoldSeconds
@@ -62,94 +70,80 @@ function New-ProjectedJsonStep {
     [Parameter(Mandatory = $true)][string]$DisplayCommand,
     [Parameter(Mandatory = $true)][scriptblock]$Action,
     [Parameter(Mandatory = $true)][scriptblock]$Project,
-    [double]$TypingSeconds = 1.15,
-    [double]$HoldSeconds = 1.0
+    [Parameter(Mandatory = $true)][string]$Root,
+    [double]$TypingSeconds = 1.05,
+    [double]$HoldSeconds = 0.9
   )
   $result = Invoke-RawNative -FailureLabel $DisplayCommand -Action $Action
   $parsed = $result.raw | ConvertFrom-Json
   $projected = & $Project $parsed
   return [ordered]@{
     command = $DisplayCommand
-    output = Sanitize-Output ($projected | ConvertTo-Json -Depth 6 -Compress)
+    output = Sanitize-Output -Text ($projected | ConvertTo-Json -Depth 8) -Root $Root
     durationMs = $result.durationMs
     typingSeconds = $TypingSeconds
     holdSeconds = $HoldSeconds
   }
 }
 
-function Install-Package {
-  $null = Invoke-RawNative -FailureLabel 'npm install' -Action { npm install -g "@tibame201020/queqiao@$PackageVersion" --no-audit --no-fund }
-}
-
-function Setup-Worker {
-  $null = Invoke-RawNative -FailureLabel 'worker setup' -Action { queqiao worker setup --name demo-worker --port $workerPort }
-}
-
-function Setup-Gateway {
-  $null = Invoke-RawNative -FailureLabel 'gateway setup' -Action { queqiao gateway setup --name demo-gateway --public-base-url "http://127.0.0.1:$gatewayPort/" --port $gatewayPort --management-port $managementPort }
-}
-
-function Add-DemoWorkspace {
-  New-Item -ItemType Directory -Force -Path $workspaceRoot | Out-Null
-  Set-Content -Path (Join-Path $workspaceRoot 'hello.txt') -Value 'hello from Queqiao demo' -Encoding utf8
-  return Invoke-RawNative -FailureLabel 'workspace add' -Action {
-    queqiao workspace add --worker demo-worker --root $workspaceRoot --id demo-workspace --name 'Demo Workspace' --profile read-only
-  }
-}
-
-function Start-DemoRuntime {
-  $null = Invoke-RawNative -FailureLabel 'worker serve' -Action { queqiao worker serve --name demo-worker --bg }
-  $null = Invoke-RawNative -FailureLabel 'gateway serve' -Action { queqiao gateway serve --name demo-gateway --bg }
-  Start-Sleep -Milliseconds 500
-}
-
-function Join-DemoWorker {
-  $join = Invoke-RawNative -FailureLabel 'join token' -Action { queqiao gateway join-token --name demo-gateway --expires 120 }
-  $joinObject = $join.raw | ConvertFrom-Json
-  if (-not $joinObject.token) { throw 'Join-token response did not contain a token' }
-  $token = [string]$joinObject.token
-  $null = Invoke-RawNative -FailureLabel 'worker join' -Action {
-    queqiao worker join --name demo-worker --gateway "http://127.0.0.1:$gatewayPort/" --token $token --endpoint "http://127.0.0.1:$workerPort/"
-  }
-  return [pscustomobject]@{ joinRaw = $join.raw; token = $token }
-}
-
 function Save-Demo {
-  param(
-    [string]$Title,
-    [string]$Stem,
-    [array]$Steps
-  )
+  param([string]$Title, [string]$Stem, [array]$Steps, [string]$PackageVersion, [string]$Root)
   $transcript = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     title = $Title
     package = "@tibame201020/queqiao@$PackageVersion"
-    runtimeRoot = 'C:\Users\Public\QueqiaoDemo'
+    runtimeRoot = 'C:\QueqiaoDemo'
     capturedAt = (Get-Date).ToUniversalTime().ToString('o')
+    evidence = 'real-packed-cli'
     steps = $Steps
   }
   $transcriptFile = Join-Path $generated "$Stem.transcript.json"
-  $transcript | ConvertTo-Json -Depth 8 | Set-Content -Path $transcriptFile -Encoding utf8
-  $gif = "docs/assets/cli/$Stem.gif"
+  $transcript | ConvertTo-Json -Depth 10 | Set-Content -Path $transcriptFile -Encoding utf8
+  $gif = Join-Path $outDir "$Stem.gif"
   python scripts/cli-demo/render_terminal.py $transcriptFile $gif
   if ($LASTEXITCODE -ne 0) { throw 'Terminal renderer failed' }
   $item = Get-Item $gif
-  [pscustomobject]@{
-    demo = $Demo
-    package = "@tibame201020/queqiao@$PackageVersion"
-    transcript = $transcriptFile
-    gif = $item.FullName
-    bytes = $item.Length
-  } | ConvertTo-Json -Compress
+  return [pscustomobject]@{ demo = $Stem; transcript = $transcriptFile; gif = $item.FullName; bytes = $item.Length }
 }
 
-if (Test-Path $root) { Remove-Item $root -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $root | Out-Null
+$packageVersion = node -p "require('./package.json').version"
+if (-not $PackageTarball) {
+  $stage = Join-Path $generated 'package-stage'
+  if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+  New-Item -ItemType Directory -Force -Path $stage | Out-Null
+  $stageDist = Join-Path $stage 'dist'
+  $previousOutdir = $env:QUEQIAO_BUILD_OUTDIR
+  try {
+    $env:QUEQIAO_BUILD_OUTDIR = $stageDist
+    node scripts/build-package.mjs
+    if ($LASTEXITCODE -ne 0) { throw 'staged package build failed' }
+  }
+  finally {
+    if ($null -eq $previousOutdir) { Remove-Item Env:QUEQIAO_BUILD_OUTDIR -ErrorAction SilentlyContinue }
+    else { $env:QUEQIAO_BUILD_OUTDIR = $previousOutdir }
+  }
+  foreach ($file in @('package.json','README.md','CHANGELOG.md','LICENSE','config.example.yaml','extension.d.ts')) {
+    Copy-Item (Join-Path $repo $file) (Join-Path $stage $file)
+  }
+  Push-Location $stage
+  try {
+    $packJson = npm pack --ignore-scripts --json | Out-String
+    if ($LASTEXITCODE -ne 0) { throw 'staged npm pack failed' }
+    $pack = $packJson | ConvertFrom-Json
+    $PackageTarball = Join-Path $stage $pack[0].filename
+  }
+  finally { Pop-Location }
+}
+$PackageTarball = (Resolve-Path $PackageTarball).Path
 
-$oldEnv = @{
+$selected = if ($Demo -eq 'all') { @('01','02','03','04') } else { @($Demo) }
+$results = @()
+$original = @{
   LOCALAPPDATA = $env:LOCALAPPDATA
   TEMP = $env:TEMP
   TMP = $env:TMP
+  USERPROFILE = $env:USERPROFILE
+  HOME = $env:HOME
   npm_config_prefix = $env:npm_config_prefix
   npm_config_audit = $env:npm_config_audit
   npm_config_fund = $env:npm_config_fund
@@ -157,140 +151,140 @@ $oldEnv = @{
   PATH = $env:PATH
 }
 
-$runtimeStarted = $false
 try {
-  $env:LOCALAPPDATA = "$root\local"
-  $env:TEMP = "$root\temp"
-  $env:TMP = $env:TEMP
-  $env:npm_config_prefix = "$root\npm-prefix"
-  $env:npm_config_audit = 'false'
-  $env:npm_config_fund = 'false'
-  $env:npm_config_update_notifier = 'false'
-  $env:PATH = "$env:npm_config_prefix;$($oldEnv.PATH)"
-  New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA,$env:TEMP,$env:npm_config_prefix | Out-Null
+  foreach ($id in $selected) {
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) "queqiao-cli-demo-$id"
+    if (Test-Path $root) { Remove-Item $root -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $root | Out-Null
 
-  Install-Package
+    $env:LOCALAPPDATA = Join-Path $root 'local-app-data'
+    $env:TEMP = Join-Path $root 'temp'
+    $env:TMP = $env:TEMP
+    $env:USERPROFILE = Join-Path $root 'home'
+    $env:HOME = $env:USERPROFILE
+    $env:npm_config_prefix = Join-Path $root 'npm-prefix'
+    $env:npm_config_audit = 'false'
+    $env:npm_config_fund = 'false'
+    $env:npm_config_update_notifier = 'false'
+    $env:PATH = "$env:npm_config_prefix;$($original.PATH)"
+    New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA,$env:TEMP,$env:USERPROFILE,$env:npm_config_prefix | Out-Null
 
-  if ($Demo -eq '01') {
-    $steps = @()
-    $steps += New-Step -DisplayCommand 'queqiao gateway setup --name demo-gateway --public-base-url https://example.invalid/queqiao/' -Action {
-      queqiao gateway setup --name demo-gateway --public-base-url 'https://example.invalid/queqiao/'
-    } -TypingSeconds 1.35 -HoldSeconds 1.25
-    $steps += New-Step -DisplayCommand 'queqiao worker setup --name demo-worker --port 7576' -Action {
-      queqiao worker setup --name demo-worker --port 7576
-    } -TypingSeconds 1.15 -HoldSeconds 1.75
-    Save-Demo -Title 'Queqiao CLI · Bootstrap Gateway & Worker' -Stem '01-bootstrap-roles' -Steps $steps
-  }
+    $gatewayPort = Get-FreePort
+    $managementPort = Get-FreePort
+    $workerPort = Get-FreePort
 
-  if ($Demo -eq '02') {
-    Setup-Worker
-    New-Item -ItemType Directory -Force -Path $workspaceRoot | Out-Null
-    Set-Content -Path (Join-Path $workspaceRoot 'hello.txt') -Value 'hello from Queqiao demo' -Encoding utf8
-    $steps = @()
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao workspace add --worker demo-worker --root C:\Users\Public\QueqiaoDemo\workspace --id demo-workspace --profile read-only' -Action {
-      queqiao workspace add --worker demo-worker --root $workspaceRoot --id demo-workspace --name 'Demo Workspace' --profile read-only
-    } -Project {
-      param($o)
-      [ordered]@{ added = $o.added; workspace = [ordered]@{ id = $o.workspace.id; root = $o.workspace.root; profile = $o.workspace.profile } }
-    } -TypingSeconds 1.55 -HoldSeconds 1.3
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao workspace list --worker demo-worker' -Action {
-      queqiao workspace list --worker demo-worker
-    } -Project {
-      param($o)
-      [ordered]@{ workspaces = @($o.workspaces | ForEach-Object { [ordered]@{ id = $_.id; root = $_.root; profile = $_.profile } }) }
-    } -TypingSeconds 0.95 -HoldSeconds 2.0
-    Save-Demo -Title 'Queqiao CLI · Grant Workspace Authority' -Stem '02-workspace-authority' -Steps $steps
-  }
+    $tsx = Join-Path $repo 'node_modules\.bin\tsx.cmd'
+    $fixtureJson = & $tsx scripts/cli-demo/prepare_fixture.ts $root $gatewayPort $managementPort $workerPort
+    if ($LASTEXITCODE -ne 0) { throw 'CLI demo fixture preparation failed' }
+    $fixture = $fixtureJson | ConvertFrom-Json
 
-  if ($Demo -eq '03') {
-    Setup-Gateway
-    Setup-Worker
-    $null = Add-DemoWorkspace
-    $steps = @()
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker serve --name demo-worker --bg' -Action {
-      queqiao worker serve --name demo-worker --bg
-    } -Project {
-      param($o)
-      [ordered]@{ started = $o.started; role = $o.role; name = $o.name; pid = '<pid>' }
-    } -TypingSeconds 0.95 -HoldSeconds 0.75
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao gateway serve --name demo-gateway --bg' -Action {
-      queqiao gateway serve --name demo-gateway --bg
-    } -Project {
-      param($o)
-      [ordered]@{ started = $o.started; role = $o.role; name = $o.name; pid = '<pid>' }
-    } -TypingSeconds 0.95 -HoldSeconds 0.75
-    $runtimeStarted = $true
-    Start-Sleep -Milliseconds 500
-
-    $join = Invoke-RawNative -FailureLabel 'join token' -Action { queqiao gateway join-token --name demo-gateway --expires 120 }
-    $joinObject = $join.raw | ConvertFrom-Json
-    $token = [string]$joinObject.token
-    if (-not $token) { throw 'Join-token response did not contain a token' }
-    $joinProjection = [ordered]@{ token = '<redacted>'; expiresAt = $joinObject.expiresAt }
-    $steps += [ordered]@{
-      command = 'queqiao gateway join-token --name demo-gateway --expires 120'
-      output = ($joinProjection | ConvertTo-Json -Compress)
-      durationMs = $join.durationMs
-      typingSeconds = 1.05
-      holdSeconds = 0.8
+    $null = Invoke-RawNative -FailureLabel 'install packed Queqiao' -Action {
+      npm install -g $PackageTarball --no-audit --no-fund
     }
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker join --name demo-worker --gateway http://127.0.0.1:18775/ --token <redacted>' -Action {
-      queqiao worker join --name demo-worker --gateway "http://127.0.0.1:$gatewayPort/" --token $token --endpoint "http://127.0.0.1:$workerPort/"
-    } -Project {
-      param($o)
-      [ordered]@{ joined = $o.joined; workerId = '<worker-id>'; environmentId = $o.environmentId }
-    } -TypingSeconds 1.3 -HoldSeconds 1.0
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker list --name demo-gateway' -Action {
-      queqiao worker list --name demo-gateway
-    } -Project {
-      param($o)
-      $w = $o.workers[0]
-      [ordered]@{ workers = @([ordered]@{ workerId = '<worker-id>'; environmentId = $w.environmentId; endpoint = $w.transport.endpoint }) }
-    } -TypingSeconds 0.85 -HoldSeconds 1.5
-    Save-Demo -Title 'Queqiao CLI · Start & Enroll' -Stem '03-start-enroll' -Steps $steps
-  }
 
-  if ($Demo -eq '04') {
-    Setup-Gateway
-    Setup-Worker
-    $null = Add-DemoWorkspace
-    Start-DemoRuntime
-    $runtimeStarted = $true
-    $null = Join-DemoWorker
-    Start-Sleep -Milliseconds 500
+    $workspaceJson = Invoke-RawNative -FailureLabel 'workspace list json' -Action {
+      queqiao worker workspace list --worker demo-worker --json
+    }
+    $workspaceId = (($workspaceJson.raw | ConvertFrom-Json).workspaces | Select-Object -First 1).id
+    if (-not $workspaceId) { throw 'Fixture did not create a Workspace' }
 
-    $steps = @()
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao gateway status --name demo-gateway' -Action {
-      queqiao gateway status --name demo-gateway
-    } -Project {
-      param($o)
-      [ordered]@{ name = $o.name; active = $o.active; reachable = $o.health.reachable; healthy = $o.health.healthy }
-    } -TypingSeconds 0.9 -HoldSeconds 0.75
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker status --name demo-worker' -Action {
-      queqiao worker status --name demo-worker
-    } -Project {
-      param($o)
-      [ordered]@{ name = $o.name; active = $o.active; reachable = $o.health.reachable; healthy = $o.health.healthy }
-    } -TypingSeconds 0.9 -HoldSeconds 0.75
-    $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker list --name demo-gateway' -Action {
-      queqiao worker list --name demo-gateway
-    } -Project {
-      param($o)
-      $w = $o.workers[0]
-      [ordered]@{ workers = @([ordered]@{ workerId = '<worker-id>'; environmentId = $w.environmentId; endpoint = $w.transport.endpoint }) }
-    } -TypingSeconds 0.9 -HoldSeconds 1.7
-    Save-Demo -Title 'Queqiao CLI · Verify Deployment' -Stem '04-verify-deployment' -Steps $steps
+    if ($id -eq '01') {
+      $steps = @()
+      $steps += New-Step -DisplayCommand 'queqiao gateway list' -Root $root -Action { queqiao gateway list }
+      $steps += New-Step -DisplayCommand 'queqiao worker list' -Root $root -Action { queqiao worker list }
+      $steps += New-Step -DisplayCommand 'queqiao worker workspace list --worker demo-worker' -Root $root -Action { queqiao worker workspace list --worker demo-worker } -HoldSeconds 1.5
+      $results += Save-Demo -Title 'Queqiao CLI - Roles & Workspaces' -Stem '01-roles-workspaces' -Steps $steps -PackageVersion $packageVersion -Root $root
+    }
+
+    if ($id -eq '02') {
+      $secondRoot = Join-Path $root 'workspace-two'
+      New-Item -ItemType Directory -Force -Path $secondRoot | Out-Null
+      $steps = @()
+      $steps += New-Step -DisplayCommand 'queqiao worker workspace add --worker demo-worker --root C:\QueqiaoDemo\workspace-two --display-name "Demo App" --profile coding' -Root $root -Action {
+        queqiao worker workspace add --worker demo-worker --root $secondRoot --display-name 'Demo App' --profile coding
+      } -TypingSeconds 1.6 -HoldSeconds 1.1
+      $second = Invoke-RawNative -FailureLabel 'workspace list after add' -Action { queqiao worker workspace list --worker demo-worker --json }
+      $secondId = (($second.raw | ConvertFrom-Json).workspaces | Where-Object { $_.displayName -eq 'Demo App' } | Select-Object -First 1).id
+      $steps += New-Step -DisplayCommand "queqiao worker workspace permissions show --worker demo-worker --workspace $secondId" -Root $root -Action {
+        queqiao worker workspace permissions show --worker demo-worker --workspace $secondId
+      } -HoldSeconds 1.7
+      $results += Save-Demo -Title 'Queqiao CLI - Workspace Authority' -Stem '02-workspace-authority' -Steps $steps -PackageVersion $packageVersion -Root $root
+    }
+
+    if ($id -eq '03') {
+      $extensionRoot = [string]$fixture.extensionRoot
+      $steps = @()
+      $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao extension install C:\QueqiaoDemo\mock-extension --json' -Root $root -Action {
+        queqiao extension install $extensionRoot --json
+      } -Project {
+        param($o)
+        [ordered]@{ changed = $o.changed; id = $o.id; version = $o.version; source = $o.source; connectorManifestImpact = $o.connectorManifestImpact }
+      } -TypingSeconds 1.35 -HoldSeconds 0.9
+      $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao extension attach dev.queqiao.demo --worker demo-worker --json' -Root $root -Action {
+        queqiao extension attach dev.queqiao.demo --worker demo-worker --json
+      } -Project {
+        param($o)
+        [ordered]@{ changed = $o.changed; attached = $o.attached; worker = $o.worker }
+      }
+      $steps += New-Step -DisplayCommand 'queqiao extension list' -Root $root -Action { queqiao extension list }
+      $steps += New-Step -DisplayCommand 'queqiao doctor extension' -Root $root -Action { queqiao doctor extension } -HoldSeconds 1.5
+      $results += Save-Demo -Title 'Queqiao CLI - Extension Hub' -Stem '03-extension-hub' -Steps $steps -PackageVersion $packageVersion -Root $root
+    }
+
+    if ($id -eq '04') {
+      $runtimeStarted = $false
+      try {
+        $steps = @()
+        $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker serve --bg --worker demo-worker --json' -Root $root -Action {
+          queqiao worker serve --bg --worker demo-worker --json
+        } -Project { param($o) [ordered]@{ started = $o.started; role = $o.role; name = $o.name; pid = '<pid>' } }
+        $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao gateway serve --bg --gateway demo-gateway --json' -Root $root -Action {
+          queqiao gateway serve --bg --gateway demo-gateway --json
+        } -Project { param($o) [ordered]@{ started = $o.started; role = $o.role; name = $o.name; pid = '<pid>' } }
+        $runtimeStarted = $true
+        Start-Sleep -Milliseconds 500
+
+        $join = Invoke-RawNative -FailureLabel 'gateway join-token' -Action { queqiao gateway join-token --gateway demo-gateway --expires 120 --json }
+        $joinObject = $join.raw | ConvertFrom-Json
+        $joinCode = [string]$joinObject.joinCode
+        if (-not $joinCode) { throw 'Join-token did not return a join code' }
+        $steps += [ordered]@{
+          command = 'queqiao gateway join-token --gateway demo-gateway --expires 120 --json'
+          output = "{`n  `"joinCode`": `"<redacted>`",`n  `"joinCodeVersion`": 1`n}"
+          durationMs = $join.durationMs
+          typingSeconds = 1.25
+          holdSeconds = 0.8
+        }
+        $steps += New-ProjectedJsonStep -DisplayCommand 'queqiao worker join --worker demo-worker --join-code <redacted> --json' -Root $root -Action {
+          queqiao worker join --worker demo-worker --join-code $joinCode --json
+        } -Project { param($o) [ordered]@{ joined = $o.joined; workerId = '<worker-id>'; environmentId = $o.environmentId } } -TypingSeconds 1.35
+        $steps += New-Step -DisplayCommand 'queqiao gateway workers list --gateway demo-gateway' -Root $root -Action {
+          queqiao gateway workers list --gateway demo-gateway
+        }
+        $steps += New-Step -DisplayCommand 'queqiao gateway status --gateway demo-gateway' -Root $root -Action {
+          queqiao gateway status --gateway demo-gateway
+        }
+        $steps += New-Step -DisplayCommand 'queqiao worker status --worker demo-worker' -Root $root -Action {
+          queqiao worker status --worker demo-worker
+        } -HoldSeconds 1.5
+        $results += Save-Demo -Title 'Queqiao CLI - Start, Enroll & Verify' -Stem '04-start-enroll-verify' -Steps $steps -PackageVersion $packageVersion -Root $root
+      }
+      finally {
+        if ($runtimeStarted) {
+          try { queqiao gateway stop --gateway demo-gateway --json 2>$null | Out-Null } catch {}
+          try { queqiao worker stop --worker demo-worker --json 2>$null | Out-Null } catch {}
+        }
+      }
+    }
+
+    Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
 finally {
-  if ($runtimeStarted) {
-    try { queqiao worker stop --name demo-worker 2>$null | Out-Null } catch {}
-    try { queqiao gateway stop --name demo-gateway 2>$null | Out-Null } catch {}
-    Start-Sleep -Milliseconds 250
-  }
-  foreach ($entry in $oldEnv.GetEnumerator()) {
-    Set-Item -Path "Env:$($entry.Key)" -Value $entry.Value -ErrorAction SilentlyContinue
+  foreach ($entry in $original.GetEnumerator()) {
     if ($null -eq $entry.Value) { Remove-Item -Path "Env:$($entry.Key)" -ErrorAction SilentlyContinue }
+    else { Set-Item -Path "Env:$($entry.Key)" -Value $entry.Value }
   }
-  if (Test-Path $root) { Remove-Item $root -Recurse -Force }
 }
+
+$results | ConvertTo-Json -Depth 5

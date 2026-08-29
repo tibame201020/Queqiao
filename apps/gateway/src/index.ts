@@ -1,4 +1,4 @@
-import { resolveRuntimeLayout } from "@queqiao/platform-paths";
+import { requireRuntimeConfigFile } from "@queqiao/platform-paths";
 import { createGatewayApp } from "./app.js";
 import { loadGatewayConfigFile } from "./config.js";
 import { listenGateway } from "./listen.js";
@@ -7,8 +7,8 @@ import { EnrollmentService } from "./enrollment-service.js";
 import { ensureGatewayManagementSecret } from "./management-secret.js";
 import { createGatewayManagementApp } from "./management-app.js";
 
-const layout = resolveRuntimeLayout();
-const config = loadGatewayConfigFile(process.env.QUEQIAO_CONFIG_FILE || layout.configFile);
+
+const config = loadGatewayConfigFile(requireRuntimeConfigFile());
 const memberships = new WorkerMembershipStore(config.stateDir);
 const enrollment = new EnrollmentService(memberships, config.stateDir);
 const managementSecret = await ensureGatewayManagementSecret(config.stateDir);

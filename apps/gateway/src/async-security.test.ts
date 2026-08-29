@@ -82,7 +82,6 @@ describe("async disconnect and resource security", () => {
     const worker = await createWorkerApp({
       workerId: TEST_WORKER_ID,
       environmentId: process.platform === "win32" ? "windows" : "linux",
-      defaultWorkspaceId: "coding",
       workerToken: TEST_WORKER_CREDENTIAL,
       processes,
       workspaces: [{ id: "coding", displayName: "Coding", root: temporary, profile: "coding", tools: { allow: [], deny: [], explicit: ["shell"] }, commands: { allow: [executable] } }],

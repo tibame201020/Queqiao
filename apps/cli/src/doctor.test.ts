@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { runtimeConfigSchema } from "@queqiao/config";
-import { doctorGateway } from "./doctor.js";
+import type { RuntimeLayout } from "@queqiao/platform-paths";
+import { doctorGateway, doctorPaths, doctorQueqiao } from "./doctor.js";
 
 const config = runtimeConfigSchema.parse({
   version: 1,
@@ -14,6 +15,30 @@ const config = runtimeConfigSchema.parse({
   },
   environments: [{ environmentId: "legacy", url: "http://127.0.0.1:7999", tokenFile: "legacy.secret" }],
 });
+
+const workerConfig = runtimeConfigSchema.parse({
+  version: 1,
+  worker: {
+    workerId: "11111111-1111-4111-8111-111111111111",
+    environmentId: "windows",
+    listen: { host: "127.0.0.1", port: 7576 },
+    tokenFile: "worker.secret",
+  },
+  workspaces: [{ id: "codes", displayName: "Codes", root: "C:/codes", profile: "coding" }],
+});
+
+function layout(configFile: string): RuntimeLayout {
+  return {
+    configDir: `${configFile}.config`,
+    dataDir: `${configFile}.data`,
+    stateDir: `${configFile}.state`,
+    logDir: `${configFile}.logs`,
+    runtimeDir: `${configFile}.runtime`,
+    secretsDir: `${configFile}.secrets`,
+    configFile,
+    gatewayStateDir: `${configFile}.gateway`,
+  };
+}
 
 describe("doctorGateway", () => {
   it("reads the Gateway liveness projection instead of legacy static Worker endpoints", async () => {
@@ -35,5 +60,49 @@ describe("doctorGateway", () => {
     const result = await doctorGateway(config, fetchImpl);
     expect(result.ok).toBe(false);
     expect(result.workerDiagnostics).toEqual({ supported: false, reason: "No Worker-native doctor capability is advertised" });
+  });
+});
+
+describe("doctorQueqiao", () => {
+  it("diagnoses named Gateways and Workers instead of the legacy default runtime", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true, environments: [{ environmentId: "windows", reachable: true }] }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+    const result = await doctorQueqiao(layout("hub.yaml"), {
+      fetchImpl,
+      roleNames: async (role) => role === "gateway" ? ["stable"] : ["windows"],
+      resolveNamedLayout: ((role: "gateway" | "worker", name: string) => layout(`${role}-${name}.yaml`)) as never,
+      readConfig: (async (file: string) => file.startsWith("gateway-") ? config : workerConfig) as never,
+      status: async (configFile, _layout, role, name) => ({
+        name,
+        role,
+        active: true,
+        managed: true,
+        pid: role === "gateway" ? 100 : 200,
+        health: { reachable: true, healthy: true, identityMatches: true, status: 200 },
+      }),
+      extensionDoctor: async () => ({ ok: true, issues: [] }),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.gateways).toMatchObject([{ name: "stable", role: "gateway", ok: true, configFile: "gateway-stable.yaml" }]);
+    expect(result.workers).toMatchObject([{ name: "windows", role: "worker", ok: true, configFile: "worker-windows.yaml" }]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails the whole-system result when Extension Hub integrity fails", async () => {
+    const result = await doctorQueqiao(layout("hub.yaml"), {
+      roleNames: async () => [],
+      extensionDoctor: async () => ({ ok: false, issues: ["broken"] }),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.extensions).toEqual({ ok: false, issues: ["broken"] });
+  });
+
+  it("reports only named role roots and the Extension Hub in normal mode", () => {
+    expect(doctorPaths({ LOCALAPPDATA: "C:\\Users\\owner\\AppData\\Local", TEMP: "C:\\Temp" }, "win32")).toEqual({
+      mode: "named-roles",
+      gateways: "C:\\Users\\owner\\AppData\\Local\\Queqiao\\gateways",
+      workers: "C:\\Users\\owner\\AppData\\Local\\Queqiao\\workers",
+      extensionHub: "C:\\Users\\owner\\AppData\\Local\\Queqiao\\data\\extensions",
+    });
   });
 });
