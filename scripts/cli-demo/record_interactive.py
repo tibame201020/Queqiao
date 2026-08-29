@@ -7,6 +7,7 @@ import pty
 import re
 import select
 import shutil
+import socket
 import struct
 import subprocess
 import sys
@@ -207,13 +208,13 @@ class Session:
         except OSError: pass
 
 
-def gateway_setup(rec: Recorder, cast: Path | None, name="demo-gateway", port="45775", management="45774", create_down=0):
+def gateway_setup(rec: Recorder, cast: Path | None, name="demo-gateway", port="45775", management="45774", create_down=0, public_url: str | None = None):
     s = Session(rec, cast).start()
     try:
         s.command("queqiao gateway setup", "New Gateway")
         m=s.mark(); s.down(create_down); s.enter(); s.wait_for("Gateway name", after=m)
         m=s.mark(); s.type(name); s.enter(); s.wait_for("Public Gateway URL", after=m)
-        m=s.mark(); s.type(f"https://gateway.example/{name}/"); s.enter(); s.wait_for("Gateway port", after=m)
+        m=s.mark(); s.type(public_url or f"https://gateway.example/{name}/"); s.enter(); s.wait_for("Gateway port", after=m)
         m=s.mark(); s.type(port); s.enter(); s.wait_for("Management port", after=m)
         m=s.mark(); s.type(management); s.enter(); s.wait_for("Gateway created", after=m)
     finally:
@@ -265,10 +266,71 @@ def extension_demo(rec: Recorder, cast: Path):
         s.close()
 
 
+def free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def wait_json(rec: Recorder, args: list[str], predicate, timeout=12):
+    deadline=time.monotonic()+timeout
+    last=None
+    while time.monotonic() < deadline:
+        try:
+            last=json.loads(rec.run_noninteractive(*args))
+            if predicate(last): return last
+        except Exception:
+            pass
+        time.sleep(0.2)
+    raise RuntimeError(f"Timed out waiting for {' '.join(args)}; last={last!r}")
+
+
+def runtime_fixture(rec: Recorder):
+    gateway_port=free_port(); management_port=free_port(); worker_port=free_port()
+    gateway_setup(
+        rec, None, "demo-gateway", str(gateway_port), str(management_port),
+        public_url=f"http://127.0.0.1:{gateway_port}/",
+    )
+    worker_setup(rec, None, "demo-worker", str(worker_port), custom=False)
+    return gateway_port, worker_port
+
+
+def start_runtime_demo(rec: Recorder, cast: Path):
+    runtime_fixture(rec)
+    s=Session(rec, cast).start()
+    try:
+        s.command("queqiao worker serve --worker demo-worker --bg", "$ ")
+        s.command("queqiao gateway serve --gateway demo-gateway --bg", "$ ")
+    finally:
+        s.close(final_hold=2.0)
+        rec.run_noninteractive("gateway", "stop", "--gateway", "demo-gateway", "--json")
+        rec.run_noninteractive("worker", "stop", "--worker", "demo-worker", "--json")
+
+
+def enroll_verify_demo(rec: Recorder, cast: Path):
+    runtime_fixture(rec)
+    rec.run_noninteractive("worker", "serve", "--worker", "demo-worker", "--bg", "--json")
+    rec.run_noninteractive("gateway", "serve", "--gateway", "demo-gateway", "--bg", "--json")
+    try:
+        wait_json(rec, ["worker", "status", "--worker", "demo-worker", "--json"], lambda v: v.get("active") is True and v.get("health", {}).get("healthy") is True)
+        wait_json(rec, ["gateway", "status", "--gateway", "demo-gateway", "--json"], lambda v: v.get("active") is True and v.get("health", {}).get("reachable") is True)
+        join=json.loads(rec.run_noninteractive("gateway", "join-token", "--gateway", "demo-gateway", "--expires", "120", "--json"))
+        join_code=join["joinCode"]
+        s=Session(rec, cast).start()
+        try:
+            s.command("queqiao worker join --worker demo-worker", "Join code")
+            m=s.mark(); s.type(join_code, delay=0.001); s.enter(); s.wait_for("Worker joined Gateway: demo-worker", after=m, timeout=12)
+        finally:
+            s.close(final_hold=3.5)
+    finally:
+        rec.run_noninteractive("gateway", "stop", "--gateway", "demo-gateway", "--json")
+        rec.run_noninteractive("worker", "stop", "--worker", "demo-worker", "--json")
+
+
 def render(agg: Path, cast: Path, gif: Path):
     gif.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([
-        str(agg), "--quiet", "--font-size", "17", "--fps-cap", "20", "--last-frame-duration", "2.0",
+        str(agg), "--quiet", "--no-loop", "--font-size", "17", "--fps-cap", "20", "--last-frame-duration", "3.0",
         str(cast), str(gif)
     ], check=True)
 
@@ -279,11 +341,11 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--work", required=True)
     parser.add_argument("--agg", required=True)
-    parser.add_argument("--demo", choices=["all","gateway","worker","selector","extension"], default="all")
+    parser.add_argument("--demo", choices=["all","gateway","worker","selector","extension","start","enroll"], default="all")
     args=parser.parse_args()
     out=Path(args.out); work=Path(args.work); agg=Path(args.agg)
     work.mkdir(parents=True, exist_ok=True); out.mkdir(parents=True, exist_ok=True)
-    selected=["gateway","worker","selector","extension"] if args.demo=="all" else [args.demo]
+    selected=["gateway","worker","selector","extension","start","enroll"] if args.demo=="all" else [args.demo]
     files=[]
     for index, name in enumerate(selected, start=1):
         root=work / name
@@ -294,11 +356,15 @@ def main():
         elif name=="worker": worker_setup(rec, cast, custom=True)
         elif name=="selector": selector_demo(rec, cast)
         elif name=="extension": extension_demo(rec, cast)
+        elif name=="start": start_runtime_demo(rec, cast)
+        elif name=="enroll": enroll_verify_demo(rec, cast)
         stems={
             "gateway":"01-gateway-setup",
             "worker":"02-worker-access-setup",
             "selector":"03-instance-selector",
             "extension":"04-extension-attach",
+            "start":"05-runtime-start",
+            "enroll":"06-worker-enrollment",
         }
         gif=out / f"{stems[name]}.gif"
         render(agg, cast, gif)

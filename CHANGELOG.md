@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.2 - 2026-08-30
+
+Production README and CLI onboarding documentation patch.
+
+### Highlights
+
+- Refocuses the npm/GitHub README on installation, the Gateway/Worker/Workspace/Extension mental model, and a copyable five-step first-deployment workflow.
+- Replaces the mismatched fifth onboarding animation with the same real PTY recording pipeline used by setup and selector demos. Runtime startup and enrollment/verification are split into two readable sub-scenes.
+- Makes all six README onboarding GIFs one-shot animations that stop on the final frame instead of looping indefinitely.
+- Adds a complete `docs/cli/reference.md` command reference and `docs/operations.md` operator guide so architecture, lifecycle, cleanup, migration, and full CLI detail no longer overload the package README.
+- Keeps npmjs-safe absolute visual/documentation links while preserving detailed visual/component/operational docs under `docs/cli/`.
+
+### Runtime impact
+
+- No Gateway, Worker, Workspace authority, Extension, protocol, or security semantics change in this patch.
+
 ## 0.8.1 - 2026-08-30
 
 CLI version reporting and interactive documentation patch.

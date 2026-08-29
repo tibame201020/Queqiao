@@ -4,460 +4,141 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/tibame201020/Queqiao/blob/main/LICENSE)
 [![npm](https://img.shields.io/npm/v/@tibame201020/queqiao.svg)](https://www.npmjs.com/package/@tibame201020/queqiao)
 
-Queqiao builds one secure bridge between AI clients and multiple coding environments.
+Queqiao is a secure bridge between AI clients and multiple local coding environments.
+A public Gateway handles MCP ingress, authentication, routing, and Worker membership. Each
+Windows, WSL, Linux, or future remote environment runs its own Worker, so filesystem and
+process execution stays inside the native environment that owns it.
 
-The public MCP endpoint belongs to a lightweight Gateway. Windows, WSL, Linux, and
-future remote environments each run their own Worker, so filesystem and process work
-always executes inside the native environment.
-
-## CLI onboarding
-
-Install Queqiao from npm:
+## Install
 
 ```shell
 npm install --global @tibame201020/queqiao
 queqiao --version
 ```
 
-Queqiao deliberately exposes its runtime and authority model instead of hiding it behind a
-single bootstrap command. The CLI walks through the same Gateway, Worker, Workspace, and
-Extension boundaries that remain authoritative at runtime.
+## Mental model
+
+- **Gateway** is the public control plane. It owns the MCP endpoint, OAuth, routing, and Worker membership.
+- **Worker** is a native execution host. It owns filesystem/process execution for its environment.
+- **Workspace** is a Worker-owned authority boundary. It limits roots, Tools, and executable commands.
+- **Extension** is installed into the local Extension Hub, then explicitly attached to a Worker.
+
+Queqiao intentionally does not hide these boundaries behind a generic `queqiao setup`. The
+CLI teaches the same model that remains authoritative at runtime.
+
+## First deployment
 
 ### 1. Configure the Gateway
 
+Run the interactive Gateway wizard:
+
 ![Interactive Queqiao Gateway setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/01-gateway-setup.gif)
 
-```text
-queqiao version
-
+```shell
 queqiao gateway setup
 ```
 
-The Gateway owns the public MCP endpoint, authentication, routing, and Worker membership.
-The animation is a real packed CLI running inside an isolated PTY; the recorder types and
-navigates the same public wizard a user sees.
+This creates or edits a named Gateway and configures its public URL, Gateway port, and local
+management port.
 
-### 2. Configure the Worker and its first Workspace
+### 2. Configure the Worker and first Workspace
+
+The Worker wizard creates the Worker and its first authorized Workspace in one flow:
 
 ![Interactive Queqiao Worker and Access setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/02-worker-access-setup.gif)
 
-```text
+```shell
 queqiao worker setup
 ```
 
-A configured Worker always has at least one authorized Workspace. Setup therefore collects
-the Workspace root, display identity, Access Profile, Tools, and command allowlist instead
-of silently granting machine-wide authority.
+Workspace setup chooses the root, display name, Access Profile, allowed Tools, and - when
+`run` is allowed - the executable allowlist. A configured Worker always retains at least one
+Workspace.
 
-### 3. Select named instances as the deployment grows
+### 3. Select named instances when the deployment grows
+
+When multiple Gateways or Workers exist, TTY commands open the shared instance selector:
 
 ![Interactive Queqiao named-instance selector](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/03-instance-selector.gif)
 
-Gateway and Worker instances stay independently addressable. In a TTY, commands can select
-among multiple configured instances interactively; automation and JSON mode continue to use
-explicit `--gateway` / `--worker` selectors.
+```shell
+queqiao gateway status
+```
 
-### 4. Install and attach Extensions explicitly
+Automation and `--json` calls stay deterministic: provide `--gateway <name>` or
+`--worker <name>` explicitly instead of relying on interactive selection.
+
+### 4. Install and attach Extensions
+
+Extension installation and Worker attachment are separate operations:
 
 ![Interactive Queqiao Extension attachment](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/04-extension-attach.gif)
 
-Extension Hub installation and Worker attachment are separate operations. Installing an
-Extension does not implicitly grant a Workspace new authority.
-
-### 5. Start, enroll, and verify the deployment
-
-![Queqiao CLI start, enroll, and verify flow](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/flows/04-start-enroll-verify.gif)
-
-Start both roles:
-
-```text
-queqiao gateway serve --gateway <gateway> --bg
-queqiao worker serve --worker <worker> --bg
+```shell
+queqiao extension install <npm:package|local-path>
+queqiao extension attach
 ```
 
-Create one short-lived self-contained join code on the Gateway host, then join from the
-Worker host. Human-mode `join-token` copies the join code to the clipboard automatically;
-`worker join` securely prompts for it:
+Installing a package does not silently attach it to every Worker and does not expand a
+Workspace's authority.
 
-```text
+### 5. Start, enroll, and verify
+
+#### 5A. Start the runtimes
+
+Both roles use the same explicit lifecycle model:
+
+![Interactive Queqiao runtime startup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/05-runtime-start.gif)
+
+```shell
+queqiao worker serve --worker <worker> --bg
+queqiao gateway serve --gateway <gateway> --bg
+```
+
+#### 5B. Enroll the Worker
+
+Generate a short-lived join code on the Gateway host. Human mode copies it to the clipboard;
+`worker join` prompts for it without echoing the secret:
+
+![Interactive Queqiao Worker enrollment](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/06-worker-enrollment.gif)
+
+```shell
 queqiao gateway join-token --gateway <gateway>
 queqiao worker join --worker <worker>
 ```
 
-Verify both runtimes and Gateway membership before connecting an MCP client:
+Then verify both runtimes and Gateway membership:
 
-```text
-queqiao gateway status --gateway <gateway>
+```shell
 queqiao worker status --worker <worker>
+queqiao gateway status --gateway <gateway>
 queqiao gateway workers list --gateway <gateway>
 ```
 
-Additional Workspaces can be added or removed while the Worker is running. Workspace
-configuration is hot-reloaded; a Worker must always retain at least one Workspace.
-
-See the [CLI visual guide](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md) for the complete interactive,
-operational-flow, and component GIF sets, including the recording contract and production
-TUI grammar.
-
-## Production architecture
-
-- **Gateway** owns the public MCP endpoint, OAuth, stable tool schemas, routing, and
-  worker health. It cannot read files or spawn workspace processes.
-- **Worker** owns native execution and exposes only its environment-local Worker
-  transport to the Gateway. The verified transport is loopback HTTP; Workers do not
-  auto-register, maintain an idle registration connection, or expose a public MCP endpoint.
-- **CLI** manages gateway, worker, workspace, tool, and command policy.
-- **Protocol** contains versioned wire contracts and stable public tool names.
-- **Security** owns identities, step-up challenges, approval grants, secret boundaries,
-  and authentication adapters. OAuth is one adapter, not the security model itself.
-- **Policy** is a pure authorization engine used by both Gateway and Worker.
-- **Config** validates versioned configuration before it reaches a runtime module.
-- **Tool runtime** registers bundled and optional typed tools through one
-  transport-neutral extension contract with lifecycle sealing and interception hooks.
-- **Workspace** provides bounded native filesystem primitives with containment and
-  atomic mutation guarantees.
-
-See [Architecture](https://github.com/tibame201020/Queqiao/blob/main/docs/architecture.md) and the [architecture decisions](https://github.com/tibame201020/Queqiao/blob/main/docs/adr/README.md).
-
-## Project status
-
-Queqiao is under active development. The packaged Core and Worker runtime are independent
-from optional extensions. The first-party Git capability has been externalized from the
-Worker and is activated only through the Extension Hub when a compatible Git extension
-package is installed and attached. Its seven capabilities are `git_repositories`,
-`git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and
-`git_worktree_remove`. Registry, package naming, and publishing policy are intentionally
-handled outside this Core/CLI freeze.
-
-`workspace_info` may explicitly target a configured Workspace or omit `workspaceId` only
-when exactly one online Workspace is available. `list_workspaces` includes a safe
-deployment-attestation projection containing
-the Core Manifest Revision, Deployment Manifest Fingerprint, public tool count, Worker
-Protocol Version, and bounded MCP compatibility window. OAuth still uses only the
-`queqiao:access` handshake scope; Workspace profile/tool/command policy remains the
-authority boundary.
-
-`run` and `shell` support `mode: sync | async`. Async mode returns after native process
-acceptance with a native PID and bounded lifetime while discarding stdout/stderr; it
-does not introduce a Queqiao Job API, durable restart recovery, or tmux dependency.
-Remote Streamable HTTP(S) MCP is the supported client transport. Queqiao currently pins
-`2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28` rather than inheriting an
-unbounded SDK compatibility range.
-
-### Validated MCP clients and runtime platforms
-
-The 0.8.0 release is client-neutral at the MCP boundary. Real-client validation
-covers **ChatGPT**, **Claude Code 2.1.235**, and the MCP Inspector. Claude Code was
-validated through remote HTTP discovery, Dynamic Client Registration, PKCE OAuth,
-and a final `Connected` health check against the public Shadow deployment. Native OAuth
-loopback redirects are accepted only when the corresponding loopback origin is explicitly
-configured; exact redirect-URI binding remains enforced after registration.
-
-Gateway and Worker runtimes are release-supported on **Windows** and **Linux**. WSL runs
-the Linux Worker/runtime path rather than a Windows-specific Worker adapter. The packed
-npm artifact is exercised by CI with a real Linux Gateway + Linux Worker authenticated
-handshake. macOS is not a supported 0.8.0 lifecycle target; unsupported platforms fail
-explicitly rather than silently using a Windows or Linux lifecycle implementation.
-
-See the [0.8.0 CLI release acceptance](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/release-v0.8.0-cli-acceptance-2026-08-29.md). The prior [0.7.0 interoperability acceptance](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/release-v0.7.0-interoperability-acceptance-2026-08-19.md) is retained as historical client/runtime evidence.
-
-The v0 public path was validated through ChatGPT on 2026-08-12. See the
-[validation evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/v0-chatgpt-2026-08-12.md).
-
-Multiple configured workspaces were validated through the same public endpoint and
-Windows Worker on 2026-08-12. See the
-[multiple-workspaces evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/multiple-workspaces-chatgpt-2026-08-12.md).
-
-Native Windows and WSL Workers were validated through one connector and one Funnel on
-2026-08-12. See the
-[multi-environment evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/multi-environment-chatgpt-2026-08-12.md).
-
-Atomic CLI workspace updates and Worker hot reload were validated through the existing
-connector without reconnecting on 2026-08-12. See the
-[CLI hot-reload evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/cli-workspace-hot-reload-chatgpt-2026-08-12.md).
-
-Gateway environment registry hot reload and WSL-native CLI management were validated
-through the existing connector without reconnecting on 2026-08-12. See the
-[environment/WSL CLI evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/cli-environment-wsl-chatgpt-2026-08-12.md).
-
-Bidirectional tool permission hot reload was validated through the existing connector
-without reconnecting on 2026-08-12. See the
-[permission evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/permission-hot-reload-chatgpt-2026-08-12.md).
-
-The six-tool coding baseline, single OAuth handshake scope, atomic write, exact edit,
-and readback loop were validated through ChatGPT on 2026-08-12. See the
-[coding baseline evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/coding-baseline-chatgpt-2026-08-12.md).
-
-Manifest revision 2 is frozen. It adds the shell-free `run` tool without changing the
-first six tool contracts. Native Windows and WSL execution, coding/editor profile
-enforcement, command policy, and timeout termination were validated through ChatGPT.
-See the [revision 2 evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/run-manifest-v2-chatgpt-2026-08-12.md).
-
-Manifest revision 3 is frozen. It appends
-`list_directory` and `search_text` without changing the first seven contracts. Both
-execute as bounded Worker-native primitives: no shell, no external command dependency,
-no symlink traversal, and workspace policy remains authoritative. See the
-[revision 3 evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/filesystem-discovery-manifest-v3-chatgpt-2026-08-12.md).
-
-Manifest revision 4 is frozen. It adds an explicit `shell` tool while keeping
-the safer argv-only `run` contract unchanged. `shell` is fail-closed: it requires a
-`coding` profile and an explicit workspace tool allow rule. Windows defaults to
-PowerShell and may explicitly select cmd or Git Bash; Linux/WSL defaults to Bash. See
-the [revision 4 evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/native-shell-manifest-v4-chatgpt-2026-08-12.md).
-
-Core Manifest Revision 5 introduced `mode: sync | async` on `run` and `shell` while
-preserving bounded process policy and intentionally avoiding a durable Job abstraction. See
-the [Revision 5 async evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/core-manifest-revision-5-async-execution-2026-08-13.md).
-
-Core Manifest Revision 6 makes `workspace_info` explicitly targetable by Workspace ID and
-adds safe deployment attestation to `list_workspaces` without adding an eighteenth public
-tool. See the [Revision 6 evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/core-manifest-revision-6-workspace-attestation-2026-08-13.md).
-
-Core Manifest Revision 7 introduced one fixed
-public `extension` proxy tool plus an environment-local Extension Hub. Hub installation and
-Worker attachment are separate: attachment itself means the Worker uses the extension, so
-there is no additional enable/disable state. Proxy-mode extension changes do not mutate the
-public Core schema after the Revision 7 connector migration. See
-[ADR-0012](https://github.com/tibame201020/Queqiao/blob/main/docs/adr/0012-extension-hub-and-worker-attachment.md) and the
-[Revision 7 candidate evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/core-manifest-revision-7-extension-platform-candidate-2026-08-27.md).
-
-The 0.8.0 release uses **Core Manifest Revision 8**. Configured Workers own one or more peer Workspaces; there is no persisted default Workspace. Calls that omit `workspaceId` are resolved only when exactly one online Workspace is available; otherwise Queqiao returns `workspace_required`.
-
-Security Baseline v1 is frozen. OAuth replay protection, MCP request budgets, sanitized
-health reporting, fail-closed Worker routing, native policy enforcement, filesystem and
-process containment, and the documented adversarial matrix are enforced by required
-Windows/Linux GitHub checks. See the
-[security gate](https://github.com/tibame201020/Queqiao/blob/main/docs/security/security-baseline-v1-gate.md) and
-[threat matrix](https://github.com/tibame201020/Queqiao/blob/main/docs/security/security-baseline-v1-threat-matrix.md).
-
-Resource Safety Baseline v1 separately keeps the long-running Core lightweight. Windows
-and Linux GitHub Actions run the packed npm artifact and bound resident-memory overhead,
-idle CPU/write churn, request-log amplification, residual growth, descriptors/threads,
-and process cleanup. Core PID accounting is intentionally separate from explicitly
-authorized child workloads. See the
-[resource safety contract](https://github.com/tibame201020/Queqiao/blob/main/docs/resource-safety-baseline-v1.md) and
-[initial stable audit evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/resource-safety-baseline-v1-2026-08-14.md).
-
-## CLI baseline
-
-The current management CLI supports:
-
-```text
-queqiao gateway setup
-queqiao gateway list
-queqiao gateway serve [--gateway <gateway>] [--bg]
-queqiao gateway stop [--gateway <gateway>]
-queqiao gateway status [--gateway <gateway>]
-queqiao gateway remove
-queqiao gateway join-token [--gateway <gateway>] [--expires <seconds>] [--json]
-queqiao gateway workers list [--gateway <gateway>]
-queqiao gateway workers update [--gateway <gateway>] --worker-id <id> --endpoint <loopback-worker-url>
-queqiao gateway workers remove [--gateway <gateway>] --worker-id <id>
-
-queqiao worker setup
-queqiao worker list
-queqiao worker port [--worker <worker>] [--port <port>]
-queqiao worker serve [--worker <worker>] [--bg]
-queqiao worker stop [--worker <worker>]
-queqiao worker status [--worker <worker>]
-queqiao worker remove
-queqiao worker join [--worker <worker>]
-queqiao worker workspace add [--worker <worker>] [--display-name <name>]
-queqiao worker workspace list [--worker <worker>]
-queqiao worker workspace remove [--worker <worker>] --id <id>
-queqiao worker workspace profile set [--worker <worker>] [--workspace <id>] [--profile read-only|editor|coding]
-queqiao worker workspace tool allow|deny [--worker <worker>] --workspace <id> --tool <tool>
-queqiao worker workspace command allow|deny [--worker <worker>] --workspace <id> --command <executable>
-queqiao worker workspace permissions show [--worker <worker>] [--workspace <id>]
-
-queqiao extension install <npm:package|local-path> [--worker <name>|--attach-all]
-queqiao extension attach [<id>] [--worker <name>]
-queqiao extension detach [<id>] [--worker <name>]
-queqiao extension uninstall [<id>] [--force]
-queqiao extension list
-queqiao extension show [<id>]
-
-queqiao doctor
-queqiao doctor extension
-queqiao doctor manifest show [--gateway <name>]
-queqiao doctor tool explain <tool> [--gateway <name>]
-queqiao doctor paths
-
-queqiao uninstall
-```
-
-The previous flat command paths are removed from the public CLI surface. Use the hierarchical forms above. Obsolete repository-search discovery-root configuration has also been removed; repository/project discovery belongs to extensions or clients operating inside an explicitly authorized Workspace.
-
-Commands with a bracketed `--gateway` or `--worker` open an instance selector when run in a terminal. Automation and `--json` calls must provide the selector explicitly. Use `gateway list` and `worker list` to obtain valid names; Queqiao never silently targets a `default` instance.
-
-`queqiao doctor` scans the local named Gateways and Workers plus Extension Hub integrity. Manifest/tool composition diagnostics are Gateway-owned and therefore require `--gateway <name>`.
-
-### External extension contract
-
-External packages use the public SDK export from the published Queqiao package:
-
-```ts
-import { defineExtension } from "@tibame201020/queqiao/extension";
-
-export default defineExtension({
-  manifest: {
-    id: "dev.example.extension",
-    version: "1.0.0",
-    displayName: "Example Extension",
-  },
-  activate(api) {
-    // Register, extend, or replace typed tools through the public Extension API.
-  },
-  async dispose() {
-    // Release sessions, timers, child resources, or other extension-owned state.
-  },
-});
-```
-
-The npm package must also declare Queqiao package metadata in `package.json`. `apiVersion` is currently `1`; `module` is a package-contained module path; the manifest declares Worker hosting, ordering, and contribution contracts:
-
-```json
-{
-  "name": "example-queqiao-extension",
-  "version": "1.0.0",
-  "queqiao": {
-    "apiVersion": 1,
-    "module": "./dist/index.js",
-    "manifest": {
-      "id": "dev.example.extension",
-      "version": "1.0.0",
-      "displayName": "Example Extension",
-      "host": { "kind": "worker" },
-      "ordering": { "requires": [], "before": [], "after": [] },
-      "contributions": []
-    }
-  }
-}
-```
-
-The Extension Hub accepts Worker-hosted npm packages (`npm:<package>`) and prepared local package directories (`<local-path>`). npm installs use a Hub-managed copy with lifecycle scripts disabled. Local installs keep the canonical user-owned package path in place: Queqiao does not copy it, run package scripts, or delete it during uninstall. Both sources validate package metadata, manifest/version identity, entry-point containment, and Worker compatibility before committing the Hub entry. `install` changes Hub package state only unless `--worker` or `--attach-all` is supplied. `attach` is the Worker activation state; there is no separate enable/disable lifecycle. See [Extension authoring](https://github.com/tibame201020/Queqiao/blob/main/docs/extensions.md) for the package contract, public Worker capability surface, local development workflow, and an LLM-oriented authoring template.
-
-A running Worker hot-reloads attachment config generation-by-generation. A candidate ExtensionHost must load and validate before atomic replacement; rejected candidates preserve the last-known-good generation. In-flight requests retain the generation they started with, and retired extensions receive `dispose()` only after the final lease completes.
-
-A configured Worker always owns at least one authorized Workspace. The first Workspace is
-created during `worker setup`; additional Workspaces are managed with `worker workspace
-add/remove` while the Worker is running. Generic discovery-root state has been removed;
-repository/worktree/project discovery belongs to the owning extension or client and
-operates only inside an already-authorized Workspace using bounded Core filesystem
-primitives.
-
-Configuration changes use an exclusive lock, validated temporary file, and atomic rename.
-A running Worker hot-reloads Workspace and Extension attachment changes. A rejected update
-leaves the last-known-good runtime generation active.
-
-The same compiled CLI runs inside WSL with Linux-native XDG paths and explicit
-`serve`/`stop` lifecycle. Queqiao does not require or install a systemd user service for
-the Worker.
-
-### First-time setup contract
-
-The current CLI exposes independent Gateway and Worker role primitives. There is intentionally
-no generic `queqiao setup`: integrated operator UX is planned as a Workstation TUI that
-composes these same management primitives without merging Gateway, Worker, Workspace, or
-Extension ownership.
-
-```text
-queqiao gateway setup
-queqiao worker setup
-queqiao gateway serve --gateway <gateway> --bg
-queqiao worker serve --worker <worker> --bg
-queqiao gateway join-token --gateway <gateway>
-queqiao worker join --worker <worker>
-```
-
-`gateway setup` and `worker setup` are interactive create/edit flows. They first select an
-existing named instance or `New Gateway` / `New Worker`. Gateway setup asks for the Public
-Gateway URL,
-Gateway port, and Management port. A new Worker setup asks for the Worker port and its
-initial authorized Workspace. Interactive first-Workspace setup and interactive `worker workspace add` use the same Access Profile flow. Queqiao
-provides built-in `Reader` and `Editor` profiles, then lists any user-saved profiles, followed
-by `Custom`. Custom access is configured as an explicit tool allowlist; when `run` is selected,
-the flow additionally asks for a comma-separated executable allowlist. That executable input keeps
-local history for Up/Down recall and shows the most recent entry as the default. A Custom
-tools/commands matrix may optionally be saved after configuration as a reusable Access Profile. Existing Workspace access can be changed with `worker workspace profile set --worker <worker>`: without `--profile`, it selects a Workspace when needed and applies the same Access Profile/Custom flow; explicit `--profile read-only|editor|coding` remains the scripting-compatible capability-ceiling primitive. Editing a valid Worker preserves its existing Workspaces.
-Legacy incomplete Workers can be repaired through the same setup flow without rotating
-their identity or credential. New or changed local ports must be in range, must not collide
-with another configured Queqiao instance, and must be available on loopback.
-
-Human-mode `gateway join-token` creates a short-lived self-contained join code and copies
-it to the clipboard automatically. `worker join` prompts securely for that code unless
-`--join-code` is supplied for scripted use. Enrollment is separate from process startup;
-`--bg` means a background process managed by Queqiao's explicit PID-aware lifecycle, not
-an OS service, autostart entry, Run key, or systemd unit.
-The mocked first-time setup flow and cross-platform Workspace-ID behavior are protected by
-dedicated required GitHub checks on both Ubuntu and Windows:
-`CLI setup flow (ubuntu-latest)` and `CLI setup flow (windows-latest)`. They run only after
-the monorepo packages are typechecked/built, matching the dependency order required by the
-workspace package graph.
-
-## Runtime configuration
-
-Queqiao never requires secrets or machine-specific paths inside the source checkout.
-The bundled CLI reports the named-role configuration roots and Extension Hub location with:
-
-```powershell
-npm run queqiao -- doctor paths
-```
-
-Installed from npm, run each role's interactive setup to choose an existing named instance
-or create a new one. Creating a Worker includes its initial authorized Workspace. Lifecycle
-and management commands continue to address named instances explicitly:
-
-```shell
-npm install --global @tibame201020/queqiao
-queqiao gateway setup
-queqiao worker setup
-queqiao gateway serve --gateway shadow --bg
-queqiao worker serve --worker windows --bg
-queqiao gateway join-token --gateway shadow
-queqiao worker join --worker windows
-```
-
-Human-mode `gateway join-token` copies a versioned self-contained join code containing the
-Gateway public base URL, one-time enrollment token, and expiry. Interactive `worker join`
-accepts that single code. The join code is bearer-secret material used only for Worker CLI
-to Gateway enrollment; it does not publish or authorize the Gateway-to-Worker runtime
-transport.
-Local instances can be removed with `queqiao gateway remove` or `queqiao worker remove`. Removal uses the same interactive instance-selection model as setup, requires confirmation, and refuses to delete a running instance.
-
-Use `queqiao uninstall` for package cleanup. The command is always interactive. Its first phase shows a Space-toggle multi-select list of Queqiao-owned local cleanup targets that npm does not remove: discovered Gateway instances, Worker instances, and the Extension Hub. Each entry includes the actual local path(s) that will be removed. The normal named-role runtime model has no global Queqiao config or global Queqiao state root. After the selected local paths are reviewed and confirmed, Queqiao stops selected managed runtimes as needed and removes only those paths. A separate final prompt then asks whether to uninstall `@tibame201020/queqiao` from global npm; the npm package is not part of the cleanup multi-select. There is no `--yes` bypass. Direct `npm uninstall --global @tibame201020/queqiao` removes the package but cannot guarantee runtime/config cleanup because modern npm does not run package uninstall lifecycle hooks. Explicit `QUEQIAO_*` override directories are not recursively deleted by the cleanup command because they may point at user-owned locations outside Queqiao's standard roots.
-
-The package is self-contained and exposes independent Gateway and Worker process roles. Installing it does not create an OS service, autostart entry, Run key, or systemd unit. Runtime lifecycle is explicit:
-
-```shell
-queqiao gateway serve --gateway shadow --bg
-queqiao gateway status --gateway shadow
-queqiao gateway stop --gateway shadow
-
-queqiao worker serve --worker windows --bg
-queqiao worker status --worker windows
-queqiao worker stop --worker windows
-```
-
-Worker listeners remain loopback-only. Within one Gateway membership registry, each Gateway-visible Worker transport endpoint must be unique. If a Worker listener port must change, stop that Worker first, run `queqiao worker port --worker <worker> --port <port>`, restart it, then update the Gateway membership transport with `queqiao gateway workers update --gateway <gateway> --worker-id <id> --endpoint http://127.0.0.1:<port>/`.
-
-On Windows, named Gateway and Worker layouts are stored below `%LOCALAPPDATA%\Queqiao\gateways\<name>` and `%LOCALAPPDATA%\Queqiao\workers\<name>`. Linux and WSL use the corresponding XDG role-scoped layout. Secrets remain separate files referenced by `config.yaml`; OAuth client registrations and other internal state remain implementation-owned data.
-
-The frozen HTTP transport baseline permits only loopback Worker endpoints. Windows-to-WSL localhost forwarding may make a WSL loopback Worker visible to the Windows Gateway through the Windows WSL relay, but Queqiao does not expose the Worker through the Gateway public base URL.
-
-To migrate an older checkout safely, preview the non-overwriting plan and then execute it:
-
-```powershell
-npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao
-npm run queqiao -- migrate from-repo --repo C:\path\to\Queqiao --execute
-```
+At this point the Gateway can route approved MCP operations to the enrolled Worker while the
+Worker continues to enforce Workspace, Tool, command, and Extension authority locally.
+
+## Documentation
+
+| Need | Guide |
+| --- | --- |
+| Complete CLI command reference | [CLI reference](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/reference.md) |
+| Interactive, operational, and component visuals | [CLI visual guide](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md) |
+| Workspace / Access authority | [Workspace authority](https://github.com/tibame201020/Queqiao/blob/main/docs/workspace-authority.md) |
+| Install or author Extensions | [Extensions](https://github.com/tibame201020/Queqiao/blob/main/docs/extensions.md) |
+| Runtime lifecycle, enrollment, cleanup, and migration | [Operations](https://github.com/tibame201020/Queqiao/blob/main/docs/operations.md) |
+| Gateway / Worker / protocol architecture | [Architecture](https://github.com/tibame201020/Queqiao/blob/main/docs/architecture.md) |
+| Distribution and cluster guarantees | [Distribution baseline](https://github.com/tibame201020/Queqiao/blob/main/docs/distribution-cluster-baseline-v1.md) |
+| Security / resource guarantees | [Security and resource baselines](https://github.com/tibame201020/Queqiao/blob/main/docs/resource-safety-baseline-v1.md) |
+| Release and acceptance evidence | [Validation index](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/README.md) |
 
 ## Contributing and security
 
-Contributions are welcome. See [CONTRIBUTING.md](https://github.com/tibame201020/Queqiao/blob/main/CONTRIBUTING.md) for the development and validation workflow. Security issues should follow [SECURITY.md](https://github.com/tibame201020/Queqiao/blob/main/SECURITY.md); do not disclose credentials or exploit details in a public issue. Queqiao is released under the [MIT License](https://github.com/tibame201020/Queqiao/blob/main/LICENSE).
+Contributions are welcome. See [CONTRIBUTING.md](https://github.com/tibame201020/Queqiao/blob/main/CONTRIBUTING.md) and
+[SECURITY.md](https://github.com/tibame201020/Queqiao/blob/main/SECURITY.md) before submitting changes or security reports.
 
 ## Inspiration and independence
 
-Queqiao was inspired by [Waishnav DevSpace](https://github.com/Waishnav/devspace) and
-its approach to exposing selected local coding workspaces through MCP. Queqiao is an
-independent implementation and is not affiliated with or endorsed by DevSpace.
+Queqiao was inspired by [Waishnav DevSpace](https://github.com/Waishnav/devspace) and its
+approach to exposing selected local coding workspaces through MCP. Queqiao is an independent
+implementation and is not affiliated with or endorsed by DevSpace.
