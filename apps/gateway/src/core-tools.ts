@@ -17,7 +17,7 @@ function requireHandshake(context: GatewayToolContext): void {
 }
 
 async function selectWorkspace(context: GatewayToolContext, workspaceId?: string): Promise<string> {
-  return workspaceId || (await context.workers.defaultRoute()).workspaceId;
+  return workspaceId || (await context.workers.implicitRoute()).workspaceId;
 }
 
 export const coreWorkspaceTools: QueqiaoExtension<GatewayToolContext> = {

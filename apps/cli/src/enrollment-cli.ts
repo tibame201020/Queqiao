@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { cancel, intro, isCancel, outro, password, text } from "@clack/prompts";
-import { runtimeConfigSchema, readRuntimeConfig, type RuntimeConfig } from "@queqiao/config";
+import { runtimeConfigSchema, readRuntimeConfig, readRuntimeConfigForRepair, workspaceConfigSchema, type RuntimeConfig, type WorkspaceConfig } from "@queqiao/config";
 import { AtomicConfigStore } from "./atomic-config-store.js";
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
 import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-paths.js";
@@ -19,6 +19,7 @@ function assertAllowedOptions(args: string[], command: string, allowed: readonly
 }
 export type JoinPrompt = (field: "code", message: string) => Promise<string>;
 export type WorkerSetupPrompt = (field: "port", message: string, initialValue: string) => Promise<string>;
+export type WorkerSetupOptions = { initialWorkspace?: WorkspaceConfig };
 export type GatewaySetupPrompt = (field: "public-base-url", message: string, initialValue?: string) => Promise<string>;
 
 type JoinCodeEnvelope = {
@@ -429,9 +430,9 @@ export async function updateWorkerPort(configFile: string, args: string[], promp
   return { changed: port !== runtime.worker.listen.port, role: "worker", workerId: runtime.worker.workerId, environmentId: runtime.worker.environmentId, previousPort: runtime.worker.listen.port, port };
 }
 
-export async function setupWorker(configFile: string, args: string[], secretsDirectory: string, prompt?: WorkerSetupPrompt): Promise<unknown> {
+export async function setupWorker(configFile: string, args: string[], secretsDirectory: string, prompt?: WorkerSetupPrompt, options: WorkerSetupOptions = {}): Promise<unknown> {
   let current: any = { version: 1, workspaces: [] };
-  try { current = await readRuntimeConfig(configFile); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  try { current = await readRuntimeConfigForRepair(configFile); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
 
   const existingWorker = current.worker;
   await secureRuntimeDirectory(path.dirname(configFile));
@@ -457,22 +458,36 @@ export async function setupWorker(configFile: string, args: string[], secretsDir
   if (portError) throw new Error(portError);
   const port = Number(portValue);
 
+  const parsedInitialWorkspace = options.initialWorkspace ? workspaceConfigSchema.parse(options.initialWorkspace) : undefined;
+  const initialWorkspace = parsedInitialWorkspace ? workspaceConfigSchema.parse({ ...parsedInitialWorkspace, root: await resolveWorkspaceAuthorityRoot(parsedInitialWorkspace.root) }) : undefined;
+  const currentWorkspaces = Array.isArray(current.workspaces) ? current.workspaces : [];
+
   if (existingWorker) {
+    let workspaces = currentWorkspaces;
+    if (initialWorkspace && !workspaces.some((entry: WorkspaceConfig) => entry.id === initialWorkspace.id)) workspaces = [...workspaces, initialWorkspace];
+    if (!workspaces.length) throw new Error("Worker setup requires at least one authorized Workspace");
     const next = runtimeConfigSchema.parse({
       ...current,
       worker: { ...existingWorker, listen: { ...existingWorker.listen, port } },
-      workspaces: current.workspaces || [],
+      workspaces,
     });
     await persistRuntimeConfig(configFile, next);
     if (!portArg && !prompt) outro(`Worker updated: ${environmentId}`);
-    return { setup: true, mode: "edit", role: "worker", file: configFile, workerId: existingWorker.workerId, environmentId, port };
+    return { setup: true, mode: "edit", role: "worker", file: configFile, workerId: existingWorker.workerId, environmentId, port, workspaceCount: workspaces.length };
   }
 
+  if (!initialWorkspace) throw new Error("Worker setup requires an initial authorized Workspace");
+  const workspaces = currentWorkspaces.some((entry: WorkspaceConfig) => entry.id === initialWorkspace.id) ? currentWorkspaces : [...currentWorkspaces, initialWorkspace];
   const tokenFile = path.join(secretsDirectory, `worker-${environmentId}.secret`);
   await writeFile(tokenFile, `${randomBytes(32).toString("base64url")}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
-  await secureRuntimeFile(tokenFile);
-  const next = runtimeConfigSchema.parse({ ...current, worker: { workerId: randomUUID(), environmentId, listen: { host: "127.0.0.1", port }, tokenFile }, workspaces: current.workspaces || [] });
-  await persistRuntimeConfig(configFile, next);
-  if (!portArg && !prompt) outro(`Worker setup complete: ${environmentId}`);
-  return { setup: true, mode: "create", role: "worker", file: configFile, workerId: next.worker?.workerId, environmentId, port };
+  try {
+    await secureRuntimeFile(tokenFile);
+    const next = runtimeConfigSchema.parse({ ...current, worker: { workerId: randomUUID(), environmentId, listen: { host: "127.0.0.1", port }, tokenFile }, workspaces });
+    await persistRuntimeConfig(configFile, next);
+    if (!portArg && !prompt) outro(`Worker setup complete: ${environmentId}`);
+    return { setup: true, mode: "create", role: "worker", file: configFile, workerId: next.worker?.workerId, environmentId, port, workspaceCount: workspaces.length };
+  } catch (error) {
+    await rm(tokenFile, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }

@@ -7,6 +7,7 @@ import { z } from "zod";
 import {
   extensionManifestSchema,
   readRuntimeConfig,
+  readRuntimeConfigForRepair,
   runtimeConfigSchema,
   type InstalledExtensionConfig,
   type RuntimeConfig,
@@ -165,7 +166,7 @@ async function discoverWorkers(): Promise<ExtensionWorkerTarget[]> {
     if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(entry.name)) continue;
     const layout = resolveRuntimeLayoutForNamedRole("worker", entry.name);
     try {
-      const config = await readRuntimeConfig(layout.configFile);
+      const config = await readRuntimeConfigForRepair(layout.configFile);
       if (config.worker) workers.push({ name: entry.name, layout, config });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
@@ -186,6 +187,9 @@ function attachedConfig(extension: HubExtension): InstalledExtensionConfig {
 
 function assertWorkerCompatible(config: RuntimeConfig, extension: HubExtension, workerName: string): void {
   if (!config.worker) throw new Error(`Worker runtime config is required: ${workerName}`);
+  if (!config.workspaces.length) {
+    throw new Error(`Worker ${workerName} is not fully configured; run queqiao worker setup and authorize at least one Workspace first`);
+  }
   const host = extension.manifest.host;
   if (host.kind !== "worker") throw new Error(`Extension ${extension.manifest.id} is not Worker-hosted`);
   if (host.environmentId && host.environmentId !== config.worker.environmentId) {

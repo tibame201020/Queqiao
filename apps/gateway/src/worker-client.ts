@@ -97,7 +97,7 @@ export class WorkerClient {
 
   async listWorkspaces() {
     await this.handshake();
-    return this.executeTracked<{ environmentId: string; defaultWorkspaceId: string; workspaces: Array<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] } }> }>({ operation: "list-workspaces" });
+    return this.executeTracked<{ environmentId: string; workspaces: Array<{ environmentId: string; workspaceId: string; displayName: string; root: string; profile: "read-only" | "editor" | "coding"; tools: { allow: string[]; deny: string[]; explicit: string[] }; commands: { allow: string[] } }> }>({ operation: "list-workspaces" });
   }
 
   async workspaceInfo(workspaceId: string, tool: "workspace_info" | "open_workspace" = "open_workspace") {

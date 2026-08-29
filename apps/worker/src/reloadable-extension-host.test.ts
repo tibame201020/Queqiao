@@ -30,7 +30,7 @@ function installed(id: string, module: string): InstalledExtensionConfig {
 function runtimeConfig(root: string, extensions: readonly InstalledExtensionConfig[]) {
   return {
     version: 1 as const,
-    worker: { environmentId: "windows", listen: { host: "127.0.0.1" as const, port: 7576 }, tokenFile: path.join(root, "worker.secret"), defaultWorkspaceId: "alpha" },
+    worker: { environmentId: "windows", listen: { host: "127.0.0.1" as const, port: 7576 }, tokenFile: path.join(root, "worker.secret") },
     workspaces: [{ id: "alpha", displayName: "Alpha", root, profile: "coding" as const }],
     extensions,
   };

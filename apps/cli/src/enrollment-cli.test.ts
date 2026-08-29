@@ -77,17 +77,21 @@ async function fixture(serverWorkerId?: string) {
   const workerId = crypto.randomUUID();
   const environmentId = "windows";
   const configFile = path.join(root, "config.yaml");
-  await writeFile(configFile, serializeRuntimeConfig({ version: 1, environments: [], workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }], worker: { workerId, environmentId, listen: { host: "127.0.0.1", port: 7576 }, tokenFile, defaultWorkspaceId: "default" } }), "utf8");
+  await writeFile(configFile, serializeRuntimeConfig({ version: 1, environments: [], workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }], worker: { workerId, environmentId, listen: { host: "127.0.0.1", port: 7576 }, tokenFile } }), "utf8");
   const credential = new WorkerCredentialSource(tokenFile);
-  const workerApp = await createWorkerApp({ workerId: serverWorkerId || workerId, environmentId, defaultWorkspaceId: "default", workerCredential: credential, workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }] });
+  const workerApp = await createWorkerApp({ workerId: serverWorkerId || workerId, environmentId, workerCredential: credential, workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }] });
   const worker = await listen(workerApp);
   const workerPort = Number(new URL(worker.url).port);
-  await writeFile(configFile, serializeRuntimeConfig({ version: 1, environments: [], workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }], worker: { workerId, environmentId, listen: { host: "127.0.0.1", port: workerPort }, tokenFile, defaultWorkspaceId: "default" } }), "utf8");
+  await writeFile(configFile, serializeRuntimeConfig({ version: 1, environments: [], workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }], worker: { workerId, environmentId, listen: { host: "127.0.0.1", port: workerPort }, tokenFile } }), "utf8");
   const memberships = new WorkerMembershipStore(stateDir);
   const enrollment = new EnrollmentService(memberships, stateDir);
   const gatewayConfig = { host: "127.0.0.1" as const, port: 7575, managementPort: 7574, publicBaseUrl: new URL("http://127.0.0.1/"), resourceUrl: "http://127.0.0.1/mcp", stateDir, approvalSecret: "a".repeat(32), jwtSecret: new TextEncoder().encode("j".repeat(48)), trustProxyHops: 0, allowedRedirectOrigins: new Set(["http://127.0.0.1"]), workers: [], extensions: [], configDirectory: root };
   const gateway = await listen(await createGatewayApp(gatewayConfig, enrollment));
   return { root, tokenFile, bootstrap, workerId, environmentId, configFile, memberships, enrollment, workerUrl: worker.url, workerServer: worker.server, gatewayUrl: gateway.url };
+}
+
+function setupWorkspace(root: string, id = "workspace") {
+  return { initialWorkspace: { id, displayName: id, root, profile: "read-only" as const, tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } } };
 }
 
 describe("role setup CLI", () => {
@@ -104,13 +108,22 @@ describe("role setup CLI", () => {
     expect(runtime.worker).toBeUndefined();
     expect(runtime).not.toHaveProperty("environments");
     expect((await readFile(path.join(stateDirectory, "management.secret"), "utf8")).trim().length).toBeGreaterThanOrEqual(32);
-    const setup: any = await setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory);
+    const setup: any = await setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory, undefined, setupWorkspace(workspaceRoot));
     runtime = await readRuntimeConfig(configFile);
     expect(runtime.worker?.workerId).toMatch(/^[0-9a-f-]{36}$/i);
     expect(runtime.worker?.listen.port).toBe(7576);
     expect(setup.port).toBe(7576);
     expect(runtime).not.toHaveProperty("environments");
     expect((await readFile(runtime.worker!.tokenFile, "utf8")).trim().length).toBeGreaterThanOrEqual(32);
+  });
+
+  it("refuses to persist a new Worker without an initial authorized Workspace", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-no-workspace-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const secretsDirectory = path.join(root, "secrets");
+    await expect(setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory)).rejects.toThrow(/initial authorized Workspace/);
+    await expect(readFile(configFile, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(path.join(secretsDirectory, "worker-windows.secret"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("completes the mocked first-time setup flow through Gateway, Worker, and Workspace", async () => {
@@ -128,25 +141,14 @@ describe("role setup CLI", () => {
     await setupWorker(configFile, ["worker", "setup"], secretsDirectory, async (field, message, initialValue) => {
       workerPrompts.push(`${field}:${message}:${initialValue}`);
       return "8765";
-    });
-
-    const workspacePrompts: string[] = [];
-    const workspaceAnswers = [workspaceRoot, "", "My Project", "3"];
-    await addWorkspace(configFile, ["workspace", "add", "--worker", "windows"], async (message) => {
-      workspacePrompts.push(message);
-      return workspaceAnswers.shift() || "";
+    }, {
+      initialWorkspace: { id: "my-project", displayName: "My Project", root: workspaceRoot, profile: "coding", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } },
     });
 
     const runtime = await readRuntimeConfig(configFile);
     expect(workerPrompts).toEqual(["port:Worker port:7576"]);
-    expect(workspacePrompts).toEqual([
-      `Workspace path [${process.cwd()}]: `,
-      "Workspace id [my-project]: ",
-      "Display name [my-project]: ",
-      "Profile [1=read-only, 2=editor, 3=coding] (1): ",
-    ]);
     expect(runtime.gateway?.publicBaseUrl).toBe("https://gateway.example/shadow/");
-    expect(runtime.worker).toMatchObject({ listen: { host: "127.0.0.1", port: 8765 }, defaultWorkspaceId: "my-project" });
+    expect(runtime.worker).toMatchObject({ listen: { host: "127.0.0.1", port: 8765 } });
     expect(runtime.workspaces).toEqual([
       expect.objectContaining({ id: "my-project", displayName: "My Project", root: canonicalWorkspaceRoot, profile: "coding" }),
     ]);
@@ -185,7 +187,7 @@ describe("role setup CLI", () => {
     const result: any = await setupWorker(configFile, ["worker", "setup"], secretsDirectory, async (field, message, initialValue) => {
       prompted.push(`${field}:${message}:${initialValue}`);
       return "8765";
-    });
+    }, setupWorkspace(root));
     const runtime = await readRuntimeConfig(configFile);
     expect(prompted).toEqual(["port:Worker port:7576"]);
     expect(result.port).toBe(8765);
@@ -196,7 +198,7 @@ describe("role setup CLI", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-port-update-"));
     const configFile = path.join(root, "config", "config.yaml");
     const secretsDirectory = path.join(root, "secrets");
-    const setup: any = await setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory);
+    const setup: any = await setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory, undefined, setupWorkspace(root));
     const before = await readRuntimeConfig(configFile);
     const result: any = await updateWorkerPort(configFile, ["worker", "port", "--port", "7577"]);
     const after = await readRuntimeConfig(configFile);
@@ -230,7 +232,7 @@ describe("role setup CLI", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-edit-"));
     const configFile = path.join(root, "config", "config.yaml");
     const secretsDirectory = path.join(root, "secrets");
-    await setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory);
+    await setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory, undefined, setupWorkspace(root));
     const before = await readRuntimeConfig(configFile);
     const result: any = await setupWorker(configFile, ["worker", "setup"], secretsDirectory, async (_field, _message, initialValue) => {
       expect(initialValue).toBe("7576");

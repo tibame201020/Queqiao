@@ -41,7 +41,6 @@ worker:
   environmentId: linux-ci
   listen: { host: 127.0.0.1, port: 17576 }
   tokenFile: $test_root/data/secrets/worker.secret
-  defaultWorkspaceId: fixture
 workspaces:
   - id: fixture
     displayName: Fixture

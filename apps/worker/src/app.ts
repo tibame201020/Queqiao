@@ -12,7 +12,6 @@ import type { ReloadableExtensionHost } from "./reloadable-extension-host.js";
 export type WorkerAppConfig = {
   workerId?: string;
   environmentId: string;
-  defaultWorkspaceId: string;
   workspaces?: readonly WorkerWorkspaceConfig[];
   workspacesFile?: string;
   workerToken?: string;
@@ -28,7 +27,7 @@ function safeEqual(left: string, right: string): boolean { return timingSafeEqua
 export async function createWorkerApp(config: WorkerAppConfig): Promise<Express> {
   if (Boolean(config.workspaces) === Boolean(config.workspacesFile)) throw new Error("Configure exactly one workspace source");
   if (!config.workerCredential && !config.workerToken) throw new Error("Worker credential source is required");
-  const catalog = new WorkspaceCatalog(config.defaultWorkspaceId, config.workspacesFile ? { file: config.workspacesFile } : { workspaces: config.workspaces! });
+  const catalog = new WorkspaceCatalog(config.workspacesFile ? { file: config.workspacesFile } : { workspaces: config.workspaces! });
   await catalog.initialize();
   const coreTools = createWorkerToolRuntime();
   type RequestExtensionState = { host: ExtensionHost<WorkerToolContext> | undefined; generation: number };
@@ -115,7 +114,7 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   app.get("/health", (_req, res) => res.json({ ok: true, service: "queqiao-worker", environmentId: config.environmentId }));
   app.get("/enrollment/identity", (_req, res) => res.json({ workerId: config.workerId, environmentId: config.environmentId, protocolVersion: config.workerId ? QUEQIAO_WORKER_PROTOCOL_VERSION : QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION }));
   app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/hello`, (_req, res) => res.json(hello));
-  app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/workspaces`, (_req, res) => res.json({ environmentId: config.environmentId, defaultWorkspaceId: config.defaultWorkspaceId, workspaces: descriptors() }));
+  app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/workspaces`, (_req, res) => res.json({ environmentId: config.environmentId, workspaces: descriptors() }));
   app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/workspaces/:workspaceId`, (req, res) => {
     const workspace = catalog.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: "workspace_not_found" });

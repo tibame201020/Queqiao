@@ -23,7 +23,6 @@ const workerConfig = runtimeConfigSchema.parse({
     environmentId: "windows",
     listen: { host: "127.0.0.1", port: 7576 },
     tokenFile: "worker.secret",
-    defaultWorkspaceId: "codes",
   },
   workspaces: [{ id: "codes", displayName: "Codes", root: "C:/codes", profile: "coding" }],
 });

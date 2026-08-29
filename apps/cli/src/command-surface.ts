@@ -88,6 +88,7 @@ const COMMAND_TREE: CommandNode = {
             add: terminal,
             list: terminal,
             remove: terminal,
+            default: { children: { set: terminal } },
             profile: { children: { set: terminal } },
             tool: { children: { allow: terminal, deny: terminal } },
             command: { children: { allow: terminal, deny: terminal } },
@@ -242,6 +243,7 @@ Commands:
   add --worker <worker>
   list --worker <worker>
   remove --worker <worker> --id <id>
+  default set --worker <worker> --workspace <id>
   profile set --worker <worker> --workspace <id> --profile read-only|editor|coding
   tool allow|deny --worker <worker> --workspace <id> --tool <tool>
   command allow|deny --worker <worker> --workspace <id> --command <executable>

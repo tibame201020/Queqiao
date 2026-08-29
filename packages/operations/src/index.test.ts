@@ -52,7 +52,7 @@ function diagnostics(extensions: readonly InstalledExtensionConfig[] = []) {
 }
 
 describe("deployment manifest fingerprint", () => {
-  it("preserves Revision 4/5 fingerprint history and advances to Revision 6 for targetable workspace_info", () => {
+  it("preserves earlier fingerprint history and advances the manifest for explicit multi-Workspace routing", () => {
     const revision4Fingerprint = "sha256:bc96f482e2c5b395d466565706712ea76d067bdf14b4be801d5395ad4673c1fe";
     const revision5CoreTools = CORE_PUBLIC_TOOLS.map((tool) => tool.name === "workspace_info" ? {
       ...tool,
@@ -67,7 +67,7 @@ describe("deployment manifest fingerprint", () => {
     expect(revision5WorkspaceSchema.properties ?? {}).not.toHaveProperty("workspaceId");
 
     const state = diagnostics();
-    expect(QUEQIAO_CORE_MANIFEST_REVISION).toBe(7);
+    expect(QUEQIAO_CORE_MANIFEST_REVISION).toBe(8);
     expect(state.deploymentManifestFingerprint).not.toBe(revision4Fingerprint);
     expect(state.deploymentManifestFingerprint).not.toBe(revision5Fingerprint);
     const manifest = buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: [] });
@@ -140,7 +140,7 @@ describe("composition diagnostics", () => {
     const state = diagnostics([extension]);
     const publicState = publicOperationsProjection(state);
     expect(state.extensions[0]).toMatchObject({ id: "dev.queqiao.reader", activation: { kind: "workspaces", workspaceIds: ["alpha"] }, loadState: "not_observed" });
-    expect(publicState).toEqual({ coreManifestRevision: 7, deploymentManifestFingerprint: state.deploymentManifestFingerprint, publicToolCount: 12, workerProtocolVersion: "2.0", supportedMcpProtocolVersions: ["2026-07-28", "2025-11-25"] });
+    expect(publicState).toEqual({ coreManifestRevision: 8, deploymentManifestFingerprint: state.deploymentManifestFingerprint, publicToolCount: 12, workerProtocolVersion: "2.0", supportedMcpProtocolVersions: ["2026-07-28", "2025-11-25"] });
     expect(JSON.stringify(publicState)).not.toContain("dev.queqiao.reader");
     expect(JSON.stringify(publicState)).not.toContain("alpha");
   });

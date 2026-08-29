@@ -18,7 +18,7 @@ const inertProcesses: WorkerProcessExecutor = {
 
 async function workspace(config: Omit<WorkerWorkspaceConfig, "root">): Promise<WorkspaceEntry> {
   temporary = await mkdtemp(join(tmpdir(), "queqiao-extension-authority-"));
-  const catalog = new WorkspaceCatalog(config.id, { workspaces: [{ ...config, root: temporary }] });
+  const catalog = new WorkspaceCatalog({ workspaces: [{ ...config, root: temporary }] });
   await catalog.initialize();
   return catalog.get(config.id)!;
 }

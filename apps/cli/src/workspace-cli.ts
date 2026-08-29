@@ -1,31 +1,44 @@
 import path from "node:path";
 import { group, intro, isCancel, outro, select, text, cancel } from "@clack/prompts";
 import { workspacePath } from "./workspace-path-prompt.js";
-import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig } from "@queqiao/config";
+import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig, type WorkspaceConfig } from "@queqiao/config";
 import { AtomicConfigStore } from "./atomic-config-store.js";
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
 import { secureRuntimeFile } from "./secure-runtime-paths.js";
 
 export type WorkspacePrompt = (message: string) => Promise<string>;
+export type WorkspaceProfile = "read-only" | "editor" | "coding";
+export type WorkspaceAnswers = { root: string; id: string; displayName: string; profile: WorkspaceProfile };
 
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
   return index >= 0 ? args[index + 1] : undefined;
 }
 
-function suggestedWorkspaceId(root: string): string {
+export function suggestedWorkspaceId(root: string): string {
   let value = path.win32.basename(root).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
   if (!value) value = "workspace";
   if (!/^[a-z]/.test(value)) value = `workspace-${value}`;
   return value;
 }
 
-function parseProfile(value: string | undefined): "read-only" | "editor" | "coding" {
+export function parseWorkspaceProfile(value: string | undefined): WorkspaceProfile {
   const normalized = (value || "read-only").trim().toLowerCase();
   if (normalized === "1" || normalized === "read-only" || normalized === "readonly") return "read-only";
   if (normalized === "2" || normalized === "editor") return "editor";
   if (normalized === "3" || normalized === "coding") return "coding";
   throw new Error("Profile must be 1/read-only, 2/editor, or 3/coding");
+}
+
+export function workspaceConfigFromAnswers(answers: WorkspaceAnswers): WorkspaceConfig {
+  return workspaceConfigSchema.parse({
+    id: answers.id,
+    displayName: answers.displayName,
+    root: answers.root,
+    profile: answers.profile,
+    tools: { allow: [], deny: [], explicit: [] },
+    commands: { allow: [] },
+  });
 }
 
 function assertNotCancelled<T>(value: T | symbol): T {
@@ -34,7 +47,7 @@ function assertNotCancelled<T>(value: T | symbol): T {
   throw new Error("Workspace setup cancelled");
 }
 
-async function interactiveWorkspaceAnswers(cwd: string) {
+async function interactiveWorkspaceAnswers(cwd: string): Promise<WorkspaceAnswers> {
   intro("Add workspace");
   try {
     const answers = await group({
@@ -73,7 +86,7 @@ async function interactiveWorkspaceAnswers(cwd: string) {
       root: String(answers.root),
       id: String(answers.id),
       displayName: String(answers.displayName),
-      profile: parseProfile(String(answers.profile)),
+      profile: parseWorkspaceProfile(String(answers.profile)),
     };
   } catch (error) {
     if (error instanceof Error && error.message === "Workspace setup cancelled") throw error;
@@ -81,14 +94,14 @@ async function interactiveWorkspaceAnswers(cwd: string) {
   }
 }
 
-async function testPromptAnswers(prompt: WorkspacePrompt) {
+async function testPromptAnswers(prompt: WorkspacePrompt): Promise<WorkspaceAnswers> {
   const cwd = process.cwd();
   const rootInput = (await prompt(`Workspace path [${cwd}]: `)).trim() || cwd;
   const root = await resolveWorkspaceAuthorityRoot(rootInput);
   const suggestedId = suggestedWorkspaceId(root);
   const id = (await prompt(`Workspace id [${suggestedId}]: `)).trim() || suggestedId;
   const displayName = (await prompt(`Display name [${id}]: `)).trim() || id;
-  const profile = parseProfile((await prompt("Profile [1=read-only, 2=editor, 3=coding] (1): ")).trim());
+  const profile = parseWorkspaceProfile((await prompt("Profile [1=read-only, 2=editor, 3=coding] (1): ")).trim());
   return { root, id, displayName, profile };
 }
 
@@ -98,7 +111,7 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
   if (!current.worker) throw new Error("Worker setup is required before adding a Workspace");
 
   const scripted = option(args, "root") || option(args, "id") || option(args, "name") || option(args, "profile");
-  let answers: { root: string; id: string; displayName: string; profile: "read-only" | "editor" | "coding" };
+  let answers: WorkspaceAnswers;
 
   if (scripted) {
     const rootInput = option(args, "root");
@@ -106,7 +119,7 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
     const root = await resolveWorkspaceAuthorityRoot(rootInput);
     const id = option(args, "id") || suggestedWorkspaceId(root);
     const displayName = option(args, "name") || id;
-    answers = { root, id, displayName, profile: parseProfile(option(args, "profile")) };
+    answers = { root, id, displayName, profile: parseWorkspaceProfile(option(args, "profile")) };
   } else if (prompt) {
     answers = await testPromptAnswers(prompt);
   } else {
@@ -114,27 +127,35 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
     answers = { ...raw, root: await resolveWorkspaceAuthorityRoot(raw.root) };
   }
 
-  const workspace = workspaceConfigSchema.parse({
-    id: answers.id,
-    displayName: answers.displayName,
-    root: answers.root,
-    profile: answers.profile,
-    tools: { allow: [], deny: [], explicit: [] },
-    commands: { allow: [] },
-  });
-
+  const workspace = workspaceConfigFromAnswers(answers);
   const next = await store.update((config) => {
     if (!config.worker) throw new Error("Worker setup is required before adding a Workspace");
     if (config.workspaces.some((entry) => entry.id === workspace.id)) throw new Error(`Workspace already exists: ${workspace.id}`);
     return runtimeConfigSchema.parse({
       ...config,
-      worker: { ...config.worker, defaultWorkspaceId: config.worker.defaultWorkspaceId || workspace.id },
       workspaces: [...config.workspaces, workspace],
     });
   });
   await secureRuntimeFile(configFile);
   if (!prompt && !scripted) outro(`Workspace added: ${workspace.id}`);
-  return { added: true, workspace: next.workspaces.find((entry) => entry.id === workspace.id), defaultWorkspaceId: next.worker?.defaultWorkspaceId };
+  return { added: true, workspace: next.workspaces.find((entry) => entry.id === workspace.id) };
 }
 
-export const workspaceCliInternals = { suggestedWorkspaceId, parseProfile };
+export async function removeWorkspace(configFile: string, workerName: string, workspaceId: string): Promise<unknown> {
+  const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
+  const next = await store.update((config) => {
+    if (!config.worker) throw new Error("Worker setup is required before removing a Workspace");
+    const workspace = config.workspaces.find((entry) => entry.id === workspaceId);
+    if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`);
+    if (config.workspaces.length <= 1) throw new Error(`Worker ${workerName} must retain at least one Workspace`);
+    const extensionBlockers = config.extensions
+      .filter((extension) => extension.activation.kind === "workspaces" && extension.activation.workspaceIds.some((id) => id === workspaceId))
+      .map((extension) => extension.manifest.id);
+    if (extensionBlockers.length) throw new Error(`Workspace ${workspaceId} is referenced by Extensions: ${extensionBlockers.join(", ")}. Detach or update those Extensions first.`);
+    return runtimeConfigSchema.parse({ ...config, workspaces: config.workspaces.filter((entry) => entry.id !== workspaceId) });
+  });
+  await secureRuntimeFile(configFile);
+  return { changed: true, worker: workerName, removed: workspaceId, workspaces: next.workspaces };
+}
+
+export const workspaceCliInternals = { suggestedWorkspaceId, parseProfile: parseWorkspaceProfile, workspaceConfigFromAnswers };

@@ -1,13 +1,16 @@
 import { access, readdir } from "node:fs/promises";
 import { createServer } from "node:net";
 import { cancel, intro, isCancel, outro, select, text } from "@clack/prompts";
-import { readRuntimeConfig } from "@queqiao/config";
+import { readRuntimeConfig, readRuntimeConfigForRepair } from "@queqiao/config";
 import {
   resolveNamedRoleConfigRoot,
   resolveRuntimeLayoutForNamedRole,
   type RuntimeRole,
 } from "@queqiao/platform-paths";
-import { setupGateway as setupGatewayPrimitive, setupWorker as setupWorkerPrimitive } from "./enrollment-cli.js";
+import { setupGateway as setupGatewayPrimitive, setupWorker as setupWorkerPrimitive, type WorkerSetupOptions } from "./enrollment-cli.js";
+import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
+import { workspacePath } from "./workspace-path-prompt.js";
+import { suggestedWorkspaceId, workspaceConfigFromAnswers, type WorkspaceProfile } from "./workspace-cli.js";
 
 const CREATE_NEW = "__create__";
 const DIM = "\x1b[2m";
@@ -52,6 +55,30 @@ function validatePort(value: string, label: string): string | undefined {
     : `${label} must be an integer from 1 to 65535`;
 }
 
+async function collectInitialWorkspace(prompts: RoleSetupPrompts, injected: boolean) {
+  let rootInput: string;
+  if (injected) {
+    rootInput = await prompts.text(hint("Initial Workspace", "Directory this Worker is authorized to access."), process.cwd());
+  } else {
+    const selected = await workspacePath(process.cwd());
+    if (isCancel(selected)) {
+      cancel("Worker setup cancelled");
+      throw new Error("Worker setup cancelled");
+    }
+    rootInput = String(selected || process.cwd());
+  }
+  const root = await resolveWorkspaceAuthorityRoot(rootInput);
+  const suggestedId = suggestedWorkspaceId(root);
+  const id = await prompts.text("Workspace id", suggestedId, (value) => /^[a-z][a-z0-9_-]*$/.test(value) ? undefined : "Use lowercase letters, numbers, _ or -; start with a letter");
+  const displayName = await prompts.text("Display name", id);
+  const profile = await prompts.choose("Access profile", [
+    { value: "read-only", label: "Read only" },
+    { value: "editor", label: "Editor" },
+    { value: "coding", label: "Coding" },
+  ]) as WorkspaceProfile;
+  return workspaceConfigFromAnswers({ root, id, displayName, profile });
+}
+
 async function defaultPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = createServer();
@@ -78,7 +105,7 @@ async function configuredPortReservations(
       const layout = resolveRuntimeLayoutForNamedRole(role, instanceName, env, platform);
       let runtime;
       try {
-        runtime = await readRuntimeConfig(layout.configFile);
+        runtime = await readRuntimeConfigForRepair(layout.configFile);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
         throw error;
@@ -199,9 +226,9 @@ export async function runRoleSetupWizard(
   }
 
   const layout = resolveRuntimeLayoutForNamedRole(role, name, env, platform);
-  let current: Awaited<ReturnType<typeof readRuntimeConfig>> | undefined;
+  let current: Awaited<ReturnType<typeof readRuntimeConfigForRepair>> | undefined;
   try {
-    current = await readRuntimeConfig(layout.configFile);
+    current = await readRuntimeConfigForRepair(layout.configFile);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
@@ -274,8 +301,13 @@ export async function runRoleSetupWizard(
       throw new Error(`Worker port ${workerPort} is already in use`);
     }
     setupArgs = [...setupArgs, "--port", workerPortText];
+    const setupOptions: WorkerSetupOptions = {};
+    const configuredWorkspaces = current?.workspaces || [];
+    if (creating || !configuredWorkspaces.length) {
+      setupOptions.initialWorkspace = await collectInitialWorkspace(prompts, Boolean(injectedPrompts));
+    }
     const primitive = dependencies.setupWorker ?? setupWorkerPrimitive;
-    result = await primitive(layout.configFile, setupArgs, layout.secretsDir);
+    result = await primitive(layout.configFile, setupArgs, layout.secretsDir, undefined, setupOptions);
   }
 
   if (!injectedPrompts) outro(`${roleLabel} ${creating ? "created" : "updated"}: ${name}`);

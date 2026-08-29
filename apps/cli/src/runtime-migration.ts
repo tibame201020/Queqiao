@@ -58,7 +58,7 @@ export async function migrateFromRepository(repository: string, layout: RuntimeL
   const config = {
     version: 1 as const,
     gateway: { publicBaseUrl: required(legacyEnv, "PUBLIC_BASE_URL"), listen: { host: "127.0.0.1", port: Number(legacyEnv.get("PORT") || 7575) }, trustProxyHops: Number(legacyEnv.get("TRUST_PROXY_HOPS") || 1), stateDirectory: layout.gatewayStateDir, approvalSecretFile: secretFiles.get("OAUTH_APPROVAL_SECRET")!, jwtSigningSecretFile: secretFiles.get("JWT_SIGNING_SECRET")!, allowedRedirectOrigins: (legacyEnv.get("OAUTH_ALLOWED_REDIRECT_ORIGINS") || "https://chatgpt.com,http://127.0.0.1,http://localhost").split(",") },
-    worker: { workerId, environmentId, listen: { host: "127.0.0.1" as const, port: Number(legacyEnv.get("QUEQIAO_WORKER_PORT") || 7576) }, tokenFile: workerTokenFile, defaultWorkspaceId: legacyEnv.get("QUEQIAO_WORKSPACE_ID") || workspaces[0]?.id || "default" },
+    worker: { workerId, environmentId, listen: { host: "127.0.0.1" as const, port: Number(legacyEnv.get("QUEQIAO_WORKER_PORT") || 7576) }, tokenFile: workerTokenFile },
     workspaces,
   };
   await secureWrite(targets.config, serializeRuntimeConfig(config));
@@ -79,7 +79,7 @@ export async function migrateRuntimeLayoutV1(layout: RuntimeLayout, execute: boo
   const gateway = approvalSecretFile && jwtSigningSecretFile && env.get("PUBLIC_BASE_URL") ? { publicBaseUrl: env.get("PUBLIC_BASE_URL"), listen: { host: "127.0.0.1", port: Number(env.get("PORT") || 7575) }, trustProxyHops: Number(env.get("TRUST_PROXY_HOPS") || 1), stateDirectory: env.get("QUEQIAO_STATE_DIR") || layout.gatewayStateDir, approvalSecretFile, jwtSigningSecretFile, allowedRedirectOrigins: (env.get("OAUTH_ALLOWED_REDIRECT_ORIGINS") || "https://chatgpt.com,http://127.0.0.1,http://localhost").split(",") } : undefined;
   const environmentId = env.get("QUEQIAO_ENVIRONMENT_ID") || legacyWorkers[0]?.environmentId || "local";
   const workerId = workerTokenFile ? randomUUID() : undefined;
-  const worker = workerTokenFile ? { workerId, environmentId, listen: { host: "127.0.0.1" as const, port: Number(env.get("QUEQIAO_WORKER_PORT") || 7576) }, tokenFile: workerTokenFile, defaultWorkspaceId: env.get("QUEQIAO_WORKSPACE_ID") || workspaces[0]?.id || "default" } : undefined;
+  const worker = workerTokenFile ? { workerId, environmentId, listen: { host: "127.0.0.1" as const, port: Number(env.get("QUEQIAO_WORKER_PORT") || 7576) }, tokenFile: workerTokenFile } : undefined;
   const membership = workerTokenFile && legacyWorkers.length ? planLocalMembership(legacyWorkers, environmentId, workerId!, workerTokenFile) : undefined;
   await secureWrite(layout.configFile, serializeRuntimeConfig({ version: 1, ...(gateway ? { gateway } : {}), ...(worker ? { worker } : {}), workspaces }));
   if (membership) await writeMembershipRegistry(layout, membership);

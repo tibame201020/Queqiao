@@ -11,7 +11,7 @@ afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, fo
 describe("Worker authoritative permission enforcement", () => {
   it("exposes an authenticated, protocol-versioned Gateway handshake", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-handshake-"));
-    const app = await createWorkerApp({ environmentId: "linux", defaultWorkspaceId: "one", workerToken: "worker-secret", workspaces: [{ id: "one", displayName: "One", root: temporary }] });
+    const app = await createWorkerApp({ environmentId: "linux", workerToken: "worker-secret", workspaces: [{ id: "one", displayName: "One", root: temporary }] });
     await request(app).get("/v1/hello").expect(401);
     const response = await request(app).get("/v1/hello").set("x-queqiao-worker-token", "worker-secret").expect(200);
     expect(response.body).toMatchObject({ protocolVersion: "2.0", environmentId: "linux", capabilities: expect.arrayContaining(["workspace-routing", "tool-invocation", "async-process-v1"]) });
@@ -21,7 +21,7 @@ describe("Worker authoritative permission enforcement", () => {
   it("exposes Worker Protocol 3.0 with stable workerId after Worker setup", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-handshake-v3-"));
     const workerId = "11111111-1111-4111-8111-111111111111";
-    const app = await createWorkerApp({ workerId, environmentId: "windows", defaultWorkspaceId: "one", workerToken: "worker-secret", workspaces: [{ id: "one", displayName: "One", root: temporary }] });
+    const app = await createWorkerApp({ workerId, environmentId: "windows", workerToken: "worker-secret", workspaces: [{ id: "one", displayName: "One", root: temporary }] });
     const response = await request(app).get("/v1/hello").set("x-queqiao-worker-token", "worker-secret").expect(200);
     expect(response.body).toMatchObject({ protocolVersion: "3.0", workerId, environmentId: "windows", capabilities: [] });
     expect(response.body.instanceId).toMatch(/^[0-9a-f-]{36}$/);
@@ -29,7 +29,7 @@ describe("Worker authoritative permission enforcement", () => {
   it("denies read_file even when called directly with a valid Worker credential", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-permission-"));
     await writeFile(path.join(temporary, "fixture.txt"), "secret\n");
-    const app = await createWorkerApp({ environmentId: "windows", defaultWorkspaceId: "denied", workerToken: "worker-secret", workspaces: [{ id: "denied", displayName: "Denied", root: temporary, profile: "read-only", tools: { allow: [], deny: ["read_file"] }, commands: { allow: [] } }] });
+    const app = await createWorkerApp({ environmentId: "windows", workerToken: "worker-secret", workspaces: [{ id: "denied", displayName: "Denied", root: temporary, profile: "read-only", tools: { allow: [], deny: ["read_file"] }, commands: { allow: [] } }] });
     const response = await request(app).post("/v1/read-file").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "denied", path: "fixture.txt", offset: 0, limit: 1 }).expect(403);
     expect(response.body).toMatchObject({ error: "tool_denied" });
     const generic = await request(app).post("/v1/tools/read_file").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "denied", path: "fixture.txt", offset: 0, limit: 1 }).expect(403);
@@ -38,7 +38,7 @@ describe("Worker authoritative permission enforcement", () => {
 
   it("allows editor writes but rejects them for a read-only profile", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-permission-"));
-    const app = await createWorkerApp({ environmentId: "windows", defaultWorkspaceId: "readonly", workerToken: "worker-secret", workspaces: [{ id: "readonly", displayName: "Read only", root: temporary }, { id: "editor", displayName: "Editor", root: temporary, profile: "editor" }] });
+    const app = await createWorkerApp({ environmentId: "windows", workerToken: "worker-secret", workspaces: [{ id: "readonly", displayName: "Read only", root: temporary }, { id: "editor", displayName: "Editor", root: temporary, profile: "editor" }] });
     const denied = await request(app).post("/v1/tools/write_file").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "readonly", path: "denied.txt", content: "no" }).expect(403);
     expect(denied.body).toMatchObject({ error: "tool_denied" });
     await request(app).post("/v1/tools/write_file").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "editor", path: "allowed.txt", content: "before" }).expect(200);
@@ -48,7 +48,7 @@ describe("Worker authoritative permission enforcement", () => {
   it("fails closed when a Workspace step-up rule matches but no approval runtime is available", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-step-up-"));
     const target = path.join(temporary, "blocked.txt");
-    const app = await createWorkerApp({ environmentId: "windows", defaultWorkspaceId: "guarded", workerToken: "worker-secret", workspaces: [{
+    const app = await createWorkerApp({ environmentId: "windows", workerToken: "worker-secret", workspaces: [{
       id: "guarded", displayName: "Guarded", root: temporary, profile: "editor",
       tools: { allow: ["write_file"], deny: [], explicit: [] }, commands: { allow: [] },
       stepUp: [{ tools: ["write_file"], methods: ["local"], ttlSeconds: 60, maxAttempts: 3 }],
@@ -61,7 +61,7 @@ describe("Worker authoritative permission enforcement", () => {
   it("runs only allowlisted executables in coding workspaces without exposing a shell", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-permission-"));
     const executable = path.basename(process.execPath).toLowerCase();
-    const app = await createWorkerApp({ environmentId: "windows", defaultWorkspaceId: "coding", workerToken: "worker-secret", workspaces: [
+    const app = await createWorkerApp({ environmentId: "windows", workerToken: "worker-secret", workspaces: [
       { id: "coding", displayName: "Coding", root: temporary, profile: "coding", commands: { allow: [executable] } },
       { id: "editor", displayName: "Editor", root: temporary, profile: "editor", commands: { allow: [executable] } },
     ] });
@@ -80,7 +80,7 @@ describe("Worker authoritative permission enforcement", () => {
       async start(input: { executable: string }) { calls.push({ method: "start", executable: input.executable }); return { pid: 4321, startedAt: "2026-08-13T01:00:00.000Z", timeoutMs: 30_000, stdout: "discarded" as const, stderr: "discarded" as const }; },
     };
     const executable = "node";
-    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", defaultWorkspaceId: "coding", workerToken: "worker-secret", processes, workspaces: [{ id: "coding", displayName: "Coding", root: temporary, profile: "coding", tools: { allow: [], deny: [], explicit: ["shell"] }, commands: { allow: [executable] } }] });
+    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", workerToken: "worker-secret", processes, workspaces: [{ id: "coding", displayName: "Coding", root: temporary, profile: "coding", tools: { allow: [], deny: [], explicit: ["shell"] }, commands: { allow: [executable] } }] });
 
     const sync = await request(app).post("/v1/tools/run").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "coding", executable, args: [], cwd: "." }).expect(200);
     expect(sync.body.result).toMatchObject({ exitCode: 0, stdout: "sync-ok" });
@@ -98,7 +98,7 @@ describe("Worker authoritative permission enforcement", () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-shell-"));
     const invocations: Array<{ executable: string; args: readonly string[] }> = [];
     const windowsExecutor = { async run(input: { executable: string; args: readonly string[] }) { invocations.push(input); return { exitCode: 0, signal: null, stdout: "native-shell-ok\r\n", stderr: "", durationMs: 1, timedOut: false, aborted: false, outputLimitExceeded: false }; } };
-    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", defaultWorkspaceId: "allowed", workerToken: "worker-secret", ...(process.platform === "win32" ? { processes: windowsExecutor } : {}), workspaces: [
+    const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", workerToken: "worker-secret", ...(process.platform === "win32" ? { processes: windowsExecutor } : {}), workspaces: [
       { id: "allowed", displayName: "Allowed", root: temporary, profile: "coding", tools: { allow: [], deny: [], explicit: ["shell"] } },
       { id: "implicit", displayName: "Implicit", root: temporary, profile: "coding" },
       { id: "editor", displayName: "Editor", root: temporary, profile: "editor", tools: { allow: [], deny: [], explicit: ["shell"] } },

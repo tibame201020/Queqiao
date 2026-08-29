@@ -84,7 +84,7 @@ export function createMcpServer(workers: WorkerRegistry, scopes: readonly string
         try {
           if (!context.oauthScopes.has("queqiao:access")) throw new Error("Missing OAuth scope: queqiao:access");
           const requested = input && typeof input === "object" && typeof (input as { workspaceId?: unknown }).workspaceId === "string" ? (input as { workspaceId: string }).workspaceId : undefined;
-          const selected = requested || (await context.workers.defaultRoute()).workspaceId;
+          const selected = requested || (await context.workers.implicitRoute()).workspaceId;
           if (!extensionActiveForWorkspace(extension, selected)) throw new Error(`${contribution.tool} is not active for Workspace ${selected}`);
           const route = await context.workers.workspaceRoute(selected);
           if (workerHost.environmentId && workerHost.environmentId !== route.environmentId) throw new Error(`${contribution.tool} is not hosted by Workspace environment ${route.environmentId}`);

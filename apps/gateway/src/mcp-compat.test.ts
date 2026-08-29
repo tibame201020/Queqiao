@@ -73,7 +73,7 @@ describe("bounded MCP compatibility window", () => {
   beforeEach(async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-mcp-compat-"));
     await writeFile(path.join(temporary, "fixture.txt"), "compatibility fixture\n", "utf8");
-    const worker = await createWorkerApp({ workerId: TEST_WORKER_ID, environmentId: "windows", defaultWorkspaceId: "fixture", workspaces: [{ id: "fixture", displayName: "Fixture", root: temporary }], workerToken: TEST_WORKER_CREDENTIAL });
+    const worker = await createWorkerApp({ workerId: TEST_WORKER_ID, environmentId: "windows", workspaces: [{ id: "fixture", displayName: "Fixture", root: temporary }], workerToken: TEST_WORKER_CREDENTIAL });
     workerServer = await listenOnSafePort(worker);
     const workerAddress = workerServer.address();
     if (!workerAddress || typeof workerAddress === "string") throw new Error("Worker did not listen");
