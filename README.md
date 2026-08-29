@@ -318,12 +318,12 @@ queqiao worker join --name <worker>
 `gateway setup` and `worker setup` are interactive create/edit flows. They first select an
 existing named instance or Create new. Gateway setup asks for the Public Gateway URL,
 Gateway port, and Management port. A new Worker setup asks for the Worker port and its
-initial authorized Workspace. Workspace access is configured as an explicit tool allowlist;
-when `run` is selected, setup additionally asks for a comma-separated executable allowlist.
-That executable input keeps local history for Up/Down recall and shows the most recent entry
-as the default. A Custom tools/commands matrix may optionally be saved after configuration
-as a reusable Access Profile; existing Access Profiles can be selected directly on later
-Worker setup flows. Editing a valid Worker preserves its existing Workspaces.
+initial authorized Workspace. Worker setup always asks for an Access Profile first. Queqiao
+provides built-in `Reader` and `Editor` profiles, then lists any user-saved profiles, followed
+by `Custom`. Custom access is configured as an explicit tool allowlist; when `run` is selected,
+setup additionally asks for a comma-separated executable allowlist. That executable input keeps
+local history for Up/Down recall and shows the most recent entry as the default. A Custom
+tools/commands matrix may optionally be saved after configuration as a reusable Access Profile. Editing a valid Worker preserves its existing Workspaces.
 Legacy incomplete Workers can be repaired through the same setup flow without rotating
 their identity or credential. New or changed local ports must be in range, must not collide
 with another configured Queqiao instance, and must be available on loopback.

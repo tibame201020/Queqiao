@@ -18,7 +18,9 @@ A configured Worker always owns at least one Workspace. Worker setup creates the
 
 ## Worker setup access configuration
 
-`worker setup` no longer asks users to choose the legacy `read-only` / `editor` / `coding` tiers for the first Workspace. It presents the finite Core tool set as a multi-select allowlist. `shell` remains explicit high-risk authority; selecting it produces the required explicit shell authorization. If `run` is selected, setup asks for a comma-separated executable allowlist. The executable input keeps local history for Up/Down recall and uses the latest entry as its default.
+`worker setup` no longer asks users to choose the legacy `read-only` / `editor` / `coding` tiers for the first Workspace. It always presents Access Profile selection first: built-in `Reader`, built-in `Editor`, any user-saved profiles, then `Custom`. `Reader` contains the default read-authority Core tools. `Editor` extends that set with `write_file` and `edit_file`; it does not grant `run`, `shell`, or extension authority.
+
+`Custom` presents the finite Core tool set as a multi-select allowlist. Tool identifiers remain visually prominent while their descriptions render on a separate dimmed line. `shell` remains explicit high-risk authority; selecting it produces the required explicit shell authorization. If `run` is selected, setup asks for a comma-separated executable allowlist. The executable input keeps local history for Up/Down recall and uses the latest entry as its default.
 
 After a Custom tools/commands matrix is configured, the user may optionally save it as a reusable Access Profile. Saved profiles and setup-input history are user-scoped Queqiao data outside Worker role configuration and outside the repository. A later Worker setup can apply an existing profile directly. The legacy Workspace `profile` field remains an internal compatibility field for this setup path; explicit tool and command allowlists are the user-facing authority model.
 

@@ -6,16 +6,41 @@ export type AccessConfiguration = {
   allowedExecutables: readonly string[];
 };
 
-export const ACCESS_TOOL_OPTIONS = CORE_PUBLIC_TOOL_ORDER.map((name) => ({
-  value: name,
-  label: `${name} — ${CORE_PUBLIC_TOOL_CONTRACTS[name].title}`,
-  hint: name === "shell" ? "high risk; unrestricted native shell" : CORE_PUBLIC_TOOL_CONTRACTS[name].description,
-}));
+const DIM = "\x1b[2m";
+const RESET_DIM = "\x1b[22m";
+
+export const ACCESS_TOOL_OPTIONS = CORE_PUBLIC_TOOL_ORDER.map((name) => {
+  const contract = CORE_PUBLIC_TOOL_CONTRACTS[name];
+  const description = name === "shell"
+    ? `${contract.title} — high risk; unrestricted native shell`
+    : `${contract.title} — ${contract.description}`;
+  return {
+    value: name,
+    // @clack/prompts dims inactive labels as a whole. Reset dim before the tool id so the
+    // primary identifier remains readable, then dim only the descriptive line.
+    label: `${RESET_DIM}${name}\n  ${DIM}${description}${RESET_DIM}`,
+  };
+});
 
 export const DEFAULT_ACCESS_TOOLS: readonly CorePublicToolName[] = CORE_PUBLIC_TOOL_ORDER.filter((name) =>
   CORE_PUBLIC_TOOL_CONTRACTS[name].risk === "read"
   && CORE_PUBLIC_TOOL_CONTRACTS[name].requiredCapabilities.every((capability) => capability === "workspace:read")
 );
+
+const EDITOR_ACCESS_TOOLS: readonly CorePublicToolName[] = [
+  ...DEFAULT_ACCESS_TOOLS,
+  "write_file",
+  "edit_file",
+];
+
+export const BUILTIN_ACCESS_PROFILES: ReadonlyArray<{
+  id: "reader" | "editor";
+  name: "Reader" | "Editor";
+  configuration: AccessConfiguration;
+}> = [
+  { id: "reader", name: "Reader", configuration: { tools: DEFAULT_ACCESS_TOOLS, allowedExecutables: [] } },
+  { id: "editor", name: "Editor", configuration: { tools: EDITOR_ACCESS_TOOLS, allowedExecutables: [] } },
+];
 
 const EXECUTABLE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/;
 

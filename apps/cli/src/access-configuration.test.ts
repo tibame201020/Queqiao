@@ -1,11 +1,28 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACCESS_TOOL_OPTIONS,
+  BUILTIN_ACCESS_PROFILES,
   accessConfigurationToWorkspacePolicy,
   normalizeAllowedExecutables,
   normalizeCommandHistory,
 } from "./access-configuration.js";
 
 describe("access configuration", () => {
+  it("exposes Reader and Editor as built-in reusable access profiles", () => {
+    expect(BUILTIN_ACCESS_PROFILES.map((profile) => profile.name)).toEqual(["Reader", "Editor"]);
+    expect(BUILTIN_ACCESS_PROFILES[0]?.configuration.tools).toEqual(expect.arrayContaining(["read_file", "search_text"]));
+    expect(BUILTIN_ACCESS_PROFILES[1]?.configuration.tools).toEqual(expect.arrayContaining(["read_file", "write_file", "edit_file"]));
+    expect(BUILTIN_ACCESS_PROFILES[1]?.configuration.tools).not.toContain("run");
+    expect(BUILTIN_ACCESS_PROFILES[1]?.configuration.tools).not.toContain("shell");
+  });
+
+  it("keeps tool names prominent and moves descriptions onto a separate dimmed line", () => {
+    const readFile = ACCESS_TOOL_OPTIONS.find((option) => option.value === "read_file");
+    expect(readFile?.label).toMatch(/^\x1b\[22mread_file\n/);
+    expect(readFile?.label).toContain("\x1b[2mRead text file");
+    expect(readFile?.hint).toBeUndefined();
+  });
+
   it("normalizes comma-separated executables without duplicate entries", () => {
     expect(normalizeAllowedExecutables(" git, NPM , node,git ,, npm ")).toEqual(["git", "npm", "node"]);
   });

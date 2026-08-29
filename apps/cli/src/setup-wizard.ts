@@ -9,7 +9,7 @@ import {
   type RuntimeRole,
 } from "@queqiao/platform-paths";
 import { setupGateway as setupGatewayPrimitive, setupWorker as setupWorkerPrimitive, type WorkerSetupOptions } from "./enrollment-cli.js";
-import { ACCESS_TOOL_OPTIONS, DEFAULT_ACCESS_TOOLS, accessConfigurationToWorkspacePolicy, normalizeAllowedExecutables, type AccessConfiguration } from "./access-configuration.js";
+import { ACCESS_TOOL_OPTIONS, BUILTIN_ACCESS_PROFILES, DEFAULT_ACCESS_TOOLS, accessConfigurationToWorkspacePolicy, normalizeAllowedExecutables, type AccessConfiguration } from "./access-configuration.js";
 import { AccessProfileStore, resolveAccessProfileFile } from "./access-profile-store.js";
 import { historyAwareTextInput, readAllowedExecutableHistory, recordAllowedExecutableHistory, resolveCommandHistoryFile } from "./command-history-input.js";
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
@@ -79,12 +79,20 @@ async function collectInitialWorkspace(prompts: RoleSetupPrompts, injected: bool
   const displayName = await prompts.text("Display name", suggestedName);
 
   const profiles = await profileStore.list();
+  const selectedProfile = await prompts.choose("Access profile", [
+    ...BUILTIN_ACCESS_PROFILES.map((profile) => ({ value: `builtin:${profile.id}`, label: profile.name })),
+    ...profiles.map((profile, index) => ({ value: `profile:${index}`, label: profile.name })),
+    { value: CUSTOM_ACCESS, label: "Custom" },
+  ]);
+
   let configuration: AccessConfiguration;
-  if (profiles.length) {
-    const selectedProfile = await prompts.choose("Access profile", [
-      ...profiles.map((profile, index) => ({ value: `profile:${index}`, label: profile.name })),
-      { value: CUSTOM_ACCESS, label: "Custom" },
-    ]);
+  const builtin = BUILTIN_ACCESS_PROFILES.find((profile) => selectedProfile === `builtin:${profile.id}`);
+  if (builtin) {
+    configuration = {
+      tools: [...builtin.configuration.tools],
+      allowedExecutables: [...builtin.configuration.allowedExecutables],
+    };
+  } else {
     const profileIndex = selectedProfile.startsWith("profile:") ? Number(selectedProfile.slice("profile:".length)) : -1;
     const profile = Number.isInteger(profileIndex) ? profiles[profileIndex] : undefined;
     if (profile) {
@@ -93,9 +101,6 @@ async function collectInitialWorkspace(prompts: RoleSetupPrompts, injected: bool
       configuration = await collectCustomAccessConfiguration(prompts);
       await maybeSaveAccessProfile(prompts, profileStore, configuration);
     }
-  } else {
-    configuration = await collectCustomAccessConfiguration(prompts);
-    await maybeSaveAccessProfile(prompts, profileStore, configuration);
   }
 
   const policy = accessConfigurationToWorkspacePolicy(configuration);

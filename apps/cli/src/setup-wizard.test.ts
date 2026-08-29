@@ -24,6 +24,34 @@ describe("role setup wizard", () => {
     expect(await listNamedRoleInstances("gateway", env, process.platform)).toEqual(["shadow", "stable"]);
   });
 
+  it("always offers built-in Reader and Editor profiles before Custom", async () => {
+    const root = await mkdirFixture();
+    const env = fixtureEnv(root);
+    const workspaceRoot = path.join(root, "project");
+    await mkdir(workspaceRoot);
+    const accessChoices: string[][] = [];
+    const answers = ["__create__", "windows", "7576", workspaceRoot, "Project", "builtin:reader"];
+    const testPrompts: RoleSetupPrompts = {
+      choose: async (message, options) => {
+        if (message === "Access profile") accessChoices.push(options.map((option) => option.label));
+        return answers.shift() || "";
+      },
+      multi: async () => { throw new Error("Reader must not prompt for tools"); },
+      commandText: async () => { throw new Error("Reader must not prompt for commands"); },
+      text: async (_message, initialValue) => answers.shift() || initialValue || "",
+    };
+
+    await runRoleSetupWizard("worker", ["worker", "setup"], {
+      env,
+      platform: process.platform,
+      prompts: testPrompts,
+      portAvailable: async () => true,
+      setupWorker: async () => ({ mode: "create" } as any),
+    });
+
+    expect(accessChoices).toEqual([["Reader", "Editor", "Custom"]]);
+  });
+
   it("edits an existing Gateway selected by the first prompt", async () => {
     const root = await mkdirFixture();
     const env = fixtureEnv(root);
@@ -53,7 +81,7 @@ describe("role setup wizard", () => {
     const result = await runRoleSetupWizard("worker", ["worker", "setup"], {
       env,
       platform: process.platform,
-      prompts: prompts(["__create__", "windows", "7576", workspaceRoot, "Project", "read_file,search_text"]),
+      prompts: prompts(["__create__", "windows", "7576", workspaceRoot, "Project", "__custom_access__", "read_file,search_text", "no"]),
       portAvailable: async () => true,
       setupWorker: async (_config, _args, _secrets, _prompt, options) => { calls.push("windows"); setupOptions = options; return { mode: "create" }; },
     });
@@ -73,7 +101,7 @@ describe("role setup wizard", () => {
     await runRoleSetupWizard("worker", ["worker", "setup"], {
       env,
       platform: process.platform,
-      prompts: prompts(["__create__", "windows", "7576", workspaceRoot, "Project", "read_file,run", "git, NPM, git"]),
+      prompts: prompts(["__create__", "windows", "7576", workspaceRoot, "Project", "__custom_access__", "read_file,run", "git, NPM, git", "no"]),
       portAvailable: async () => true,
       setupWorker: async (_config, _args, _secrets, _prompt, options) => { setupOptions = options; return { mode: "create" }; },
     });
@@ -98,7 +126,7 @@ describe("role setup wizard", () => {
     await runRoleSetupWizard("worker", ["worker", "setup"], {
       env,
       platform: process.platform,
-      prompts: prompts(["__create__", "windows", "7576", firstWorkspace, "First", "read_file,run", "git,npm", "yes", "development"]),
+      prompts: prompts(["__create__", "windows", "7576", firstWorkspace, "First", "__custom_access__", "read_file,run", "git,npm", "yes", "development"]),
       portAvailable: async () => true,
       setupWorker: async (_config, _args, _secrets, _prompt, options) => { firstOptions = options; return { mode: "create" }; },
     });
@@ -133,7 +161,7 @@ describe("role setup wizard", () => {
     const result = await runRoleSetupWizard("worker", ["worker", "setup"], {
       env,
       platform: process.platform,
-      prompts: prompts(["wins-worker", "8076", workspaceRoot, "Codes", "read_file,search_text"]),
+      prompts: prompts(["wins-worker", "8076", workspaceRoot, "Codes", "__custom_access__", "read_file,search_text", "no"]),
       portAvailable: async () => true,
       setupWorker: async (_config, _args, _secrets, _prompt, options) => { setupOptions = options; return { mode: "edit", workerId: "11111111-1111-4111-8111-111111111111" }; },
     });
