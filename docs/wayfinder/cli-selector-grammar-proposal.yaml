@@ -1,0 +1,262 @@
+document:
+  title: CLI selector grammar proposal
+  date: 2026-08-29
+  status: approved_for_implementation
+  behavior_changed: false
+  purpose: 在實作前 review Gateway 與 Worker instance 的選擇方式
+
+principles:
+  - 人類操作省略 selector 時，從已存在的 instance 清單選擇
+  - 自動化操作必須能明確指定 instance
+  - 不再靜默選用 default instance
+  - Gateway 與 Worker 使用對稱的命令與 selector
+  - JSON 模式不開啟互動式 selector
+  - help、parser、dispatch、文件與測試共用同一份 command contract
+
+instance_inventory:
+  gateway:
+    command: queqiao gateway list
+    purpose: 顯示所有可供 --gateway 選擇的 Gateway
+    output_fields:
+      - name
+      - configured
+      - running
+      - managed
+      - publicUrl
+      - servicePort
+      - managementPort
+  worker:
+    command: queqiao worker list
+    purpose: 顯示所有可供 --worker 選擇的 Worker
+    output_fields:
+      - name
+      - configured
+      - running
+      - managed
+      - endpoint
+      - workspaceCount
+  json_contract:
+    schemaVersion: "1.0"
+    shape:
+      schemaVersion: string
+      role: gateway_or_worker
+      instances: array
+    ordering: name_ascending
+    null_rule: optional fields are omitted, never null
+    url_rule: userinfo, query, and fragment are removed
+
+selectors:
+  gateway:
+    option: --gateway <name>
+    source: queqiao gateway list
+  worker:
+    option: --worker <name>
+    source: queqiao worker list
+  removed_role_selector:
+    option: --name
+    replacement:
+      gateway: --gateway <name>
+      worker: --worker <name>
+
+selection_contract:
+  applies_to: commands_with_selector
+  tty_human:
+    selector_present: 直接使用指定 instance
+    selector_omitted:
+      zero_instances: 報錯並提示執行對應 setup
+      one_instance: 自動選取並在輸出中顯示 target
+      multiple_instances: 顯示 selector
+    cancel:
+      exit_code: 130
+      mutation: false
+  non_tty:
+    selector_present: 正常執行
+    selector_omitted:
+      behavior: 報錯
+      exit_code: 2
+  json:
+    interactive_selector: false
+    selector_omitted:
+      behavior: 輸出結構化錯誤
+      exit_code: 2
+  explicit_layout:
+    condition: QUEQIAO_CONFIG_DIR_or_related_override
+    inventory_name: default
+    selector_required: true
+    reason: 保留既有 explicit layout 底層能力，但不進行 named discovery
+
+proposed_commands:
+  gateway:
+    list:
+      usage: queqiao gateway list [--json]
+      selector: none
+      mutation: read
+    setup:
+      usage: queqiao gateway setup
+      selector: setup_flow
+      mode: interactive
+    remove:
+      usage: queqiao gateway remove [--gateway <name>]
+      selector: gateway
+      mutation: delete
+    serve:
+      usage: queqiao gateway serve [--gateway <name>] [--bg]
+      selector: gateway
+    stop:
+      usage: queqiao gateway stop [--gateway <name>]
+      selector: gateway
+    status:
+      usage: queqiao gateway status [--gateway <name>]
+      selector: gateway
+      mutation: read
+    join-token:
+      usage: queqiao gateway join-token [--gateway <name>] [--expires <seconds>]
+      selector: gateway
+      credential_output: true
+    workers_list:
+      usage: queqiao gateway workers list [--gateway <name>]
+      selector: gateway
+      mutation: read
+    workers_update:
+      usage: queqiao gateway workers update [--gateway <name>] --worker-id <id> --endpoint <url>
+      selector: gateway
+    workers_remove:
+      usage: queqiao gateway workers remove [--gateway <name>] --worker-id <id>
+      selector: gateway
+
+  worker:
+    list:
+      usage: queqiao worker list [--json]
+      selector: none
+      mutation: read
+    setup:
+      usage: queqiao worker setup
+      selector: setup_flow
+      mode: interactive
+    remove:
+      usage: queqiao worker remove [--worker <name>]
+      selector: worker
+      mutation: delete
+    port:
+      usage: queqiao worker port [--worker <name>] [--port <port>]
+      selector: worker
+    serve:
+      usage: queqiao worker serve [--worker <name>] [--bg]
+      selector: worker
+    stop:
+      usage: queqiao worker stop [--worker <name>]
+      selector: worker
+    status:
+      usage: queqiao worker status [--worker <name>]
+      selector: worker
+      mutation: read
+    join:
+      usage: queqiao worker join [--worker <name>] [--join-code <code>]
+      selector: worker
+      credential_input: true
+    workspace_add:
+      usage: queqiao worker workspace add [--worker <name>] [--root <dir>] [--display-name <name>] [--profile <profile>]
+      selector: worker
+      rename:
+        from: --name
+        to: --display-name
+    workspace_list:
+      usage: queqiao worker workspace list [--worker <name>]
+      selector: worker
+      mutation: read
+    workspace_remove:
+      usage: queqiao worker workspace remove [--worker <name>] --id <id>
+      selector: worker
+    profile_set:
+      usage: queqiao worker workspace profile set [--worker <name>] [--workspace <id>] [--profile <profile>]
+      selector: worker
+    tool_allow_deny:
+      usage: queqiao worker workspace tool allow|deny [--worker <name>] --workspace <id> --tool <tool>
+      selector: worker
+    command_allow_deny:
+      usage: queqiao worker workspace command allow|deny [--worker <name>] --workspace <id> --command <executable>
+      selector: worker
+    permissions_show:
+      usage: queqiao worker workspace permissions show [--worker <name>] [--workspace <id>]
+      selector: worker
+      mutation: read
+
+  extension:
+    note: Extension Hub 是全域 inventory；只有 attach/detach/install attachment 需要 Worker selector
+    install:
+      usage: queqiao extension install <npm:package> [--worker <name> | --attach-all]
+      selector: none
+      omitted_worker: 只安裝至 Extension Hub
+    attach:
+      usage: queqiao extension attach <id> [--worker <name>]
+      selector: worker
+    detach:
+      usage: queqiao extension detach <id> [--worker <name>]
+      selector: worker
+    uninstall:
+      usage: queqiao extension uninstall <id> [--force]
+    list:
+      usage: queqiao extension list
+    show:
+      usage: queqiao extension show <id>
+
+  doctor:
+    summary:
+      usage: queqiao doctor
+      selector: none
+    extension:
+      usage: queqiao doctor extension
+      selector: none
+    manifest_show:
+      usage: queqiao doctor manifest show [--gateway <name>]
+      selector: gateway
+    paths:
+      usage: queqiao doctor paths
+      selector: none
+
+  maintenance:
+    uninstall:
+      usage: queqiao uninstall
+      selector: none
+    migrate:
+      usage: queqiao migrate <command>
+      selector: none
+    tool_explain:
+      usage: queqiao doctor tool explain <tool> [--gateway <name>]
+      selector: gateway
+
+compatibility:
+  release_kind: breaking
+  old_forms:
+    - pattern: queqiao gateway <command> --name <name>
+      replacement: queqiao gateway <command> --gateway <name>
+    - pattern: queqiao worker <command> --name <name>
+      replacement: queqiao worker <command> --worker <name>
+    - pattern: queqiao worker workspace add --name <display-name>
+      replacement: queqiao worker workspace add --display-name <display-name>
+  proposed_behavior: 舊 selector 明確報錯並顯示 replacement，不做 alias 或 deprecation execution
+
+review_questions:
+  - id: single_instance_tty
+    question: TTY 只有一個 instance 時，要自動選取還是仍要求確認？
+    recommendation: 自動選取並在輸出中顯示 target
+  - id: destructive_selector
+    question: remove 等破壞性操作是否即使只有一個 instance 仍強制顯示 selector？
+    recommendation: 是，並保留獨立確認步驟
+  - id: compatibility_release
+    question: selector 改名採 breaking release，或保留一版 deprecation？
+    recommendation: breaking release，舊形式只提供 replacement error
+  - id: extension_selector
+    question: extension attach/detach 省略 --worker 時是否也開啟同一個 Worker selector？
+    recommendation: 是
+  - id: list_secrets
+    question: gateway/worker list 的 human 與 JSON 欄位是否足夠且不洩漏敏感路徑？
+    recommendation: 僅輸出上述 inventory fields，不輸出 secrets 或完整 config path
+
+implementation_gate:
+  required_before_code_change:
+    - review_questions 全部決議
+    - target grammar 核准
+    - compatibility policy 核准
+    - list output schema 核准
+  current_state: approved

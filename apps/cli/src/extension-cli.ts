@@ -185,6 +185,12 @@ function attachedConfig(extension: HubExtension): InstalledExtensionConfig {
   };
 }
 
+function isHubOwnedAttachment(entry: InstalledExtensionConfig, extension: HubExtension): boolean {
+  return entry.manifest.id === extension.manifest.id
+    && entry.source.kind === "npm"
+    && entry.source.module === extension.source.module
+    && entry.source.installDirectory === extension.source.installDirectory;
+}
 function assertWorkerCompatible(config: RuntimeConfig, extension: HubExtension, workerName: string): void {
   if (!config.worker) throw new Error(`Worker runtime config is required: ${workerName}`);
   if (!config.workspaces.length) {
@@ -327,7 +333,7 @@ export async function uninstallExtension(hubLayout: HubLocation, id: string, for
   const extension = hub.extensions.find((entry) => entry.manifest.id === id);
   if (!extension) throw new Error(`Extension is not installed in the Hub: ${id}`);
   const workers = await workerDiscovery();
-  const attachedWorkers = workers.filter((worker) => worker.config.extensions.some((entry) => entry.manifest.id === id));
+  const attachedWorkers = workers.filter((worker) => worker.config.extensions.some((entry) => isHubOwnedAttachment(entry, extension)));
   const attachedWorkerNames = attachedWorkers.map((worker) => worker.name);
   if (attachedWorkerNames.length && !force) throw new Error(`Cannot uninstall ${id}; attached Workers: ${attachedWorkerNames.join(", ")}. Detach first or use --force.`);
   const extensionsRoot = path.resolve(packagesRoot(hubLayout));
@@ -352,7 +358,7 @@ export async function listExtensions(hubLayout: HubLocation): Promise<unknown> {
       displayName: extension.manifest.displayName,
       version: extension.manifest.version,
       package: extension.source.package,
-      workers: workers.map((worker) => ({ name: worker.name, attached: worker.config.extensions.some((entry) => entry.manifest.id === extension.manifest.id) })),
+      workers: workers.map((worker) => ({ name: worker.name, attached: worker.config.extensions.some((entry) => isHubOwnedAttachment(entry, extension)) })),
     })),
   };
 }
@@ -372,7 +378,7 @@ export async function showExtension(hubLayout: HubLocation, id: string): Promise
     workers: workers.map((worker) => ({
       name: worker.name,
       environmentId: worker.config.worker?.environmentId,
-      attached: worker.config.extensions.some((entry) => entry.manifest.id === id),
+      attached: worker.config.extensions.some((entry) => isHubOwnedAttachment(entry, extension)),
     })),
   };
 }

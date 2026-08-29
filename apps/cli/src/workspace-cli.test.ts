@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { readRuntimeConfig, serializeRuntimeConfig } from "@queqiao/config";
-import { addWorkspace, removeWorkspace, setWorkspaceAccess, workspaceCliInternals } from "./workspace-cli.js";
+import { addWorkspace, removeWorkspace, setWorkspaceAccess, updateWorkspaceCommandPolicy, updateWorkspaceToolPolicy, workspaceCliInternals } from "./workspace-cli.js";
 
 function workerConfig(root: string, workspaceRoot: string) {
   return {
@@ -159,12 +159,81 @@ describe("workspace CLI", () => {
     expect(workspace.displayName).toBe("one");
   });
 
+  it("allows one tool from a wildcard policy without accidentally converting it into a one-tool allowlist", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-tool-wildcard-"));
+    const one = path.join(root, "one"); await mkdir(one);
+    const configFile = path.join(root, "config.yaml");
+    const config = workerConfig(root, one);
+    config.workspaces[0]!.profile = "coding";
+    config.workspaces[0]!.tools.deny = ["write_file"];
+    await writeFile(configFile, serializeRuntimeConfig(config), "utf8");
+
+    const result = await updateWorkspaceToolPolicy(configFile, ["tool", "allow", "--workspace", "one", "--tool", "write_file"]);
+    const workspace = (await readRuntimeConfig(configFile)).workspaces[0]!;
+    expect(result).toMatchObject({ changed: true, workspaceId: "one", tool: "write_file", decision: "allow" });
+    expect(workspace.tools).toEqual({ allow: [], deny: [], explicit: [] });
+  });
+
+  it("preserves explicit matrix semantics while granting shell explicitly", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-tool-explicit-"));
+    const one = path.join(root, "one"); await mkdir(one);
+    const configFile = path.join(root, "config.yaml");
+    const config = workerConfig(root, one);
+    config.workspaces[0]!.profile = "coding";
+    config.workspaces[0]!.tools.allow = ["read_file"];
+    config.workspaces[0]!.tools.deny = ["shell"];
+    await writeFile(configFile, serializeRuntimeConfig(config), "utf8");
+
+    await updateWorkspaceToolPolicy(configFile, ["tool", "allow", "--workspace", "one", "--tool", "shell"]);
+    const workspace = (await readRuntimeConfig(configFile)).workspaces[0]!;
+    expect(workspace.tools.allow).toEqual(["read_file", "shell"]);
+    expect(workspace.tools.deny).toEqual([]);
+    expect(workspace.tools.explicit).toEqual(["shell"]);
+  });
+
+  it("fails closed instead of turning the last explicit tool entry into wildcard access", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-tool-last-explicit-"));
+    const one = path.join(root, "one"); await mkdir(one);
+    const configFile = path.join(root, "config.yaml");
+    const config = workerConfig(root, one);
+    config.workspaces[0]!.profile = "coding";
+    config.workspaces[0]!.tools.allow = ["read_file"];
+    await writeFile(configFile, serializeRuntimeConfig(config), "utf8");
+
+    await expect(updateWorkspaceToolPolicy(configFile, ["tool", "deny", "--workspace", "one", "--tool", "read_file"]))
+      .rejects.toThrow(/last explicitly allowed tool.*wildcard/i);
+    expect((await readRuntimeConfig(configFile)).workspaces[0]!.tools).toEqual({ allow: ["read_file"], deny: [], explicit: [] });
+  });
+
+  it("adds and removes executable allowlist entries through the Workspace policy handler", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-command-policy-"));
+    const one = path.join(root, "one"); await mkdir(one);
+    const configFile = path.join(root, "config.yaml");
+    await writeFile(configFile, serializeRuntimeConfig(workerConfig(root, one)), "utf8");
+
+    await updateWorkspaceCommandPolicy(configFile, ["command", "allow", "--workspace", "one", "--command", "Git"]);
+    expect((await readRuntimeConfig(configFile)).workspaces[0]!.commands.allow).toEqual(["git"]);
+    await updateWorkspaceCommandPolicy(configFile, ["command", "deny", "--workspace", "one", "--command", "git"]);
+    expect((await readRuntimeConfig(configFile)).workspaces[0]!.commands.allow).toEqual([]);
+    await expect(updateWorkspaceCommandPolicy(configFile, ["command", "allow", "--workspace", "one", "--command", "git status"]))
+      .rejects.toThrow(/executable name without path or shell syntax/i);
+  });
+
   it("rejects the legacy --id input because ids are implementation-managed", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-id-option-"));
     const one = path.join(root, "one"); const two = path.join(root, "two"); await mkdir(one); await mkdir(two);
     const configFile = path.join(root, "config.yaml");
     await writeFile(configFile, serializeRuntimeConfig(workerConfig(root, one)), "utf8");
     await expect(addWorkspace(configFile, ["workspace", "add", "--worker", "windows", "--root", two, "--id", "manual"])).rejects.toThrow(/ids are generated automatically/i);
+  });
+
+  it("uses --display-name for scripted Workspace presentation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-display-name-"));
+    const one = path.join(root, "one"); const two = path.join(root, "two"); await mkdir(one); await mkdir(two);
+    const configFile = path.join(root, "config.yaml");
+    await writeFile(configFile, serializeRuntimeConfig(workerConfig(root, one)), "utf8");
+    await addWorkspace(configFile, ["workspace", "add", "--worker", "windows", "--root", two, "--display-name", "Project Two", "--profile", "editor"]);
+    expect((await readRuntimeConfig(configFile)).workspaces.find(({ root: workspaceRoot }) => workspaceRoot === two)?.displayName).toBe("Project Two");
   });
 
   it("refuses to remove the last Workspace from a configured Worker", async () => {

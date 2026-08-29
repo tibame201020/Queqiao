@@ -1,7 +1,6 @@
 import { requireRuntimeConfigFile } from "@queqiao/platform-paths";
 import { readRuntimeConfig } from "@queqiao/config";
 import { ProcessRunner } from "@queqiao/process-runtime";
-import gitExtension from "@queqiao/extension-git";
 import { getWorkerCoreToolDefinitions } from "./core-tools.js";
 import path from "node:path";
 import { createWorkerApp } from "./app.js";
@@ -20,7 +19,7 @@ await credential.current();
 const extensionRuntime = new ReloadableExtensionHost(
   configFile,
   runtime.worker.environmentId,
-  async (specifier) => specifier === "@queqiao/extension-git" ? { default: gitExtension } : import(specifier),
+  async (specifier) => import(specifier),
   getWorkerCoreToolDefinitions().map((tool) => tool.name),
 );
 await extensionRuntime.initialize();

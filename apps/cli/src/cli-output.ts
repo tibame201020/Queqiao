@@ -50,6 +50,23 @@ function isNotConfigured(role: string, health: Record<string, unknown>): boolean
   return error === `${role} is not configured` || (/ENOENT/.test(error) && /config\.yaml/.test(error));
 }
 
+function renderRoleInventory(args: readonly string[], value: unknown): string | undefined {
+  if (!((args[0] === "gateway" || args[0] === "worker") && args[1] === "list")) return undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const result = value as Record<string, unknown>;
+  if (!Array.isArray(result.instances)) return undefined;
+  const label = args[0] === "gateway" ? "Gateways" : "Workers";
+  if (!result.instances.length) return `${label}: None`;
+  const lines = [`${label}:`];
+  for (const item of result.instances) {
+    const instance = item as Record<string, unknown>;
+    lines.push(`  ${scalar(instance.name)}  ${instance.running === true ? "Running" : instance.configured === false ? "Invalid configuration" : "Stopped"}`);
+    if (args[0] === "gateway") lines.push(`    URL: ${scalar(instance.publicUrl)}`, `    Ports: ${scalar(instance.servicePort)} / management ${scalar(instance.managementPort)}`);
+    else lines.push(`    Endpoint: ${scalar(instance.endpoint)}`, `    Workspaces: ${scalar(instance.workspaceCount)}`);
+  }
+  return lines.join("\n");
+}
+
 function renderJoinToken(args: readonly string[], value: unknown): string | undefined {
   if (args[0] !== "gateway" || args[1] !== "join-token") return undefined;
   if (!value || typeof value !== "object") return undefined;
@@ -70,7 +87,7 @@ function renderJoinToken(args: readonly string[], value: unknown): string | unde
     }
   }
 
-  lines.push("", "Next (before expiry, on the target Worker host):", "  queqiao worker join --name <worker>");
+  lines.push("", "Next (before expiry, on the target Worker host):", "  queqiao worker join --worker <worker>");
   return lines.join("\n");
 }
 
@@ -79,7 +96,7 @@ function renderWorkerJoin(args: readonly string[], value: unknown): string | und
   if (!value || typeof value !== "object") return undefined;
   const result = value as Record<string, unknown>;
   if (result.joined !== true) return undefined;
-  const name = option(args, "name") || "worker";
+  const name = option(args, "worker") || "worker";
   const lines = [`Worker joined Gateway: ${name}`];
   if (typeof result.workerId === "string") lines.push(`  Worker Id: ${result.workerId}`);
   if (typeof result.environmentId === "string") lines.push(`  Environment Id: ${result.environmentId}`);
@@ -91,7 +108,8 @@ function renderStatus(args: readonly string[], value: unknown): string | undefin
   if ((role !== "gateway" && role !== "worker") || action !== "status") return undefined;
   if (!value || typeof value !== "object") return undefined;
   const result = value as Record<string, unknown>;
-  const name = typeof result.name === "string" ? result.name : option(args, "name") || "default";
+  const selector = role === "gateway" ? "gateway" : "worker";
+  const name = typeof result.name === "string" ? result.name : option(args, selector) || "unknown";
   const health = result.health && typeof result.health === "object" ? result.health as Record<string, unknown> : {};
   const roleLabel = role === "gateway" ? "Gateway" : "Worker";
   const configured = !isNotConfigured(roleLabel, health) && !isNotConfigured(role, health);
@@ -108,11 +126,9 @@ function renderStatus(args: readonly string[], value: unknown): string | undefin
     if (error) lines.push(`  Detail: ${error}`);
   }
   if (!configured) {
-    const nameArg = name === "default" ? "" : ` --name ${name}`;
-    lines.push("", `Next: queqiao ${role} setup${nameArg}`);
+    lines.push("", `Next: queqiao ${role} setup`);
   } else if (!active) {
-    const nameArg = name === "default" ? "" : ` --name ${name}`;
-    lines.push("", `Next: queqiao ${role} serve --bg${nameArg}`);
+    lines.push("", `Next: queqiao ${role} serve --bg --${selector} ${name}`);
   }
   return lines.join("\n");
 }
@@ -120,6 +136,8 @@ function renderStatus(args: readonly string[], value: unknown): string | undefin
 export function formatCliOutput(input: readonly string[], value: unknown): string {
   if (input.includes("--json")) return JSON.stringify(value, null, 2);
   const args = input.filter((arg) => arg !== "--json");
+  const inventory = renderRoleInventory(args, value);
+  if (inventory) return inventory;
   const joinToken = renderJoinToken(args, value);
   if (joinToken) return joinToken;
   const workerJoin = renderWorkerJoin(args, value);

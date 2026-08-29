@@ -45,7 +45,7 @@ The current development candidate is **Core Manifest Revision 7**. Revision 7 pr
 - `shell`
 - `extension`
 
-The accepted production-like deployment composition additionally enables the first-party Git extension with seven named public tools: `git_repositories`, `git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and `git_worktree_remove`. Revision 7's fixed `extension` proxy is the stable discovery/call surface for proxy-mode external extensions; installing or removing such extensions does not mutate the Core schema again. `workspace_info` accepts an optional Workspace ID for explicit cross-environment inspection, and `list_workspaces` returns a safe deployment-attestation projection.
+The first-party Git capability is externalized from the Worker and is no longer a bundled Worker dependency. When a compatible Git extension package is installed through the Extension Hub and attached, it contributes seven named tools: `git_repositories`, `git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and `git_worktree_remove`. Registry and publishing policy are intentionally separate from this Core architecture freeze. Revision 7's fixed `extension` proxy remains the stable discovery/call surface for proxy-mode external extensions. `workspace_info` accepts an optional Workspace ID for explicit cross-environment inspection, and `list_workspaces` returns a safe deployment-attestation projection.
 
 Historical Revision 4 and Revision 5 validation evidence remains authoritative for those contracts and is not rewritten by later revisions.
 

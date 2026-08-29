@@ -27,10 +27,10 @@ describe("CLI ownership layout", () => {
   });
 
   it("requires an explicit named role for enrollment commands", () => {
-    expect(() => assertCommandOwnership(["gateway", "join-token"])).toThrow(/--name is required/);
-    expect(() => assertCommandOwnership(["worker", "join"])).toThrow(/--name is required/);
-    expect(() => assertCommandOwnership(["gateway", "join-token", "--name", "stable"])).not.toThrow();
-    expect(() => assertCommandOwnership(["worker", "join", "--name", "wins-worker"])).not.toThrow();
+    expect(() => assertCommandOwnership(["gateway", "join-token"])).toThrow(/--gateway is required/);
+    expect(() => assertCommandOwnership(["worker", "join"])).toThrow(/--worker is required/);
+    expect(() => assertCommandOwnership(["gateway", "join-token", "--gateway", "stable"])).not.toThrow();
+    expect(() => assertCommandOwnership(["worker", "join", "--worker", "wins-worker"])).not.toThrow();
   });
 
   it("rejects generic config-file overrides that could bypass role ownership", () => {
@@ -38,7 +38,7 @@ describe("CLI ownership layout", () => {
   });
 
   it("keeps Gateway-owned Worker membership on the named Gateway config", () => {
-    expect(resolveCommandLayout(["membership", "list", "--name", "stable"]).configFile).toBe(resolveRuntimeLayoutForNamedRole("gateway", "stable").configFile);
+    expect(resolveCommandLayout(["membership", "list", "--gateway", "stable"]).configFile).toBe(resolveRuntimeLayoutForNamedRole("gateway", "stable").configFile);
   });
 
   it("routes Gateway-owned manifest and tool diagnostics to an explicit named Gateway", () => {

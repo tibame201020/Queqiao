@@ -19,8 +19,13 @@ describe("refresh-shadow-runtime script", () => {
     expect(script).toContain("function Get-RoleStatus");
     expect(script).toContain("function Stop-NamedRole");
     expect(script).toContain("function Start-NamedRole");
-    expect(script).toContain("@($cli, $Role, 'stop', '--name', $Name)");
-    expect(script).toContain("@($cli, $Role, 'serve', '--bg', '--name', $Name)");
+    expect(script).toContain("@($cli, $Role, 'stop', $selector, $Name)");
+    expect(script).toContain("@($cli, $Role, 'serve', '--bg', $selector, $Name)");
+    expect(script).toContain("$script:SelectorGrammar = 'legacy'");
+    expect(script).toContain("$script:SelectorGrammar = 'canonical'");
+    expect(script).toContain("Set-SelectorGrammarFromCli");
+    expect(script).toContain("$status.health.reachable -eq $true");
+    expect(script).toContain("$status.health.identityMatches -eq $true");
     expect(script).not.toContain("Stop-LauncherTree -Launcher $workerLauncher");
     expect(script).not.toContain("Start-Launcher -Launcher $workerLauncher");
   });

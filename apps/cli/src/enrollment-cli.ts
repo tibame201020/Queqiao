@@ -172,7 +172,7 @@ export async function copyTextToClipboard(value: string, writer?: ClipboardWrite
 }
 
 export async function createJoinToken(configFile: string, args: string[], clipboardWriter?: ClipboardWriter): Promise<unknown> {
-  assertAllowedOptions(args, "queqiao gateway join-token", ["name", "expires", "json"]);
+  assertAllowedOptions(args, "queqiao gateway join-token", ["gateway", "expires", "json"]);
   const expires = option(args, "expires");
   const response = await managementRequest(configFile, "/join-tokens", {
     method: "POST",
@@ -288,12 +288,12 @@ async function preflightLocalWorker(endpoint: URL, worker: { workerId: string; e
     if (identity.workerId !== worker.workerId || identity.environmentId !== worker.environmentId) throw new Error("Worker identity does not match the named Worker configuration");
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Worker ${workerName} is not ready for enrollment (${detail}). Start it first: queqiao worker serve --bg --name ${workerName}`);
+    throw new Error(`Worker ${workerName} is not ready for enrollment (${detail}). Start it first: queqiao worker serve --bg --worker ${workerName}`);
   }
 }
 
 export async function joinWorker(configFile: string, args: string[], prompt?: JoinPrompt): Promise<unknown> {
-  assertAllowedOptions(args, "queqiao worker join", ["name", "join-code", "json"]);
+  assertAllowedOptions(args, "queqiao worker join", ["worker", "join-code", "json"]);
   const runtime = await readRuntimeConfig(configFile);
   if (!runtime.worker) throw new Error("worker configuration is required");
   if (!runtime.worker.workerId) throw new Error("Worker has no stable workerId; run worker setup or migrate the Worker identity first");
@@ -301,7 +301,7 @@ export async function joinWorker(configFile: string, args: string[], prompt?: Jo
   if (endpoint.protocol !== "http:" || !["127.0.0.1", "localhost", "::1"].includes(endpoint.hostname)) throw new Error("Worker endpoint must remain loopback HTTP in Security Baseline v2");
   const tokenFile = path.resolve(runtime.worker.tokenFile);
   await recoverStaleJoin(tokenFile);
-  const workerName = option(args, "name") || runtime.worker.environmentId;
+  const workerName = option(args, "worker") || runtime.worker.environmentId;
   await preflightLocalWorker(endpoint, { workerId: runtime.worker.workerId, environmentId: runtime.worker.environmentId }, tokenFile, workerName);
   const inputs = await resolveJoinInputs(args, prompt);
   const joinToken = inputs.token;

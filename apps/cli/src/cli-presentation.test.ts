@@ -52,7 +52,7 @@ describe("CLI presentation", () => {
   });
 
   it("renders an unconfigured Gateway status for humans", () => {
-    const output = formatCliOutput(["gateway", "status", "--name", "stable"], {
+    const output = formatCliOutput(["gateway", "status", "--gateway", "stable"], {
       name: "stable",
       role: "gateway",
       active: false,
@@ -69,12 +69,12 @@ describe("CLI presentation", () => {
       "  Status: Not configured",
       "  Managed: No",
       "",
-      "Next: queqiao gateway setup --name stable",
+      "Next: queqiao gateway setup",
     ].join("\n"));
   });
 
   it("renders a running Worker status for humans", () => {
-    const output = formatCliOutput(["worker", "status", "--name", "windows"], {
+    const output = formatCliOutput(["worker", "status", "--worker", "windows"], {
       name: "windows",
       role: "worker",
       active: true,
@@ -90,7 +90,7 @@ describe("CLI presentation", () => {
   });
 
   it("renders join-token as a short-lived handoff with the next Worker step", () => {
-    const output = formatCliOutput(["gateway", "join-token", "--name", "stable"], {
+    const output = formatCliOutput(["gateway", "join-token", "--gateway", "stable"], {
       copied: true,
       joinCodeVersion: 1,
       expiresAt: "2026-08-28T14:30:00.000Z",
@@ -101,12 +101,12 @@ describe("CLI presentation", () => {
       "  Expires At: 2026-08-28T14:30:00.000Z",
       "",
       "Next (before expiry, on the target Worker host):",
-      "  queqiao worker join --name <worker>",
+      "  queqiao worker join --worker <worker>",
     ].join("\n"));
   });
 
   it("shows the join code when clipboard copy is unavailable", () => {
-    const output = formatCliOutput(["gateway", "join-token", "--name", "stable"], {
+    const output = formatCliOutput(["gateway", "join-token", "--gateway", "stable"], {
       copied: false,
       joinCodeVersion: 1,
       expiresAt: "2026-08-28T14:30:00.000Z",
@@ -116,11 +116,11 @@ describe("CLI presentation", () => {
     });
     expect(output).toContain("Join code could not be copied");
     expect(output).toContain("qjq1:test-code");
-    expect(output).toContain("queqiao worker join --name <worker>");
+    expect(output).toContain("queqiao worker join --worker <worker>");
   });
 
   it("renders a successful Worker join as an operation result", () => {
-    const output = formatCliOutput(["worker", "join", "--name", "wins-worker"], { joined: true, workerId: "worker-1", environmentId: "windows" });
+    const output = formatCliOutput(["worker", "join", "--worker", "wins-worker"], { joined: true, workerId: "worker-1", environmentId: "windows" });
     expect(output).toBe([
       "Worker joined Gateway: wins-worker",
       "  Worker Id: worker-1",
@@ -130,6 +130,6 @@ describe("CLI presentation", () => {
 
   it("preserves structured output behind --json", () => {
     const value = { name: "stable", role: "gateway", active: false };
-    expect(formatCliOutput(["gateway", "status", "--name", "stable", "--json"], value)).toBe(JSON.stringify(value, null, 2));
+    expect(formatCliOutput(["gateway", "status", "--gateway", "stable", "--json"], value)).toBe(JSON.stringify(value, null, 2));
   });
 });

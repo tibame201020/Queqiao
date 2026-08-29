@@ -13,6 +13,24 @@ if (-not $env:LOCALAPPDATA) {
   throw 'LOCALAPPDATA is unavailable; cannot resolve Queqiao runtime state.'
 }
 $queqiaoRoot = Join-Path $env:LOCALAPPDATA 'Queqiao'
+$script:SelectorGrammar = 'legacy'
+
+function Get-RoleSelector {
+  param([Parameter(Mandatory = $true)][ValidateSet('gateway', 'worker')][string]$Role)
+
+  if ($script:SelectorGrammar -eq 'legacy') { return '--name' }
+  if ($Role -eq 'gateway') { return '--gateway' }
+  return '--worker'
+}
+
+function Set-SelectorGrammarFromCli {
+  $cli = Join-Path $repoRoot 'dist\queqiao.js'
+  if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) {
+    throw "Queqiao CLI bundle does not exist: $cli"
+  }
+  $bundle = Get-Content -LiteralPath $cli -Raw
+  $script:SelectorGrammar = if ($bundle.Contains('gateway list')) { 'canonical' } else { 'legacy' }
+}
 
 function Invoke-Checked {
   param(
@@ -33,7 +51,8 @@ function Get-RoleStatus {
   )
 
   $cli = Join-Path $repoRoot 'dist\queqiao.js'
-  $json = & node $cli $Role status --name $Name --json 2>$null
+  $selector = Get-RoleSelector -Role $Role
+  $json = & node $cli $Role status $selector $Name --json 2>$null
   if ($LASTEXITCODE -ne 0 -or -not $json) {
     throw "Unable to read $Role '$Name' status through the Queqiao CLI."
   }
@@ -57,7 +76,8 @@ function Stop-NamedRole {
 
   Write-Host "Stopping Shadow $Role '$Name' through Queqiao lifecycle..."
   $cli = Join-Path $repoRoot 'dist\queqiao.js'
-  Invoke-Checked -File 'node.exe' -Arguments @($cli, $Role, 'stop', '--name', $Name)
+  $selector = Get-RoleSelector -Role $Role
+  Invoke-Checked -File 'node.exe' -Arguments @($cli, $Role, 'stop', $selector, $Name)
 }
 
 function Start-NamedRole {
@@ -68,7 +88,8 @@ function Start-NamedRole {
 
   Write-Host "Starting Shadow $Role '$Name' through Queqiao lifecycle..."
   $cli = Join-Path $repoRoot 'dist\queqiao.js'
-  Invoke-Checked -File 'node.exe' -Arguments @($cli, $Role, 'serve', '--bg', '--name', $Name)
+  $selector = Get-RoleSelector -Role $Role
+  Invoke-Checked -File 'node.exe' -Arguments @($cli, $Role, 'serve', '--bg', $selector, $Name)
 }
 
 function Get-RepoDistProcesses {
@@ -169,10 +190,11 @@ function Wait-GatewayHealth {
   $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
   do {
     try {
-      $json = & node $cli gateway status --name $GatewayName --json 2>$null
+      $selector = Get-RoleSelector -Role 'gateway'
+      $json = & node $cli gateway status $selector $GatewayName --json 2>$null
       if ($LASTEXITCODE -eq 0 -and $json) {
         $status = ($json -join "`n") | ConvertFrom-Json
-        if ($status.active -eq $true) {
+        if ($status.active -eq $true -and $status.health.reachable -eq $true -and $status.health.identityMatches -eq $true) {
           return
         }
       }
@@ -182,7 +204,7 @@ function Wait-GatewayHealth {
     Start-Sleep -Milliseconds 300
   } while ([DateTime]::UtcNow -lt $deadline)
 
-  throw "Gateway '$GatewayName' did not become healthy within $TimeoutSeconds seconds."
+  throw "Gateway '$GatewayName' did not become reachable with the expected identity within $TimeoutSeconds seconds."
 }
 
 $workerConfig = Join-Path $queqiaoRoot "workers\$WorkerName\config\config.yaml"
@@ -202,6 +224,7 @@ $backupDist = Join-Path $backupRoot 'dist'
 $repoDist = Join-Path $repoRoot 'dist'
 $runtimeTouched = $false
 $buildStarted = $false
+Set-SelectorGrammarFromCli
 $gatewayWasRunning = (Get-RoleStatus -Role 'gateway' -Name $GatewayName).active -eq $true
 $workerWasRunning = (Get-RoleStatus -Role 'worker' -Name $WorkerName).active -eq $true
 try {
@@ -219,6 +242,7 @@ try {
     Write-Host 'Building the current Queqiao package with Shadow stopped...'
     $buildStarted = $true
     Invoke-Checked -File 'npm.cmd' -Arguments @('run', 'build:package')
+    $script:SelectorGrammar = 'canonical'
 
     Write-Host 'Relinking the global Queqiao command to this repository...'
     Invoke-Checked -File 'npm.cmd' -Arguments @('link')
@@ -240,6 +264,7 @@ try {
         Remove-Item -LiteralPath $repoDist -Recurse -Force
       }
       Copy-Item -LiteralPath $backupDist -Destination $repoDist -Recurse -Force
+      Set-SelectorGrammarFromCli
     }
 
     if ($runtimeTouched) {
@@ -255,7 +280,7 @@ try {
 
   Write-Host ''
   Write-Host 'Shadow refresh complete.'
-  Write-Host "  Gateway: $GatewayName (healthy)"
+  Write-Host "  Gateway: $GatewayName (reachable, identity verified)"
   Write-Host "  Worker:  $WorkerName (healthy, managed lifecycle)"
   Write-Host '  Global queqiao command: linked to this repository'
 } finally {

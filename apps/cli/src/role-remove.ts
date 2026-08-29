@@ -70,9 +70,14 @@ export async function removeRoleInstance(role: RuntimeRole, args: string[], depe
   const label = role === "gateway" ? "Gateway" : "Worker";
   if (!names.length) throw new Error(`No ${label} instances are configured.`);
 
+  const selector = `--${role}`;
+  const selectorIndex = args.indexOf(selector);
+  const explicitName = selectorIndex >= 0 ? args[selectorIndex + 1] : undefined;
+  if (selectorIndex >= 0 && !explicitName) throw new Error(`${selector} requires a value`);
+  if (explicitName && !names.includes(explicitName)) throw new Error(`Unknown ${label}: ${explicitName}`);
   const prompts = injected ?? defaultPrompts(role);
   if (!injected) intro(`Remove ${label}`);
-  const name = await prompts.choose(`Select ${label}`, names.map((value) => ({ value, label: value })));
+  const name = explicitName || await prompts.choose(`Select ${label}`, names.map((value) => ({ value, label: value })));
   if (!names.includes(name)) throw new Error(`Unknown ${label}: ${name}`);
   const layout = resolveRuntimeLayoutForNamedRole(role, name, env, platform);
   const status = dependencies.status

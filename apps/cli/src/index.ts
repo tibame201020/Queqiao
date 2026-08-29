@@ -1,5 +1,5 @@
 import path from "node:path";
-import { z } from "zod";
+
 import { AtomicConfigStore } from "./atomic-config-store.js";
 import { runtimeConfigSchema, type RuntimeConfig } from "@queqiao/config";
 import { toolNameSchema } from "@queqiao/contracts";
@@ -17,35 +17,25 @@ import { removeRoleInstance } from "./role-remove.js";
 import { uninstallQueqiao } from "./uninstall-cli.js";
 import { doctorPaths, doctorQueqiao } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
-import { addWorkspace, removeWorkspace, setWorkspaceAccess } from "./workspace-cli.js";
+import { addWorkspace, removeWorkspace, setWorkspaceAccess, updateWorkspaceCommandPolicy, updateWorkspaceToolPolicy } from "./workspace-cli.js";
 import { attachExtension, detachExtension, doctorExtensionHub, installNpmExtension, listExtensions, showExtension, uninstallExtension } from "./extension-cli.js";
 import { formatCliOutput } from "./cli-output.js";
-import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, renderCliHelp, renderCliRouteError } from "./command-surface.js";
-
-const managedToolSchema = toolNameSchema;
-const workspaceSchema = z.object({
-  id: z.string().regex(/^[a-z][a-z0-9_-]*$/),
-  displayName: z.string().min(1),
-  root: z.string().min(1),
-  profile: z.enum(["read-only", "editor", "coding"]).default("read-only"),
-  tools: z.object({ allow: z.array(managedToolSchema).default([]), deny: z.array(managedToolSchema).default([]), explicit: z.array(managedToolSchema).default([]) }).default({ allow: [], deny: [], explicit: [] }),
-  commands: z.object({ allow: z.array(z.string().min(1).max(128)).default([]) }).default({ allow: [] }),
-});
+import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, renderCliHelp, renderCliRouteError, renderRemovedSelectorError, validateCliArgs } from "./command-surface.js";
+import { listRoleInstances, resolveRoleInstance, selectorRoleForCliArgs, withRoleSelector } from "./instance-selector.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
-function print(value: unknown) { process.stdout.write(`${formatCliOutput(rawArgs, value)}\n`); }
-function unique<T>(values: T[]): T[] { return [...new Set(values)]; }
-
+function print(value: unknown) { process.stdout.write(`${formatCliOutput(outputArgs, value)}\n`); }
 function operations(config: RuntimeConfig) { return buildOperationsDiagnostics({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, workerProtocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, supportedMcpProtocolVersions: QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions }); }
 
 const rawArgs = process.argv.slice(2);
-const commandArgs = rawArgs.filter((arg) => arg !== "--json");
+let outputArgs = rawArgs;
+let commandArgs = rawArgs.filter((arg) => arg !== "--json");
 const helpRequested = commandArgs.includes("--help") || commandArgs.includes("-h");
-const args = normalizeCliArgs(commandArgs);
-const domain = args[0];
-const action = args[1];
-const localName = option(args, "name") || "default";
+let args = normalizeCliArgs(commandArgs);
+let domain = args[0];
+let action = args[1];
+let selectedRoleName: string | undefined;
 const USAGE = renderCliHelp([]);
 
 
@@ -53,8 +43,25 @@ async function main() {
   if (isRemovedCliRoute(args)) throw new Error(args[1]);
   if (helpRequested) { process.stdout.write(`${renderCliHelp(commandArgs)}\n`); return; }
   if (isCliHelpContext(commandArgs)) { process.stdout.write(`${renderCliHelp(commandArgs)}\n`); return; }
+  const selectorError = renderRemovedSelectorError(commandArgs);
+  if (selectorError) throw new Error(selectorError);
   const routeError = renderCliRouteError(commandArgs);
   if (routeError) throw new Error(routeError);
+  validateCliArgs(commandArgs);
+  if (domain === "gateway" && action === "list") return print({ schemaVersion: "1.0", role: "gateway", instances: await listRoleInstances("gateway") });
+  if (domain === "worker" && action === "list") return print({ schemaVersion: "1.0", role: "worker", instances: await listRoleInstances("worker") });
+  const selectorRole = selectorRoleForCliArgs(commandArgs);
+  if (selectorRole) {
+    selectedRoleName = await resolveRoleInstance(selectorRole, rawArgs);
+    outputArgs = withRoleSelector(rawArgs, selectorRole, selectedRoleName);
+    if (!commandArgs.includes(`--${selectorRole}`) && !rawArgs.includes("--json")) {
+      process.stderr.write(`Using ${selectorRole === "gateway" ? "Gateway" : "Worker"}: ${selectedRoleName}\n`);
+    }
+    commandArgs = withRoleSelector(commandArgs, selectorRole, selectedRoleName);
+    args = normalizeCliArgs(commandArgs);
+    domain = args[0];
+    action = args[1];
+  }
   assertCommandOwnership(args);
   if (domain === "gateway" && action === "setup") return print(await runRoleSetupWizard("gateway", args));
   if (domain === "gateway" && action === "remove") return print(await removeRoleInstance("gateway", args));
@@ -92,7 +99,7 @@ async function main() {
   const configFile = path.resolve(layout.configFile);
   const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
   if (domain === "worker" && action === "port") {
-    const status = await runtimeStatus(configFile, layout, "worker", localName);
+    const status = await runtimeStatus(configFile, layout, "worker", selectedRoleName!);
     if (status.active) throw new Error("Stop the Worker before changing its listener port");
     return print(await updateWorkerPort(configFile, args));
   }
@@ -109,20 +116,8 @@ async function main() {
 
   }
   if (domain === "profile" && action === "set") return print(await setWorkspaceAccess(configFile, args));
-  if (domain === "tool" && (action === "allow" || action === "deny")) {
-    const id = requiredOption(args, "workspace"); const tool = managedToolSchema.parse(requiredOption(args, "tool"));
-    let found = false;
-    const config = await configStore.update((current) => ({ ...current, workspaces: current.workspaces.map((entry) => { if (entry.id !== id) return entry; found = true; const allow = entry.tools.allow.filter((item) => item !== tool); const deny = entry.tools.deny.filter((item) => item !== tool); const explicit = entry.tools.explicit.filter((item) => item !== tool); if (tool === "shell") return { ...entry, tools: action === "allow" ? { allow, deny, explicit: unique([...explicit, tool]) } : { allow, deny: unique([...deny, tool]), explicit } }; return { ...entry, tools: action === "allow" ? { allow: unique([...allow, tool]), deny, explicit } : { allow, deny: unique([...deny, tool]), explicit } }; }) })); const workspaces = config.workspaces;
-    if (!found) throw new Error(`Workspace not found: ${id}`);
-    return print({ changed: true, workspaceId: id, tool, decision: action, policy: workspaces.find((entry) => entry.id === id)?.tools });
-  }
-  if (domain === "command" && (action === "allow" || action === "deny")) {
-    const id = requiredOption(args, "workspace"); const command = requiredOption(args, "command").trim().toLowerCase(); if (!/^[a-z0-9._+-]+$/.test(command)) throw new Error("Command must be an executable name without path or shell syntax");
-    let found = false;
-    const config = await configStore.update((current) => ({ ...current, workspaces: current.workspaces.map((entry) => { if (entry.id !== id) return entry; found = true; const allow = entry.commands.allow.filter((item) => item !== command); return { ...entry, commands: { allow: action === "allow" ? unique([...allow, command]) : allow } }; }) })); const workspaces = config.workspaces;
-    if (!found) throw new Error(`Workspace not found: ${id}`);
-    return print({ changed: true, workspaceId: id, command, decision: action, policy: workspaces.find((entry) => entry.id === id)?.commands });
-  }
+  if (domain === "tool" && (action === "allow" || action === "deny")) return print(await updateWorkspaceToolPolicy(configFile, args));
+  if (domain === "command" && (action === "allow" || action === "deny")) return print(await updateWorkspaceCommandPolicy(configFile, args));
   if (domain === "permissions" && action === "show") {
     const config = await configStore.read(); const id = option(args, "workspace"); const selected = id ? config.workspaces.filter((entry) => entry.id === id) : config.workspaces; if (id && !selected.length) throw new Error(`Workspace not found: ${id}`);
     const state = operations(config);
@@ -135,12 +130,19 @@ async function main() {
   if (domain === "tool" && action === "explain") {
     const toolName = toolNameSchema.parse(args[2] || option(args, "tool")); const state = operations(await configStore.read()); const explanation = explainTool(state, toolName); if (!explanation) throw new Error(`Tool not found in effective composition: ${toolName}`); return print({ ...explanation, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint });
   }
-  if ((domain === "gateway" || domain === "worker") && action === "stop") return print(await stopRuntime(layout, domain, localName));
-  if ((domain === "gateway" || domain === "worker") && action === "status") return print(await runtimeStatus(configFile, layout, domain, localName));
-  if ((domain === "gateway" || domain === "worker") && action === "serve") return print(args.includes("--bg") ? await startRuntime(configFile, layout, domain, localName) : await serveRuntime(configFile, domain, localName));
+  if ((domain === "gateway" || domain === "worker") && action === "stop") return print(await stopRuntime(layout, domain, selectedRoleName!));
+  if ((domain === "gateway" || domain === "worker") && action === "status") return print(await runtimeStatus(configFile, layout, domain, selectedRoleName!));
+  if ((domain === "gateway" || domain === "worker") && action === "serve") return print(args.includes("--bg") ? await startRuntime(configFile, layout, domain, selectedRoleName!) : await serveRuntime(configFile, domain, selectedRoleName!));
   if (domain === "migrate" && action === "from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));
   if (domain === "migrate" && action === "runtime-v1") return print(await migrateRuntimeLayoutV1(layout, args.includes("--execute")));
   throw new Error(USAGE);
 }
 
-main().catch((error) => { process.stderr.write(`${error instanceof Error ? error.message : error}\n`); process.exitCode = 1; });
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  const exitCode = typeof error === "object" && error && "exitCode" in error ? Number(error.exitCode) : 1;
+  process.stderr.write(rawArgs.includes("--json")
+    ? `${JSON.stringify({ schemaVersion: "1.0", error: { message, exitCode } })}\n`
+    : `${message}\n`);
+  process.exitCode = exitCode;
+});

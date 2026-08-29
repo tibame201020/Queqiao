@@ -144,20 +144,20 @@ The reader should see that Workspace authority is a separate, explicit grant and
 ### Command sequence
 
 ```powershell
-queqiao worker serve --name demo-worker --bg
-queqiao gateway serve --name demo-gateway --bg
-queqiao gateway join-token --name demo-gateway --copy
-queqiao worker join --name demo-worker
-queqiao gateway workers list --name demo-gateway
+queqiao worker serve --worker demo-worker --bg
+queqiao gateway serve --gateway demo-gateway --bg
+queqiao gateway join-token --gateway demo-gateway
+queqiao worker join --worker demo-worker
+queqiao gateway workers list --gateway demo-gateway
 ```
 
 ### Shot sequence
 
 1. Start Worker in background and pause briefly on accepted/running state.
 2. Start Gateway in background and pause briefly on accepted/running state.
-3. Generate/copy the one-time join code. The secret value must never be visible in the final GIF.
+3. Generate the one-time join code (clipboard copy is attempted automatically). The secret value must never be visible in the final GIF.
 4. Run `worker join`; if the CLI prompts for the join code, show the prompt but redact the supplied value.
-5. Run `gateway workers list --name demo-gateway`.
+5. Run `gateway workers list --gateway demo-gateway`.
 6. End with the enrolled/reachable demo Worker visible.
 
 ### Required visual proof
@@ -204,9 +204,9 @@ The sequence must communicate three boundaries:
 Primary CLI proof:
 
 ```powershell
-queqiao gateway status --name demo-gateway
-queqiao worker status --name demo-worker
-queqiao gateway workers list --name demo-gateway
+queqiao gateway status --gateway demo-gateway
+queqiao worker status --worker demo-worker
+queqiao gateway workers list --gateway demo-gateway
 queqiao worker workspace list --worker demo-worker
 queqiao worker workspace permissions show --worker demo-worker
 queqiao doctor manifest show --gateway demo-gateway

@@ -287,7 +287,7 @@ describe("worker join CLI transaction", () => {
     const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: joinToken });
     await new Promise<void>((resolve) => f.workerServer.close(() => resolve()));
     const prompted: string[] = [];
-    await expect(joinWorker(f.configFile, ["worker", "join", "--name", "wins-worker"], async (field) => { prompted.push(field); return joinCode; })).rejects.toThrow(/Worker wins-worker is not ready for enrollment.*queqiao worker serve --bg --name wins-worker/);
+    await expect(joinWorker(f.configFile, ["worker", "join", "--worker", "wins-worker"], async (field) => { prompted.push(field); return joinCode; })).rejects.toThrow(/Worker wins-worker is not ready for enrollment.*queqiao worker serve --bg --worker wins-worker/);
     expect(prompted).toEqual([]);
     expect((await f.memberships.read()).workers).toEqual([]);
     expect((await readFile(f.tokenFile, "utf8")).trim()).toBe(f.bootstrap);

@@ -2,6 +2,7 @@ import path from "node:path";
 import { intro, isCancel, outro, cancel } from "@clack/prompts";
 import { workspacePath } from "./workspace-path-prompt.js";
 import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig, type WorkspaceConfig } from "@queqiao/config";
+import { toolNameSchema } from "@queqiao/contracts";
 import { AtomicConfigStore } from "./atomic-config-store.js";
 import { accessConfigurationToWorkspacePolicy } from "./access-configuration.js";
 import { collectAccessConfiguration, type AccessConfigurationPrompts } from "./access-configuration-flow.js";
@@ -17,6 +18,16 @@ export type WorkspaceAnswers = { root: string; displayName: string; profile: Wor
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
   return index >= 0 ? args[index + 1] : undefined;
+}
+
+function requiredOption(args: string[], name: string): string {
+  const value = option(args, name);
+  if (!value) throw new Error(`--${name} is required`);
+  return value;
+}
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
 }
 
 export function suggestedWorkspaceId(root: string): string {
@@ -105,7 +116,7 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
   if (!current.worker) throw new Error("Worker setup is required before adding a Workspace");
 
   if (option(args, "id")) throw new Error("--id is no longer supported; Workspace IDs are generated automatically");
-  const scripted = option(args, "root") || option(args, "name") || option(args, "profile");
+  const scripted = option(args, "root") || option(args, "display-name") || option(args, "profile");
   let answers: WorkspaceAnswers;
   let interactivePolicy: Pick<WorkspaceConfig, "tools" | "commands"> | undefined;
 
@@ -113,7 +124,7 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
     const rootInput = option(args, "root");
     if (!rootInput) throw new Error("--root is required when using non-interactive workspace options");
     const root = await resolveWorkspaceAuthorityRoot(rootInput);
-    const displayName = option(args, "name") || path.basename(root) || suggestedWorkspaceId(root);
+    const displayName = option(args, "display-name") || path.basename(root) || suggestedWorkspaceId(root);
     answers = { root, displayName, profile: parseWorkspaceProfile(option(args, "profile")) };
   } else if (prompt) {
     answers = await testPromptAnswers(prompt);
@@ -222,6 +233,75 @@ export async function setWorkspaceAccess(
     mode: "access-profile",
     policy: { profile: updated.profile, tools: updated.tools, commands: updated.commands },
   };
+}
+
+export async function updateWorkspaceToolPolicy(configFile: string, args: string[]): Promise<unknown> {
+  const workspaceId = requiredOption(args, "workspace");
+  const tool = toolNameSchema.parse(requiredOption(args, "tool"));
+  const decision = args[1];
+  if (decision !== "allow" && decision !== "deny") throw new Error("Tool policy decision must be allow or deny");
+  const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
+  const current = await store.read();
+  const selected = current.workspaces.find((entry) => entry.id === workspaceId);
+  if (!selected) throw new Error(`Workspace not found: ${workspaceId}`);
+
+  if (decision === "deny" && selected.tools.allow.length === 1 && selected.tools.allow[0] === tool) {
+    throw new Error("Cannot deny the last explicitly allowed tool because an empty tool allowlist means wildcard access. Apply an Access Profile or Custom matrix instead.");
+  }
+
+  let updated: WorkspaceConfig | undefined;
+  await store.update((config) => runtimeConfigSchema.parse({
+    ...config,
+    workspaces: config.workspaces.map((entry) => {
+      if (entry.id !== workspaceId) return entry;
+      const hadExplicitAllowlist = entry.tools.allow.length > 0;
+      const allow = entry.tools.allow.filter((item) => item !== tool);
+      const deny = entry.tools.deny.filter((item) => item !== tool);
+      const explicit = entry.tools.explicit.filter((item) => item !== tool);
+      const nextTools = decision === "allow"
+        ? {
+            allow: hadExplicitAllowlist ? unique([...allow, tool]) : [],
+            deny,
+            explicit: tool === "shell" ? unique([...explicit, tool]) : explicit,
+          }
+        : {
+            allow,
+            deny: unique([...deny, tool]),
+            explicit,
+          };
+      updated = workspaceConfigSchema.parse({ ...entry, tools: nextTools });
+      return updated;
+    }),
+  }));
+  await secureRuntimeFile(configFile);
+  return { changed: true, workspaceId, tool, decision, policy: updated!.tools };
+}
+
+export async function updateWorkspaceCommandPolicy(configFile: string, args: string[]): Promise<unknown> {
+  const workspaceId = requiredOption(args, "workspace");
+  const decision = args[1];
+  if (decision !== "allow" && decision !== "deny") throw new Error("Command policy decision must be allow or deny");
+  const command = requiredOption(args, "command").trim().toLowerCase();
+  if (!/^[a-z0-9._+-]+$/.test(command)) throw new Error("Command must be an executable name without path or shell syntax");
+  const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
+  const current = await store.read();
+  if (!current.workspaces.some((entry) => entry.id === workspaceId)) throw new Error(`Workspace not found: ${workspaceId}`);
+
+  let updated: WorkspaceConfig | undefined;
+  await store.update((config) => runtimeConfigSchema.parse({
+    ...config,
+    workspaces: config.workspaces.map((entry) => {
+      if (entry.id !== workspaceId) return entry;
+      const allow = entry.commands.allow.filter((item) => item.toLowerCase() !== command);
+      updated = workspaceConfigSchema.parse({
+        ...entry,
+        commands: { allow: decision === "allow" ? unique([...allow, command]) : allow },
+      });
+      return updated;
+    }),
+  }));
+  await secureRuntimeFile(configFile);
+  return { changed: true, workspaceId, command, decision, policy: updated!.commands };
 }
 
 export async function removeWorkspace(configFile: string, workerName: string, workspaceId: string): Promise<unknown> {

@@ -7,7 +7,7 @@ A Queqiao Workspace is an explicit filesystem/process **authority boundary**. It
 Create or add authority only with an explicit directory:
 
 ```text
-queqiao worker workspace add --worker <worker> [--root <directory>] [--name <display-name>] [--profile read-only|editor|coding]
+queqiao worker workspace add [--worker <worker>] [--root <directory>] [--display-name <display-name>] [--profile read-only|editor|coding]
 queqiao worker workspace list --worker <worker>
 queqiao worker workspace remove --worker <worker> --id <id>
 ```

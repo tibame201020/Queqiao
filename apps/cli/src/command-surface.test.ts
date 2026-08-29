@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, renderCliHelp, renderCliRouteError } from "./command-surface.js";
+import { CLI_LEAF_CONTRACTS, isCliHelpContext, isRemovedCliRoute, listCanonicalCliRoutes, normalizeCliArgs, renderCliHelp, renderCliRouteError, renderRemovedSelectorError, validateCliArgs } from "./command-surface.js";
 
 describe("CLI hierarchy consolidation", () => {
   it.each([
-    [["gateway", "workers", "list", "--name", "stable"], ["membership", "list", "--name", "stable"]],
+    [["gateway", "workers", "list", "--gateway", "stable"], ["membership", "list", "--gateway", "stable"]],
     [["gateway", "workers", "update", "--worker-id", "w1", "--endpoint", "http://127.0.0.1:7576/"], ["membership", "update", "--worker-id", "w1", "--endpoint", "http://127.0.0.1:7576/"]],
     [["gateway", "workers", "remove", "--worker-id", "w1"], ["membership", "remove", "--worker-id", "w1"]],
     [["worker", "workspace", "add", "--worker", "windows"], ["workspace", "add", "--worker", "windows"]],
@@ -22,7 +22,6 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it.each([
-    [["worker", "list"], "queqiao gateway workers list"],
     [["worker", "update"], "queqiao gateway workers update"],
     [["workspace", "add"], "queqiao worker workspace add"],
     [["workspace", "list"], "queqiao worker workspace list"],
@@ -44,9 +43,10 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it.each([
+    ["worker", "list"],
     ["gateway", "setup"],
-    ["gateway", "serve", "--bg", "--name", "stable"],
-    ["worker", "serve", "--bg", "--name", "windows"],
+    ["gateway", "serve", "--bg", "--gateway", "stable"],
+    ["worker", "serve", "--bg", "--worker", "windows"],
     ["extension", "install", "npm:queqiao-mcp", "--worker", "windows"],
   ])("preserves unchanged canonical route %j", (...input) => {
     expect(normalizeCliArgs(input)).toEqual(input);
@@ -90,7 +90,7 @@ describe("CLI hierarchy consolidation", () => {
     expect(renderCliHelp(["gateway", "workers", "--help"])).toContain("\n  list\n");
     expect(renderCliHelp(["gateway", "workers", "--help"])).not.toContain("gateway workers list");
     expect(renderCliHelp(["worker", "--help"])).toContain("\n  remove\n");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("\n  add --worker <worker>\n");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("\n  add [--worker <worker>]");
     expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("profile set --worker <worker> [--workspace <id>] [--profile read-only|editor|coding]");
     expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("interactively applies an Access Profile");
     expect(renderCliHelp(["worker", "workspace", "--help"])).not.toContain("worker workspace add");
@@ -112,5 +112,33 @@ describe("CLI hierarchy consolidation", () => {
     [["doctor"], false],
   ])("detects implicit help context %j", (input, expected) => {
     expect(isCliHelpContext(input)).toBe(expected);
+  });
+
+  it("freezes every public leaf in one parser contract", () => {
+    expect(CLI_LEAF_CONTRACTS).toHaveLength(41);
+    expect(new Set(CLI_LEAF_CONTRACTS.map(({ route }) => route)).size).toBe(CLI_LEAF_CONTRACTS.length);
+    expect(CLI_LEAF_CONTRACTS.map(({ route }) => route).sort()).toEqual(listCanonicalCliRoutes());
+  });
+
+  it.each([
+    [["gateway", "status", "--bogus"], /Unknown option "--bogus"/],
+    [["worker", "serve", "--worker"], /requires a value/],
+    [["extension", "list", "extra"], /Unexpected argument/],
+    [["gateway", "--bogus"], /Unknown global option/],
+    [["gateway", "workers", "update", "--worker-id", "w1"], /--endpoint is required/],
+  ])("rejects malformed leaf arguments %j", (input, message) => {
+    expect(() => validateCliArgs(input)).toThrow(message);
+  });
+
+  it("accepts global flags and documented leaf arguments", () => {
+    expect(() => validateCliArgs(["--json", "gateway", "workers", "update", "--gateway", "stable", "--worker-id", "w1", "--endpoint", "http://127.0.0.1:7576/"])).not.toThrow();
+  });
+
+  it.each([
+    [["gateway", "status", "--name", "stable"], "--gateway <name>"],
+    [["worker", "status", "--name", "windows"], "--worker <name>"],
+    [["worker", "workspace", "add", "--name", "Codes"], "--display-name <name>"],
+  ])("provides one canonical replacement for removed selectors %j", (input, replacement) => {
+    expect(renderRemovedSelectorError(input)).toContain(replacement);
   });
 });

@@ -29,8 +29,8 @@ queqiao worker setup
 Start both roles:
 
 ```text
-queqiao gateway serve --name <gateway> --bg
-queqiao worker serve --name <worker> --bg
+queqiao gateway serve --gateway <gateway> --bg
+queqiao worker serve --worker <worker> --bg
 ```
 
 Create one short-lived self-contained join code on the Gateway host, then join from the
@@ -38,16 +38,16 @@ Worker host. Human-mode `join-token` copies the join code to the clipboard autom
 `worker join` securely prompts for it:
 
 ```text
-queqiao gateway join-token --name <gateway>
-queqiao worker join --name <worker>
+queqiao gateway join-token --gateway <gateway>
+queqiao worker join --worker <worker>
 ```
 
 Verify both runtimes and Gateway membership before connecting an MCP client:
 
 ```text
-queqiao gateway status --name <gateway>
-queqiao worker status --name <worker>
-queqiao gateway workers list --name <gateway>
+queqiao gateway status --gateway <gateway>
+queqiao worker status --worker <worker>
+queqiao gateway workers list --gateway <gateway>
 ```
 
 Additional Workspaces can be added or removed while the Worker is running. Workspace
@@ -75,12 +75,13 @@ See [Architecture](docs/architecture.md) and the [architecture decisions](docs/a
 
 ## Project status
 
-Queqiao is under active development. The **0.7.0** release baseline uses
-**Core Manifest Revision 6** and **Worker Protocol 3.0**. Core exposes ten typed tools:
-`workspace_info`, `list_workspaces`, `open_workspace`, `read_file`, `write_file`,
-`edit_file`, `list_directory`, `search_text`, `run`, and `shell`. This release baseline also
-enables the first-party Git extension with seven named typed tools, for a deterministic
-17-tool public Deployment Manifest.
+Queqiao is under active development. The packaged Core and Worker runtime are independent
+from optional extensions. The first-party Git capability has been externalized from the
+Worker and is activated only through the Extension Hub when a compatible Git extension
+package is installed and attached. Its seven capabilities are `git_repositories`,
+`git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and
+`git_worktree_remove`. Registry, package naming, and publishing policy are intentionally
+handled outside this Core/CLI freeze.
 
 `workspace_info` may explicitly target a configured Workspace or use the deployment
 default. `list_workspaces` includes a safe deployment-attestation projection containing
@@ -196,23 +197,25 @@ The current management CLI supports:
 
 ```text
 queqiao gateway setup
-queqiao gateway serve --name <gateway> [--bg]
-queqiao gateway stop --name <gateway>
-queqiao gateway status --name <gateway>
+queqiao gateway list
+queqiao gateway serve [--gateway <gateway>] [--bg]
+queqiao gateway stop [--gateway <gateway>]
+queqiao gateway status [--gateway <gateway>]
 queqiao gateway remove
-queqiao gateway join-token --name <gateway> [--expires <seconds>] [--json]
-queqiao gateway workers list --name <gateway>
-queqiao gateway workers update --name <gateway> --worker-id <id> --endpoint <loopback-worker-url>
-queqiao gateway workers remove --name <gateway> --worker-id <id>
+queqiao gateway join-token [--gateway <gateway>] [--expires <seconds>] [--json]
+queqiao gateway workers list [--gateway <gateway>]
+queqiao gateway workers update [--gateway <gateway>] --worker-id <id> --endpoint <loopback-worker-url>
+queqiao gateway workers remove [--gateway <gateway>] --worker-id <id>
 
 queqiao worker setup
-queqiao worker port --name <worker> [--port <port>]
-queqiao worker serve --name <worker> [--bg]
-queqiao worker stop --name <worker>
-queqiao worker status --name <worker>
+queqiao worker list
+queqiao worker port [--worker <worker>] [--port <port>]
+queqiao worker serve [--worker <worker>] [--bg]
+queqiao worker stop [--worker <worker>]
+queqiao worker status [--worker <worker>]
 queqiao worker remove
-queqiao worker join --name <worker>
-queqiao worker workspace add --worker <worker>
+queqiao worker join [--worker <worker>]
+queqiao worker workspace add [--worker <worker>] [--display-name <name>]
 queqiao worker workspace list --worker <worker>
 queqiao worker workspace remove --worker <worker> --id <id>
 queqiao worker workspace profile set --worker <worker> [--workspace <id>] [--profile read-only|editor|coding]
@@ -221,22 +224,24 @@ queqiao worker workspace command allow|deny --worker <worker> --workspace <id> -
 queqiao worker workspace permissions show --worker <worker> [--workspace <id>]
 
 queqiao extension install npm:<package> [--worker <name>|--attach-all]
-queqiao extension attach <id> --worker <name>
-queqiao extension detach <id> --worker <name>
+queqiao extension attach <id> [--worker <name>]
+queqiao extension detach <id> [--worker <name>]
 queqiao extension uninstall <id> [--force]
 queqiao extension list
 queqiao extension show <id>
 
 queqiao doctor
 queqiao doctor extension
-queqiao doctor manifest show --gateway <name>
-queqiao doctor tool explain <tool> --gateway <name>
+queqiao doctor manifest show [--gateway <name>]
+queqiao doctor tool explain <tool> [--gateway <name>]
 queqiao doctor paths
 
 queqiao uninstall
 ```
 
 The previous flat command paths are removed from the public CLI surface. Use the hierarchical forms above. Obsolete repository-search discovery-root configuration has also been removed; repository/project discovery belongs to extensions or clients operating inside an explicitly authorized Workspace.
+
+Commands with a bracketed `--gateway` or `--worker` open an instance selector when run in a terminal. Automation and `--json` calls must provide the selector explicitly. Use `gateway list` and `worker list` to obtain valid names; Queqiao never silently targets a `default` instance.
 
 `queqiao doctor` scans the local named Gateways and Workers plus Extension Hub integrity. Manifest/tool composition diagnostics are Gateway-owned and therefore require `--gateway <name>`.
 
@@ -309,10 +314,10 @@ The current CLI exposes independent Gateway and Worker role primitives:
 ```text
 queqiao gateway setup
 queqiao worker setup
-queqiao gateway serve --name <gateway> --bg
-queqiao worker serve --name <worker> --bg
-queqiao gateway join-token --name <gateway>
-queqiao worker join --name <worker>
+queqiao gateway serve --gateway <gateway> --bg
+queqiao worker serve --worker <worker> --bg
+queqiao gateway join-token --gateway <gateway>
+queqiao worker join --worker <worker>
 ```
 
 `gateway setup` and `worker setup` are interactive create/edit flows. They first select an
@@ -356,10 +361,10 @@ and management commands continue to address named instances explicitly:
 npm install --global @tibame201020/queqiao
 queqiao gateway setup
 queqiao worker setup
-queqiao gateway serve --name shadow --bg
-queqiao worker serve --name windows --bg
-queqiao gateway join-token --name shadow
-queqiao worker join --name windows
+queqiao gateway serve --gateway shadow --bg
+queqiao worker serve --worker windows --bg
+queqiao gateway join-token --gateway shadow
+queqiao worker join --worker windows
 ```
 
 Human-mode `gateway join-token` copies a versioned self-contained join code containing the
@@ -374,16 +379,16 @@ Use `queqiao uninstall` for package cleanup. The command is always interactive. 
 The package is self-contained and exposes independent Gateway and Worker process roles. Installing it does not create an OS service, autostart entry, Run key, or systemd unit. Runtime lifecycle is explicit:
 
 ```shell
-queqiao gateway serve --name shadow --bg
-queqiao gateway status --name shadow
-queqiao gateway stop --name shadow
+queqiao gateway serve --gateway shadow --bg
+queqiao gateway status --gateway shadow
+queqiao gateway stop --gateway shadow
 
-queqiao worker serve --name windows --bg
-queqiao worker status --name windows
-queqiao worker stop --name windows
+queqiao worker serve --worker windows --bg
+queqiao worker status --worker windows
+queqiao worker stop --worker windows
 ```
 
-Worker listeners remain loopback-only. Within one Gateway membership registry, each Gateway-visible Worker transport endpoint must be unique. If a Worker listener port must change, stop that Worker first, run `queqiao worker port --name <worker> --port <port>`, restart it, then update the Gateway membership transport with `queqiao gateway workers update --name <gateway> --worker-id <id> --endpoint http://127.0.0.1:<port>/`.
+Worker listeners remain loopback-only. Within one Gateway membership registry, each Gateway-visible Worker transport endpoint must be unique. If a Worker listener port must change, stop that Worker first, run `queqiao worker port --worker <worker> --port <port>`, restart it, then update the Gateway membership transport with `queqiao gateway workers update --gateway <gateway> --worker-id <id> --endpoint http://127.0.0.1:<port>/`.
 
 On Windows, named Gateway and Worker layouts are stored below `%LOCALAPPDATA%\Queqiao\gateways\<name>` and `%LOCALAPPDATA%\Queqiao\workers\<name>`. Linux and WSL use the corresponding XDG role-scoped layout. Secrets remain separate files referenced by `config.yaml`; OAuth client registrations and other internal state remain implementation-owned data.
 

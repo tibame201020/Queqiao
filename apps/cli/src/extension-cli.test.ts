@@ -106,6 +106,28 @@ describe("extension CLI", () => {
     await uninstallExtension(hub, "dev.queqiao.mcp");
     expect((await readdir(packageStore)).filter((entry) => !entry.startsWith(".staging-"))).toHaveLength(0);
   });
+  it("does not claim or detach a foreign legacy attachment that only shares the Hub extension id", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-cli-foreign-"));
+    const hub = layout(path.join(temporary, "hub"));
+    const worker = layout(path.join(temporary, "worker"));
+    await workerConfig(worker);
+    await installNpmExtension(hub, "npm:queqiao-mcp@1.2.3", {}, async (_args, cwd) => { await fakePackage(cwd); });
+    await attachExtension(hub, "dev.queqiao.mcp", "windows", worker);
+
+    const attached = await readRuntimeConfig(worker.configFile);
+    const entry = attached.extensions[0]!;
+    await writeFile(worker.configFile, serializeRuntimeConfig({
+      ...attached,
+      extensions: [{ ...entry, source: { kind: "local-module" as const, module: "@legacy/queqiao-mcp" } }],
+    }), "utf8");
+    const discover = async () => [{ name: "windows", layout: worker, config: await readRuntimeConfig(worker.configFile) }];
+
+    await expect(uninstallExtension(hub, "dev.queqiao.mcp", false, discover)).resolves.toMatchObject({ changed: true, detachedWorkers: [] });
+    const after = await readRuntimeConfig(worker.configFile);
+    expect(after.extensions).toHaveLength(1);
+    expect(after.extensions[0]?.source).toEqual({ kind: "local-module", module: "@legacy/queqiao-mcp" });
+  });
+
   it("attaches all discovered compatible Workers and force-uninstalls by detaching them first", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-cli-all-"));
     const hub = layout(path.join(temporary, "hub"));

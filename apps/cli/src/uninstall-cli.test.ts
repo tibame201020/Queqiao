@@ -5,6 +5,13 @@ import { describe, expect, it } from "vitest";
 import { resolveExtensionHubRoot, resolveRuntimeLayout, resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
 import { uninstallQueqiao } from "./uninstall-cli.js";
 
+async function isolatedEnv(prefix: string): Promise<NodeJS.ProcessEnv> {
+  const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join(os.tmpdir(), prefix)));
+  return process.platform === "win32"
+    ? { ...process.env, LOCALAPPDATA: path.join(root, "local"), USERPROFILE: root, TEMP: path.join(root, "temp") }
+    : { ...process.env, HOME: root, XDG_CONFIG_HOME: path.join(root, "config"), XDG_DATA_HOME: path.join(root, "data"), XDG_STATE_HOME: path.join(root, "state"), XDG_RUNTIME_DIR: path.join(root, "runtime") };
+}
+
 describe("Queqiao uninstall", () => {
   it("lists local cleanup targets with their actual paths, cleans selected state, then asks separately about npm uninstall", async () => {
     const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join(os.tmpdir(), "queqiao-uninstall-")));
@@ -73,7 +80,10 @@ describe("Queqiao uninstall", () => {
 
   it("can clean selected local state while keeping the global npm package", async () => {
     const npmCalls: string[][] = [];
+    const env = await isolatedEnv("queqiao-uninstall-keep-package-");
     const result = await uninstallQueqiao(["uninstall"], {
+      env,
+      platform: process.platform,
       selectTargets: async () => ["extension-hub"],
       confirmCleanup: async () => true,
       confirmPackageUninstall: async () => false,
@@ -85,7 +95,10 @@ describe("Queqiao uninstall", () => {
 
   it("does not perform cleanup when no local cleanup targets are selected, but still offers package uninstall", async () => {
     const npmCalls: string[][] = [];
+    const env = await isolatedEnv("queqiao-uninstall-no-cleanup-");
     const result = await uninstallQueqiao(["uninstall"], {
+      env,
+      platform: process.platform,
       selectTargets: async () => [],
       confirmCleanup: async () => { throw new Error("cleanup confirmation must not be shown"); },
       confirmPackageUninstall: async () => true,
@@ -97,7 +110,10 @@ describe("Queqiao uninstall", () => {
 
   it("requires cleanup confirmation before deleting selected paths", async () => {
     const npmCalls: string[][] = [];
+    const env = await isolatedEnv("queqiao-uninstall-confirm-");
     const result = await uninstallQueqiao(["uninstall"], {
+      env,
+      platform: process.platform,
       selectTargets: async () => ["extension-hub"],
       confirmCleanup: async () => false,
       confirmPackageUninstall: async () => false,
