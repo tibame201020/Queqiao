@@ -1,7 +1,7 @@
 import { access, readdir } from "node:fs/promises";
 import path from "node:path";
 import { createServer } from "node:net";
-import { cancel, intro, isCancel, outro, select, text } from "@clack/prompts";
+import { cancel, intro, isCancel, outro } from "@clack/prompts";
 import { readRuntimeConfig, readRuntimeConfigForRepair } from "@queqiao/config";
 import {
   resolveNamedRoleConfigRoot,
@@ -9,29 +9,19 @@ import {
   type RuntimeRole,
 } from "@queqiao/platform-paths";
 import { setupGateway as setupGatewayPrimitive, setupWorker as setupWorkerPrimitive, type WorkerSetupOptions } from "./enrollment-cli.js";
-import { ACCESS_TOOL_OPTIONS, BUILTIN_ACCESS_PROFILES, DEFAULT_ACCESS_TOOLS, accessConfigurationToWorkspacePolicy, formatBuiltinAccessProfileLabel, normalizeAllowedExecutables, type AccessConfiguration, type AccessToolOption } from "./access-configuration.js";
-import { accessToolMultiselect } from "./access-tool-prompt.js";
+import { accessConfigurationToWorkspacePolicy } from "./access-configuration.js";
+import { collectAccessConfiguration, type AccessConfigurationPrompts } from "./access-configuration-flow.js";
+import { createAccessConfigurationPrompts } from "./access-configuration-prompts.js";
 import { AccessProfileStore, resolveAccessProfileFile } from "./access-profile-store.js";
-import { historyAwareTextInput, readAllowedExecutableHistory, recordAllowedExecutableHistory, resolveCommandHistoryFile } from "./command-history-input.js";
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
 import { workspacePath } from "./workspace-path-prompt.js";
 import { suggestedWorkspaceId, workspaceConfigFromAnswers, type WorkspaceProfile } from "./workspace-cli.js";
 
 const CREATE_NEW = "__create__";
-const CUSTOM_ACCESS = "__custom_access__";
 const DIM = "\x1b[2m";
 const RESET_DIM = "\x1b[22m";
 
-export type RoleSetupPrompts = {
-  choose: (message: string, options: Array<{ value: string; label: string }>) => Promise<string>;
-  multi: (message: string, options: AccessToolOption[], initialValues: Array<AccessToolOption["value"]>) => Promise<string[]>;
-  commandText: (message: string) => Promise<string>;
-  text: (
-    message: string,
-    initialValue?: string,
-    validate?: (value: string) => string | undefined,
-  ) => Promise<string>;
-};
+export type RoleSetupPrompts = AccessConfigurationPrompts;
 
 type SetupGatewayFn = typeof setupGatewayPrimitive;
 type SetupWorkerFn = typeof setupWorkerPrimitive;
@@ -79,61 +69,12 @@ async function collectInitialWorkspace(prompts: RoleSetupPrompts, injected: bool
   const suggestedName = path.basename(root) || suggestedWorkspaceId(root);
   const displayName = await prompts.text("Display name", suggestedName);
 
-  const profiles = await profileStore.list();
-  const selectedProfile = await prompts.choose("Access profile", [
-    ...BUILTIN_ACCESS_PROFILES.map((profile) => ({ value: `builtin:${profile.id}`, label: formatBuiltinAccessProfileLabel(profile) })),
-    ...profiles.map((profile, index) => ({ value: `profile:${index}`, label: profile.name })),
-    { value: CUSTOM_ACCESS, label: "Custom" },
-  ]);
-
-  let configuration: AccessConfiguration;
-  const builtin = BUILTIN_ACCESS_PROFILES.find((profile) => selectedProfile === `builtin:${profile.id}`);
-  if (builtin) {
-    configuration = {
-      tools: [...builtin.configuration.tools],
-      allowedExecutables: [...builtin.configuration.allowedExecutables],
-    };
-  } else {
-    const profileIndex = selectedProfile.startsWith("profile:") ? Number(selectedProfile.slice("profile:".length)) : -1;
-    const profile = Number.isInteger(profileIndex) ? profiles[profileIndex] : undefined;
-    if (profile) {
-      configuration = { tools: profile.tools, allowedExecutables: profile.allowedExecutables };
-    } else {
-      configuration = await collectCustomAccessConfiguration(prompts);
-      await maybeSaveAccessProfile(prompts, profileStore, configuration);
-    }
-  }
-
+  const configuration = await collectAccessConfiguration(prompts, profileStore);
   const policy = accessConfigurationToWorkspacePolicy(configuration);
   return {
     ...workspaceConfigFromAnswers({ root, displayName, profile: policy.profile as WorkspaceProfile }),
     ...policy,
   };
-}
-
-async function collectCustomAccessConfiguration(prompts: RoleSetupPrompts): Promise<AccessConfiguration> {
-  const selectedTools = await prompts.multi(
-    "Tools",
-    ACCESS_TOOL_OPTIONS.map((option) => ({ ...option })),
-    [...DEFAULT_ACCESS_TOOLS],
-  );
-  const allowedExecutables = selectedTools.includes("run")
-    ? normalizeAllowedExecutables(await prompts.commandText("Allowed executables"))
-    : [];
-  return {
-    tools: selectedTools as AccessConfiguration["tools"],
-    allowedExecutables,
-  };
-}
-
-async function maybeSaveAccessProfile(prompts: RoleSetupPrompts, profileStore: AccessProfileStore, configuration: AccessConfiguration): Promise<void> {
-  const save = await prompts.choose("Save this access configuration as a profile?", [
-    { value: "no", label: "No" },
-    { value: "yes", label: "Yes" },
-  ]);
-  if (save !== "yes") return;
-  const name = await prompts.text("Profile name");
-  await profileStore.save({ name, tools: [...configuration.tools], allowedExecutables: [...configuration.allowedExecutables] });
 }
 
 async function defaultPortAvailable(port: number): Promise<boolean> {
@@ -180,43 +121,11 @@ async function configuredPortReservations(
 }
 
 function defaultPrompts(role: RuntimeRole, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): RoleSetupPrompts {
-  const commandHistoryFile = resolveCommandHistoryFile(env, platform);
-  return {
-    choose: async (message, options) => {
-      const value = await select({ message, options });
-      if (isCancel(value)) {
-        cancel(`${role === "gateway" ? "Gateway" : "Worker"} setup cancelled`);
-        throw new Error(`${role === "gateway" ? "Gateway" : "Worker"} setup cancelled`);
-      }
-      return String(value);
-    },
-    multi: async (_message, options, initialValues) => {
-      const value = await accessToolMultiselect(options, initialValues);
-      if (isCancel(value)) {
-        cancel(`${role === "gateway" ? "Gateway" : "Worker"} setup cancelled`);
-        throw new Error(`${role === "gateway" ? "Gateway" : "Worker"} setup cancelled`);
-      }
-      return value.map(String);
-    },
-    commandText: async (message) => {
-      const history = await readAllowedExecutableHistory(commandHistoryFile);
-      const value = await historyAwareTextInput(message, history);
-      if (value) await recordAllowedExecutableHistory(commandHistoryFile, value);
-      return value;
-    },
-    text: async (message, initialValue, validate) => {
-      const value = await text({
-        message,
-        ...(initialValue ? { placeholder: initialValue, defaultValue: initialValue } : {}),
-        ...(validate ? { validate: (candidate: string | undefined) => validate(candidate || initialValue || "") } : {}),
-      });
-      if (isCancel(value)) {
-        cancel(`${role === "gateway" ? "Gateway" : "Worker"} setup cancelled`);
-        throw new Error(`${role === "gateway" ? "Gateway" : "Worker"} setup cancelled`);
-      }
-      return String(value || initialValue || "").trim();
-    },
-  };
+  return createAccessConfigurationPrompts({
+    cancelMessage: `${role === "gateway" ? "Gateway" : "Worker"} setup cancelled`,
+    env,
+    platform,
+  });
 }
 
 export async function listNamedRoleInstances(

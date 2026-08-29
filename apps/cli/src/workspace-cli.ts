@@ -1,8 +1,12 @@
 import path from "node:path";
-import { group, intro, isCancel, outro, select, text, cancel } from "@clack/prompts";
+import { intro, isCancel, outro, cancel } from "@clack/prompts";
 import { workspacePath } from "./workspace-path-prompt.js";
 import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig, type WorkspaceConfig } from "@queqiao/config";
 import { AtomicConfigStore } from "./atomic-config-store.js";
+import { accessConfigurationToWorkspacePolicy } from "./access-configuration.js";
+import { collectAccessConfiguration, type AccessConfigurationPrompts } from "./access-configuration-flow.js";
+import { createAccessConfigurationPrompts } from "./access-configuration-prompts.js";
+import { AccessProfileStore, resolveAccessProfileFile } from "./access-profile-store.js";
 import { resolveWorkspaceAuthorityRoot, workspaceRootsEqual } from "./workspace-authority.js";
 import { secureRuntimeFile } from "./secure-runtime-paths.js";
 
@@ -56,41 +60,33 @@ function assertNotCancelled<T>(value: T | symbol): T {
   throw new Error("Workspace setup cancelled");
 }
 
-async function interactiveWorkspaceAnswers(cwd: string): Promise<WorkspaceAnswers> {
-  intro("Add workspace");
-  try {
-    const answers = await group({
-      root: async () => assertNotCancelled(await workspacePath(cwd)),
-      displayName: async ({ results }) => {
-        const root = String(results.root || cwd);
-        const suggested = path.basename(root) || suggestedWorkspaceId(root);
-        return assertNotCancelled(await text({
-          message: "Display name",
-          placeholder: suggested,
-          defaultValue: suggested,
-        }));
-      },
-      profile: async () => assertNotCancelled(await select({
-        message: "Access profile",
-        initialValue: "read-only" as const,
-        options: [
-          { value: "read-only" as const, label: "Read only", hint: "files can be inspected but not changed" },
-          { value: "editor" as const, label: "Editor", hint: "file edits without command execution" },
-          { value: "coding" as const, label: "Coding", hint: "coding tools; commands still require allowlists" },
-        ],
-      })),
-    }, {
-      onCancel: () => cancel("Workspace setup cancelled"),
-    });
-    return {
-      root: String(answers.root),
-      displayName: String(answers.displayName),
-      profile: parseWorkspaceProfile(String(answers.profile)),
-    };
-  } catch (error) {
-    if (error instanceof Error && error.message === "Workspace setup cancelled") throw error;
-    throw error;
-  }
+type InteractiveWorkspaceCandidate = {
+  root: string;
+  displayName: string;
+  profile: WorkspaceProfile;
+  tools: WorkspaceConfig["tools"];
+  commands: WorkspaceConfig["commands"];
+};
+
+async function interactiveWorkspaceCandidate(options: {
+  cwd: string;
+  pathPrompt: (cwd: string) => Promise<string | symbol | undefined>;
+  prompts: AccessConfigurationPrompts;
+  profileStore: Pick<AccessProfileStore, "list" | "save">;
+}): Promise<InteractiveWorkspaceCandidate> {
+  const rootInput = assertNotCancelled(await options.pathPrompt(options.cwd));
+  const root = await resolveWorkspaceAuthorityRoot(String(rootInput || options.cwd));
+  const suggested = path.basename(root) || suggestedWorkspaceId(root);
+  const displayName = await options.prompts.text("Display name", suggested);
+  const configuration = await collectAccessConfiguration(options.prompts, options.profileStore);
+  const policy = accessConfigurationToWorkspacePolicy(configuration);
+  return {
+    root,
+    displayName,
+    profile: policy.profile as WorkspaceProfile,
+    tools: policy.tools,
+    commands: policy.commands,
+  };
 }
 
 async function testPromptAnswers(prompt: WorkspacePrompt): Promise<WorkspaceAnswers> {
@@ -111,6 +107,7 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
   if (option(args, "id")) throw new Error("--id is no longer supported; Workspace IDs are generated automatically");
   const scripted = option(args, "root") || option(args, "name") || option(args, "profile");
   let answers: WorkspaceAnswers;
+  let interactivePolicy: Pick<WorkspaceConfig, "tools" | "commands"> | undefined;
 
   if (scripted) {
     const rootInput = option(args, "root");
@@ -121,8 +118,17 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
   } else if (prompt) {
     answers = await testPromptAnswers(prompt);
   } else {
-    const raw = await interactiveWorkspaceAnswers(process.cwd());
-    answers = { ...raw, root: await resolveWorkspaceAuthorityRoot(raw.root) };
+    intro("Add workspace");
+    const prompts = createAccessConfigurationPrompts({ cancelMessage: "Workspace setup cancelled" });
+    const profileStore = new AccessProfileStore(resolveAccessProfileFile());
+    const candidate = await interactiveWorkspaceCandidate({
+      cwd: process.cwd(),
+      pathPrompt: workspacePath,
+      prompts,
+      profileStore,
+    });
+    answers = { root: candidate.root, displayName: candidate.displayName, profile: candidate.profile };
+    interactivePolicy = { tools: candidate.tools, commands: candidate.commands };
   }
 
   let addedWorkspace: WorkspaceConfig | undefined;
@@ -132,7 +138,10 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
       throw new Error(`Workspace path is already authorized: ${answers.root}`);
     }
     const id = uniqueWorkspaceId(answers.root, config.workspaces.map((entry) => entry.id));
-    addedWorkspace = workspaceConfigFromAnswers(answers, id);
+    addedWorkspace = workspaceConfigSchema.parse({
+      ...workspaceConfigFromAnswers(answers, id),
+      ...(interactivePolicy ?? {}),
+    });
     return runtimeConfigSchema.parse({
       ...config,
       workspaces: [...config.workspaces, addedWorkspace],
@@ -161,4 +170,10 @@ export async function removeWorkspace(configFile: string, workerName: string, wo
   return { changed: true, worker: workerName, removed: workspaceId, workspaces: next.workspaces };
 }
 
-export const workspaceCliInternals = { suggestedWorkspaceId, uniqueWorkspaceId, parseProfile: parseWorkspaceProfile, workspaceConfigFromAnswers };
+export const workspaceCliInternals = {
+  suggestedWorkspaceId,
+  uniqueWorkspaceId,
+  parseProfile: parseWorkspaceProfile,
+  workspaceConfigFromAnswers,
+  interactiveWorkspaceCandidate,
+};

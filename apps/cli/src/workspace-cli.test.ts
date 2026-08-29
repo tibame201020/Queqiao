@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readRuntimeConfig, serializeRuntimeConfig } from "@queqiao/config";
 import { addWorkspace, removeWorkspace, workspaceCliInternals } from "./workspace-cli.js";
 
@@ -18,6 +18,39 @@ async function promptAnswers(answers: string[]) {
 }
 
 describe("workspace CLI", () => {
+  it("uses the shared Access profile model for interactive additional Workspaces", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-access-"));
+    const workspaceRoot = path.join(root, "project"); await mkdir(workspaceRoot);
+    const choose = vi.fn(async (_message: string, options: Array<{ value: string; label: string }>) => {
+      expect(options.map((entry) => entry.value)).toEqual(["builtin:reader", "builtin:editor", "__custom_access__"]);
+      return "builtin:editor";
+    });
+    const interactiveWorkspaceCandidate = (workspaceCliInternals as any).interactiveWorkspaceCandidate;
+    expect(interactiveWorkspaceCandidate).toBeTypeOf("function");
+
+    const candidate = await interactiveWorkspaceCandidate({
+      cwd: root,
+      pathPrompt: async () => workspaceRoot,
+      prompts: {
+        choose,
+        multi: vi.fn(async () => { throw new Error("Editor must not open Custom tools"); }),
+        commandText: vi.fn(async () => ""),
+        text: vi.fn(async () => "Project"),
+      },
+      profileStore: { list: vi.fn(async () => []), save: vi.fn(async () => undefined) },
+    });
+
+    expect(candidate).toMatchObject({
+      root: workspaceRoot,
+      displayName: "Project",
+      profile: "coding",
+      tools: { allow: expect.arrayContaining(["read_file", "write_file", "edit_file"]), deny: [], explicit: [] },
+      commands: { allow: [] },
+    });
+    expect(candidate.tools.allow).not.toContain("run");
+    expect(candidate.tools.allow).not.toContain("shell");
+  });
+
   it("adds another authorized Workspace with an automatically generated id", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-cli-"));
     const one = path.join(root, "one"); const two = path.join(root, "My Project"); await mkdir(one); await mkdir(two);
