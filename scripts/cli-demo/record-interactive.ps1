@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('all','gateway','worker','selector','extension')]
+  [ValidateSet('all','gateway','worker','selector','extension','start','enroll')]
   [string]$Demo = 'all',
   [string]$PackageTarball = ''
 )
