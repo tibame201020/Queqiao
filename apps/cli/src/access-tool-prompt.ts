@@ -2,10 +2,8 @@ import { styleText } from "node:util";
 import { MultiSelectPrompt, settings } from "@clack/core";
 import type { CorePublicToolName } from "@queqiao/core-manifest";
 import type { AccessToolOption } from "./access-configuration.js";
-import { renderAccessToolOption } from "./access-configuration.js";
+import { renderMultiChoiceLines } from "./tui-choice-renderer.js";
 
-const CHECKED = "◼";
-const UNCHECKED = "◻";
 const ACTIVE = "◆";
 const SUBMIT = "◇";
 const BAR = "│";
@@ -31,16 +29,11 @@ export async function accessToolMultiselect(options: AccessToolOption[], initial
       }
 
       const lines = this.options.flatMap((option, index) => {
-        const isSelected = selected.includes(option.value);
-        const isFocused = index === this.cursor;
-        const checkbox = isSelected ? styleText("green", CHECKED) : styleText("dim", UNCHECKED);
-        const rendered = renderAccessToolOption(option, isSelected, isFocused).split("\n");
-        const name = isFocused ? rendered[0] : isSelected ? rendered[0] : styleText("dim", rendered[0] ?? option.label);
-        const description = rendered[1] ?? "";
-        return [
-          `${prefix}${checkbox} ${name}`,
-          `${prefix}  ${description}`,
-        ];
+        const rendered = renderMultiChoiceLines(option, {
+          selected: selected.includes(option.value),
+          focused: index === this.cursor,
+        });
+        return rendered.map((line) => `${prefix}${line}`);
       });
 
       const error = this.state === "error" ? [`${prefix}${styleText("yellow", this.error)}`] : [];

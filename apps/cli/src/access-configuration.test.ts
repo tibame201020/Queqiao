@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  ACCESS_TOOL_OPTIONS,
   BUILTIN_ACCESS_PROFILES,
   accessConfigurationToWorkspacePolicy,
   formatBuiltinAccessProfileLabel,
-  renderAccessToolOption,
   normalizeAllowedExecutables,
   normalizeCommandHistory,
 } from "./access-configuration.js";
@@ -16,13 +14,6 @@ describe("access configuration", () => {
     expect(BUILTIN_ACCESS_PROFILES[1]?.configuration.tools).toEqual(expect.arrayContaining(["read_file", "write_file", "edit_file"]));
     expect(BUILTIN_ACCESS_PROFILES[1]?.configuration.tools).not.toContain("run");
     expect(BUILTIN_ACCESS_PROFILES[1]?.configuration.tools).not.toContain("shell");
-  });
-
-  it("keeps inactive tool descriptions dim but makes selected tool descriptions bright", () => {
-    const readFile = ACCESS_TOOL_OPTIONS.find((option) => option.value === "read_file")!;
-    expect(renderAccessToolOption(readFile, false, false)).toContain("\x1b[2mRead text file");
-    expect(renderAccessToolOption(readFile, true, false)).not.toContain("\x1b[2mRead text file");
-    expect(renderAccessToolOption(readFile, false, true)).not.toContain("\x1b[2mRead text file");
   });
 
   it("describes built-in profiles with their concrete tool sets", () => {

@@ -26,13 +26,6 @@ export const ACCESS_TOOL_OPTIONS: AccessToolOption[] = CORE_PUBLIC_TOOL_ORDER.ma
   };
 });
 
-export function renderAccessToolOption(option: AccessToolOption, selected: boolean, focused: boolean): string {
-  const description = selected || focused
-    ? option.description
-    : `${DIM}${option.description}${RESET_DIM}`;
-  return `${option.label}\n  ${description}`;
-}
-
 export const DEFAULT_ACCESS_TOOLS: readonly CorePublicToolName[] = CORE_PUBLIC_TOOL_ORDER.filter((name) =>
   CORE_PUBLIC_TOOL_CONTRACTS[name].risk === "read"
   && CORE_PUBLIC_TOOL_CONTRACTS[name].requiredCapabilities.every((capability) => capability === "workspace:read")
