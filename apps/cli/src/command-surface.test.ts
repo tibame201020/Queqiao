@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, renderCliHelp } from "./command-surface.js";
+import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, renderCliHelp, renderCliRouteError } from "./command-surface.js";
 
 describe("CLI hierarchy consolidation", () => {
   it.each([
@@ -77,6 +77,10 @@ describe("CLI hierarchy consolidation", () => {
   it("does not expose the obsolete generic discovery-root resource", () => {
     expect(renderCliHelp(["worker", "--help"])).not.toContain("discovery");
     expect(renderCliHelp(["worker", "discovery", "--help"])).not.toContain("worker discovery");
+  });
+
+  it("rejects the removed default Workspace route instead of recognizing a handlerless command", () => {
+    expect(renderCliRouteError(["worker", "workspace", "default", "set"])).toContain('Unknown command "default"');
   });
 
   it("renders scoped help using commands relative to the current context", () => {

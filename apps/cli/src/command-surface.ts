@@ -88,7 +88,6 @@ const COMMAND_TREE: CommandNode = {
             add: terminal,
             list: terminal,
             remove: terminal,
-            default: { children: { set: terminal } },
             profile: { children: { set: terminal } },
             tool: { children: { allow: terminal, deny: terminal } },
             command: { children: { allow: terminal, deny: terminal } },
