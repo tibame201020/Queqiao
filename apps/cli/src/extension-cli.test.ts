@@ -184,14 +184,17 @@ describe("extension CLI", () => {
     await writeFile(packageFile, JSON.stringify(packageJson, null, 2), "utf8");
     await installExtension(hub, localTwo);
 
+    let observedMessage = "";
     let observedValues: string[] = [];
     await expect(resolveInstalledExtensionId(hub, undefined, {
       interactive: true,
-      choose: async (_message, options) => {
+      choose: async (message, options) => {
+        observedMessage = message;
         observedValues = options.map((entry) => entry.value);
         return "dev.queqiao.mcp-two";
       },
     })).resolves.toBe("dev.queqiao.mcp-two");
+    expect(observedMessage).toBe("Extension");
     expect(observedValues).toEqual(["dev.queqiao.mcp", "dev.queqiao.mcp-two"]);
     await expect(resolveInstalledExtensionId(hub, undefined, { interactive: false })).rejects.toMatchObject({ exitCode: 2 });
   });

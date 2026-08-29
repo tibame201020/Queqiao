@@ -58,11 +58,11 @@ function displayExtensionHubChoiceDescription(root: string): string {
 
 async function defaultSelectTargets(choices: CleanupChoice[]): Promise<string[]> {
   const value = await queqiaoMultiselect({
-    message: "Select local Queqiao data to remove",
+    message: "Local data",
     choices,
     initialValues: choices.map((choice) => choice.value),
     required: false,
-    summary: (selected) => `${selected.length} targets selected`,
+    summary: (selected) => `${selected.length} selected`,
   });
   if (isCancel(value)) {
     cancel("Queqiao uninstall cancelled");
@@ -109,7 +109,7 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
   const choices: CleanupChoice[] = [
     ...instances.map(({ role, name, layout, status }) => ({
       value: `${role}:${name}`,
-      label: `${role === "gateway" ? "Gateway" : "Worker"}: ${name}${status.active ? status.managed ? " (running)" : " (running unmanaged)" : ""}`,
+      label: `${role === "gateway" ? "Gateway" : "Worker"} ${name}${status.active ? status.managed ? " (running)" : " (running unmanaged)" : ""}`,
       description: displayRoleChoiceDescription(roleOwnedPaths(layout)),
     })),
     {

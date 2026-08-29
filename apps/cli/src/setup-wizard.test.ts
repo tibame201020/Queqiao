@@ -24,6 +24,40 @@ describe("role setup wizard", () => {
     expect(await listNamedRoleInstances("gateway", env, process.platform)).toEqual(["shadow", "stable"]);
   });
 
+  it("keeps setup instance choices entity-first without redundant action verbs", async () => {
+    const root = await mkdirFixture();
+    const env = fixtureEnv(root);
+    await createNamedConfig("gateway", "stable", env);
+    await createNamedConfig("gateway", "shadow", env);
+    const answers = ["shadow", "https://gateway.example/shadow/", "7575", "7574"];
+    let promptMessage = "";
+    let choiceLabels: string[] = [];
+    const testPrompts: RoleSetupPrompts = {
+      choose: async (message, options) => {
+        if (!promptMessage) {
+          promptMessage = message;
+          choiceLabels = options.map((option) => option.label);
+        }
+        return answers.shift() || "";
+      },
+      multi: async () => { throw new Error("Gateway setup must not prompt for access tools"); },
+      commandText: async () => { throw new Error("Gateway setup must not prompt for commands"); },
+      text: async (_message, initialValue) => answers.shift() || initialValue || "",
+    };
+
+    await runRoleSetupWizard("gateway", ["gateway", "setup"], {
+      env,
+      platform: process.platform,
+      prompts: testPrompts,
+      portAvailable: async () => true,
+      setupGateway: async () => ({ mode: "edit" } as any),
+    });
+
+    expect(promptMessage).toBe("Gateway");
+    expect(choiceLabels).toEqual(["shadow", "stable", "New Gateway"]);
+    expect(choiceLabels.join(" ")).not.toMatch(/\b(?:Edit|Create|Select)\b/);
+  });
+
   it("always offers built-in Reader and Editor profiles before Custom", async () => {
     const root = await mkdirFixture();
     const env = fixtureEnv(root);

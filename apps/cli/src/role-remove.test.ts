@@ -19,12 +19,14 @@ describe("role instance remove", () => {
     const stable = resolveRuntimeLayoutForNamedRole("gateway", "stable", env, process.platform);
     const shadow = resolveRuntimeLayoutForNamedRole("gateway", "shadow", env, process.platform);
 
+    let promptMessage = "";
     const result = await removeRoleInstance("gateway", ["gateway", "remove"], {
       env,
       platform: process.platform,
-      prompts: { choose: async () => "stable", confirm: async () => true },
+      prompts: { choose: async (message) => { promptMessage = message; return "stable"; }, confirm: async () => true },
       status: async () => ({ active: false, managed: false }),
     });
+    expect(promptMessage).toBe("Gateway");
 
     await expect(import("node:fs/promises").then(({ access }) => access(stable.configFile))).rejects.toMatchObject({ code: "ENOENT" });
     await expect(import("node:fs/promises").then(({ access }) => access(shadow.configFile))).resolves.toBeUndefined();

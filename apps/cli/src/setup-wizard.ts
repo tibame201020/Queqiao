@@ -174,7 +174,7 @@ export async function runRoleSetupWizard(
   dependencies: RoleSetupDependencies = {},
 ): Promise<unknown> {
   if (args.includes("--name")) {
-    throw new Error("--name is not supported for setup. Choose an existing instance or Create new in the setup wizard.");
+    throw new Error("--name is not supported for setup. Choose the instance in the setup flow.");
   }
 
   const interactive = dependencies.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -192,9 +192,9 @@ export async function runRoleSetupWizard(
   const roleLabel = role === "gateway" ? "Gateway" : "Worker";
 
   if (!injectedPrompts) intro(`${roleLabel} Setup`);
-  const selected = await prompts.choose(`Select ${roleLabel}`, [
-    ...existing.map((name) => ({ value: name, label: `Edit ${name}` })),
-    { value: CREATE_NEW, label: `Create new ${roleLabel}` },
+  const selected = await prompts.choose(roleLabel, [
+    ...existing.map((name) => ({ value: name, label: name })),
+    { value: CREATE_NEW, label: `New ${roleLabel}` },
   ]);
 
   const creating = selected === CREATE_NEW;

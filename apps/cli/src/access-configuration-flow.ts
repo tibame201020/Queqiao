@@ -39,7 +39,7 @@ export async function collectAccessConfiguration(
       label: profile.name,
       description: describeAccessConfiguration({ tools: profile.tools, allowedExecutables: profile.allowedExecutables }),
     })),
-    { value: CUSTOM_ACCESS, label: "Custom", description: "Choose tools and command allowlists" },
+    { value: CUSTOM_ACCESS, label: "Custom", description: "Tools and command allowlists" },
   ]);
 
   const builtin = BUILTIN_ACCESS_PROFILES.find((profile) => selectedProfile === `builtin:${profile.id}`);
@@ -83,7 +83,7 @@ async function maybeSaveAccessProfile(
   profileStore: Pick<AccessProfileStore, "save">,
   configuration: AccessConfiguration,
 ): Promise<void> {
-  const save = await prompts.choose("Save this access configuration as a profile?", [
+  const save = await prompts.choose("Save as profile?", [
     { value: "no", label: "No" },
     { value: "yes", label: "Yes" },
   ]);

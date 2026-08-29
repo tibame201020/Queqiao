@@ -343,7 +343,7 @@ export async function setupGateway(configFile: string, args: string[], stateDire
     if (prompt) {
       publicBaseUrlValue = (await prompt("public-base-url", "Public Gateway URL", initialValue)).trim() || initialValue;
     } else if (process.stdin.isTTY && process.stdout.isTTY) {
-      intro(existingGateway ? "Edit Gateway" : "Configure Gateway");
+      intro("Gateway Setup");
       const answer = await text({
         message: "Public Gateway URL",
         ...(initialValue ? { placeholder: initialValue, defaultValue: initialValue } : { placeholder: "https://your-gateway.example/" }),
@@ -414,9 +414,9 @@ export async function updateWorkerPort(configFile: string, args: string[], promp
     if (prompt) {
       portValue = (await prompt("port", "Worker port", currentPort)).trim() || currentPort;
     } else {
-      intro("Configure Worker");
+      intro("Worker Port");
       portValue = String(assertPromptNotCancelled(await text({
-        message: "Worker port",
+        message: "Port",
         placeholder: currentPort,
         defaultValue: currentPort,
         validate: (value) => validatePort(value || currentPort),
@@ -447,9 +447,9 @@ export async function setupWorker(configFile: string, args: string[], secretsDir
     if (prompt) {
       portValue = (await prompt("port", "Worker port", initialPort)).trim() || initialPort;
     } else {
-      intro(existingWorker ? "Edit Worker" : "Setup Worker");
+      intro("Worker Setup");
       portValue = String(assertPromptNotCancelled(await text({
-        message: "Worker port",
+        message: "Port",
         placeholder: initialPort,
         defaultValue: initialPort,
         validate: (value) => validatePort(value || initialPort),

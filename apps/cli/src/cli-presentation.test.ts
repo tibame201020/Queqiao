@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it } from "vitest";
 import { renderCliRouteError } from "./command-surface.js";
 import { formatCliOutput } from "./cli-output.js";
@@ -128,6 +129,25 @@ describe("CLI presentation", () => {
       "  Worker Id: worker-1",
       "  Environment Id: windows",
     ].join("\n"));
+  });
+
+  it("adds structural color without changing human-readable content", () => {
+    const colored = formatCliOutput(["gateway", "list"], {
+      instances: [{
+        name: "stable",
+        configured: true,
+        running: true,
+        managed: true,
+        publicUrl: "https://gateway.example/stable/",
+        servicePort: 8075,
+        managementPort: 8074,
+      }],
+    }, { color: true });
+    const plain = stripVTControlCharacters(colored);
+    expect(plain).toContain("Gateways");
+    expect(plain).toContain("stable  Running");
+    expect(plain).toContain("URL: https://gateway.example/stable/");
+    expect(colored).not.toBe(plain);
   });
 
   it("preserves structured output behind --json", () => {

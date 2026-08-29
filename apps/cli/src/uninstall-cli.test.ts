@@ -57,11 +57,11 @@ describe("Queqiao uninstall", () => {
       "extension-hub",
     ]);
     const gatewayChoice = seenChoices.find((choice) => choice.value === "gateway:stable");
-    expect(gatewayChoice?.label).toBe("Gateway: stable (running)");
+    expect(gatewayChoice?.label).toBe("Gateway stable (running)");
     expect(gatewayChoice?.description).toContain(`Persistent: ${path.dirname(gateway.configDir)}`);
     expect(gatewayChoice?.description).toContain(`Runtime:    ${gateway.runtimeDir}`);
     const workerChoice = seenChoices.find((choice) => choice.value === "worker:windows");
-    expect(workerChoice?.label).toBe("Worker: windows (running)");
+    expect(workerChoice?.label).toBe("Worker windows (running)");
     const hubChoice = seenChoices.find((choice) => choice.value === "extension-hub");
     expect(hubChoice?.label).toBe("Extension Hub");
     expect(hubChoice?.description).toBe(`Path: ${hubRoot}`);

@@ -56,7 +56,7 @@ async function main() {
     outputArgs = withRoleSelector(rawArgs, selectorRole, selectedRoleName);
     if (!commandArgs.includes(`--${selectorRole}`) && !rawArgs.includes("--json")) {
       const theme = createQueqiaoTheme(shouldUseCliColor());
-      process.stderr.write(`${theme.muted(`Using ${selectorRole === "gateway" ? "Gateway" : "Worker"}: ${selectedRoleName}`)}\n`);
+      process.stderr.write(`${theme.subtle(`${selectorRole === "gateway" ? "Gateway" : "Worker"}:`)} ${theme.identifier(selectedRoleName)}\n`);
     }
     commandArgs = withRoleSelector(commandArgs, selectorRole, selectedRoleName);
     dispatch = resolveCliDispatch(commandArgs);

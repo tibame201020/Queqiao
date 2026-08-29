@@ -31,7 +31,7 @@ export function renderQueqiaoSelectFrame<T extends string>(frame: QueqiaoSelectF
   if (submitted) {
     const selected = frame.options.find((option) => option.value === frame.value);
     const summary = selected?.label ?? String(frame.value ?? "");
-    return `${header}\n${frame.withGuide ? theme.subtle(TUI_GLYPHS.guide) : ""}  ${theme.muted(summary)}`;
+    return `${header}\n${frame.withGuide ? theme.subtle(TUI_GLYPHS.guide) : ""}  ${theme.identifier(summary)}`;
   }
 
   const terminalColumns = Math.max(20, frame.terminalColumns ?? process.stdout.columns ?? 80);

@@ -26,14 +26,22 @@ The design follows the TUI design principles reviewed for this convergence:
 
 ### Semantic palette
 
-Queqiao uses at most four semantic hues:
+Queqiao uses four semantic hues:
 
-- accent: cyan — active prompt/focus only
-- success: green — completed/success state
-- warning: yellow — attention/recoverable state
-- danger: red — error/destructive state
+- accent: cyan ? active focus plus structural identity/navigation
+- success: green ? completed/success/selected state
+- warning: yellow ? attention/recoverable state
+- danger: red ? error/destructive state
 
-All other hierarchy uses terminal-native text, bold, dim, and spacing. Color is never the only state channel.
+Structural color is deliberately bounded:
+
+- section headings and entity identifiers use cyan + bold
+- URLs, paths, and executable command text use cyan
+- ordinary values use terminal-native bold
+- keys, descriptions, and hints use gray/dim
+- green/yellow/red remain reserved for state semantics
+
+Color is never the only state channel. The same hierarchy must remain understandable after all ANSI styling is removed.
 
 `NO_COLOR` and `TERM=dumb` disable ANSI styling. Non-TTY output is unstyled by default.
 
@@ -75,6 +83,38 @@ Multi choice:
 ```
 
 Primary labels are never dimmed. Secondary descriptions may be dimmed when neither focused nor selected. Disabled rows remain readable and must not depend on color alone.
+
+### Microcopy
+
+Interactive copy is noun-first and context-aware. When the title already states the action, the prompt names the entity or value instead of repeating an instruction verb.
+
+Preferred:
+
+```text
+Gateway Setup
+?  Gateway
+?    shadow
+?    stable
+?  ? New Gateway
+```
+
+Avoid:
+
+```text
+Gateway Setup
+?  Select Gateway
+?    Edit shadow
+?    Edit stable
+?  ? Create new Gateway
+```
+
+Rules:
+
+- prompt labels name the decision (`Gateway`, `Worker`, `Extension`, `Access profile`, `Tools`)
+- existing entity choices show identity/state, not `Edit`, `Use`, `Attach`, or other action prefixes already implied by context
+- creation sentinels use concise labels such as `New Gateway`
+- summaries omit repeated nouns when the prompt already supplies them (`3 selected`, not `3 tools selected`)
+- auto-selection notices use `Gateway: stable` / `Worker: windows`, not `Using Gateway: stable`
 
 ### Prompt frames
 

@@ -47,7 +47,7 @@ export function renderSingleChoiceLines(
   const label = state.disabled
     ? theme.muted(option.label)
     : state.focused
-      ? theme.strong(option.label)
+      ? theme.accentStrong(option.label)
       : option.label;
   const secondary = descriptionLines(option.description, maxWidth)
     .map((line) => state.focused && !state.disabled ? line : theme.muted(line));
@@ -74,8 +74,10 @@ export function renderMultiChoiceLines(
   const label = state.disabled
     ? theme.muted(option.label)
     : state.focused
-      ? theme.strong(option.label)
-      : option.label;
+      ? theme.accentStrong(option.label)
+      : state.selected
+        ? theme.success(option.label)
+        : option.label;
   const secondary = descriptionLines(option.description, maxWidth)
     .map((line) => presentation.descriptionMuted || state.disabled ? theme.muted(line) : line);
 

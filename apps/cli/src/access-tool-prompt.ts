@@ -11,6 +11,6 @@ export async function accessToolMultiselect(options: AccessToolOption[], initial
     validate(value) {
       if (!value?.length) return "Please select at least one tool.";
     },
-    summary: (selected) => `${selected.length} tools selected`,
+    summary: (selected) => `${selected.length} selected`,
   });
 }

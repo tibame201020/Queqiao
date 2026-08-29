@@ -35,6 +35,24 @@ describe("instance selector", () => {
     await expect(resolveRoleInstance("gateway", [], { ...dependencies, interactive: false })).rejects.toThrow(/--gateway is required/);
   });
 
+  it("uses the entity name as the multi-instance prompt without a redundant Select verb", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-selector-many-"));
+    await gateway(root, "stable");
+    await gateway(root, "shadow");
+    let message = "";
+    const selected = await resolveRoleInstance("gateway", [], {
+      env: envFor(root),
+      platform: process.platform,
+      interactive: true,
+      choose: async (prompt, options) => {
+        message = prompt;
+        return options.find((option) => option.value === "stable")!.value;
+      },
+    });
+    expect(selected).toBe("stable");
+    expect(message).toBe("Gateway");
+  });
+
   it("rejects unknown explicit instances", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-selector-unknown-"));
     await expect(resolveRoleInstance("worker", ["--worker", "missing"], { env: envFor(root), platform: process.platform, interactive: false })).rejects.toThrow(/Unknown Worker/);

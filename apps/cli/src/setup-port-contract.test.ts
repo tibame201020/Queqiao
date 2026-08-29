@@ -44,7 +44,7 @@ describe("interactive setup port contract", () => {
       },
     });
 
-    expect(messages[0]).toBe("Select Gateway");
+    expect(messages[0]).toBe("Gateway");
     expect(messages[1]).toBe("Gateway name []");
     expect(messages[2]).toBe("Public Gateway URL []");
     expect(messages[3]).toMatch(/^Gateway port .*Local port behind the public Gateway URL\..* \[7575\]$/);
@@ -70,7 +70,7 @@ describe("interactive setup port contract", () => {
     });
 
     expect(messages).toEqual([
-      "Select Gateway",
+      "Gateway",
       "Public Gateway URL [https://old.example/]",
       expect.stringMatching(/^Gateway port .*\[7775\]$/),
       expect.stringMatching(/^Management port .*\[7774\]$/),

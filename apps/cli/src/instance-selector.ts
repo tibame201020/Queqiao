@@ -113,8 +113,8 @@ export async function resolveRoleInstance(
   const instances = await listRoleInstances(role, dependencies);
   const choices = instances.map(({ name, running }) => ({ value: name, label: `${name}${running ? " (running)" : ""}` }));
   const selected = dependencies.choose
-    ? await dependencies.choose(`Select ${label}`, choices)
-    : await queqiaoSelect({ message: `Select ${label}`, choices });
+    ? await dependencies.choose(label, choices)
+    : await queqiaoSelect({ message: label, choices });
   if (isCancel(selected)) {
     cancel(`${label} selection cancelled`);
     const error = new Error(`${label} selection cancelled`) as Error & { exitCode?: number };

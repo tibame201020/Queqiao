@@ -56,7 +56,7 @@ class WorkspacePathPrompt extends AutocompletePrompt<PathOption> {
         const head = `${renderPromptSymbol(this.state, theme)}  ${theme.strong("Workspace path")}`;
         const input = this.userInputWithCursor || theme.muted(initialValue);
         if (this.state === "submit") {
-          return `${guide ? `${bar}\n` : ""}${head}\n${end}${theme.muted(this.value ? String(this.value) : this.userInput)}`;
+          return `${guide ? `${bar}\n` : ""}${head}\n${end}${theme.link(this.value ? String(this.value) : this.userInput)}`;
         }
         if (this.state === "cancel") {
           return `${guide ? `${bar}\n` : ""}${head}\n${end}${theme.muted("Cancelled")}`;

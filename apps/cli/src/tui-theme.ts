@@ -10,10 +10,14 @@ export type QueqiaoTheme = {
   muted: (text: string) => string;
   subtle: (text: string) => string;
   accentStrong: (text: string) => string;
+  identifier: (text: string) => string;
+  value: (text: string) => string;
+  link: (text: string) => string;
+  code: (text: string) => string;
 };
 
 function paint(color: boolean, styles: string | string[], text: string): string {
-  return color ? styleText(styles as Parameters<typeof styleText>[0], text) : text;
+  return color ? styleText(styles as Parameters<typeof styleText>[0], text, { validateStream: false }) : text;
 }
 
 export function shouldUseCliColor(input: {
@@ -38,6 +42,10 @@ export function createQueqiaoTheme(color = shouldUseCliColor()): QueqiaoTheme {
     muted: (text) => paint(color, "dim", text),
     subtle: (text) => paint(color, "gray", text),
     accentStrong: (text) => paint(color, ["cyan", "bold"], text),
+    identifier: (text) => paint(color, ["cyan", "bold"], text),
+    value: (text) => paint(color, "bold", text),
+    link: (text) => paint(color, "cyan", text),
+    code: (text) => paint(color, "cyan", text),
   };
 }
 
@@ -71,7 +79,7 @@ export function styleCliHelpText(text: string, color = shouldUseCliColor()): str
   const theme = createQueqiaoTheme(color);
   return text.split("\n").map((line) => {
     if (/^(Usage:|Commands:|Global options:|Diagnostics:|Advanced compatibility commands:)/.test(line)) {
-      return theme.strong(line);
+      return theme.accentStrong(line);
     }
     if (/^Run \"queqiao /.test(line)) return theme.muted(line);
     return line;

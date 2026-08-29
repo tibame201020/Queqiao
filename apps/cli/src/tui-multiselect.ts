@@ -31,7 +31,7 @@ export function renderQueqiaoMultiSelectFrame<T extends string>(frame: QueqiaoMu
   const summary = frame.summary ?? ((selected: readonly T[]) => `${selected.length} selected`);
 
   if (submitted) {
-    return `${header}\n${frame.withGuide ? theme.subtle(TUI_GLYPHS.guide) : ""}  ${theme.muted(summary(frame.selected))}`;
+    return `${header}\n${frame.withGuide ? theme.subtle(TUI_GLYPHS.guide) : ""}  ${theme.success(summary(frame.selected))}`;
   }
 
   const terminalColumns = Math.max(20, frame.terminalColumns ?? process.stdout.columns ?? 80);

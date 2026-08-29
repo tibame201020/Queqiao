@@ -17,8 +17,15 @@ function scalar(value: unknown): string {
   return String(value);
 }
 
+function structuralValue(theme: QueqiaoTheme, key: string, value: unknown): string {
+  const text = scalar(value);
+  if (/url|endpoint|path|file|directory/i.test(key)) return theme.link(text);
+  if (/(^|\s)id$/i.test(key) || /name$/i.test(key)) return theme.identifier(text);
+  return theme.value(text);
+}
+
 function field(theme: QueqiaoTheme, key: string, value: unknown, indent = 0): string {
-  return `${" ".repeat(indent)}${theme.subtle(`${key}:`)} ${scalar(value)}`;
+  return `${" ".repeat(indent)}${theme.subtle(`${key}:`)} ${structuralValue(theme, key, value)}`;
 }
 
 function renderStructured(value: unknown, theme: QueqiaoTheme, indent = 0): string[] {
@@ -31,7 +38,7 @@ function renderStructured(value: unknown, theme: QueqiaoTheme, indent = 0): stri
         lines.push(`${pad}${theme.subtle("-")}`);
         lines.push(...renderStructured(item, theme, indent + 2));
       } else {
-        lines.push(`${pad}${theme.subtle("-")} ${scalar(item)}`);
+        lines.push(`${pad}${theme.subtle("-")} ${theme.value(scalar(item))}`);
       }
     }
     return lines;
@@ -48,7 +55,7 @@ function renderStructured(value: unknown, theme: QueqiaoTheme, indent = 0): stri
     }
     return lines;
   }
-  return [`${pad}${scalar(value)}`];
+  return [`${pad}${theme.value(scalar(value))}`];
 }
 
 function isNotConfigured(role: string, health: Record<string, unknown>): boolean {
@@ -62,8 +69,8 @@ function renderRoleInventory(args: readonly string[], value: unknown, theme: Que
   const result = value as Record<string, unknown>;
   if (!Array.isArray(result.instances)) return undefined;
   const heading = args[0] === "gateway" ? "Gateways" : "Workers";
-  if (!result.instances.length) return `${theme.strong(heading)}\n  ${theme.muted("None")}`;
-  const lines = [theme.strong(heading)];
+  if (!result.instances.length) return `${theme.accentStrong(heading)}\n  ${theme.muted("None")}`;
+  const lines = [theme.accentStrong(heading)];
   for (const item of result.instances) {
     const instance = item as Record<string, unknown>;
     const status = instance.running === true
@@ -71,7 +78,7 @@ function renderRoleInventory(args: readonly string[], value: unknown, theme: Que
       : instance.configured === false
         ? theme.danger("Invalid configuration")
         : theme.muted("Stopped");
-    lines.push(`  ${theme.strong(scalar(instance.name))}  ${status}`);
+    lines.push(`  ${theme.identifier(scalar(instance.name))}  ${status}`);
     if (args[0] === "gateway") {
       lines.push(field(theme, "URL", instance.publicUrl, 4));
       lines.push(field(theme, "Ports", `${scalar(instance.servicePort)} / management ${scalar(instance.managementPort)}`, 4));
@@ -96,12 +103,12 @@ function renderJoinToken(args: readonly string[], value: unknown, theme: Queqiao
   } else {
     lines.push(`${theme.warning(TUI_GLYPHS.warning)} ${theme.strong("Join code could not be copied")}`, field(theme, "Expires At", expiresAt, 2));
     if (typeof result.joinCode === "string" && result.joinCode) {
-      lines.push("", theme.strong("Join code"), `  ${result.joinCode}`);
+      lines.push("", theme.accentStrong("Join code"), `  ${theme.code(result.joinCode)}`);
     }
     if (typeof result.copyError === "string" && result.copyError) lines.push(field(theme, "Copy Error", result.copyError, 2));
   }
 
-  lines.push("", theme.strong("Next"), theme.muted("  Before expiry, on the target Worker host:"), "  queqiao worker join --worker <worker>");
+  lines.push("", theme.accentStrong("Next"), theme.muted("  Before expiry, on the target Worker host:"), `  ${theme.code("queqiao worker join --worker <worker>")}`);
   return lines.join("\n");
 }
 
@@ -111,7 +118,7 @@ function renderWorkerJoin(args: readonly string[], value: unknown, theme: Queqia
   const result = value as Record<string, unknown>;
   if (result.joined !== true) return undefined;
   const name = option(args, "worker") || "worker";
-  const lines = [`${theme.success(TUI_GLYPHS.success)} ${theme.strong(`Worker joined Gateway: ${name}`)}`];
+  const lines = [`${theme.success(TUI_GLYPHS.success)} ${theme.strong("Worker joined Gateway:")} ${theme.identifier(name)}`];
   if (typeof result.workerId === "string") lines.push(field(theme, "Worker Id", result.workerId, 2));
   if (typeof result.environmentId === "string") lines.push(field(theme, "Environment Id", result.environmentId, 2));
   return lines.join("\n");
@@ -131,7 +138,7 @@ function renderStatus(args: readonly string[], value: unknown, theme: QueqiaoThe
   const managed = result.managed === true;
   const status = !configured ? theme.warning("Not configured") : active ? theme.success("Running") : theme.muted("Stopped");
   const lines = [
-    theme.strong(`${roleLabel} ${name}`),
+    `${theme.strong(roleLabel)} ${theme.identifier(name)}`,
     `${theme.subtle("  Status:")} ${status}`,
     field(theme, "Managed", managed ? "Yes" : "No", 2),
   ];
@@ -141,9 +148,9 @@ function renderStatus(args: readonly string[], value: unknown, theme: QueqiaoThe
     if (error) lines.push(field(theme, "Detail", error, 2));
   }
   if (!configured) {
-    lines.push("", theme.strong("Next"), `  queqiao ${role} setup`);
+    lines.push("", theme.accentStrong("Next"), `  ${theme.code(`queqiao ${role} setup`)}`);
   } else if (!active) {
-    lines.push("", theme.strong("Next"), `  queqiao ${role} serve --bg --${selector} ${name}`);
+    lines.push("", theme.accentStrong("Next"), `  ${theme.code(`queqiao ${role} serve --bg --${selector} ${name}`)}`);
   }
   return lines.join("\n");
 }

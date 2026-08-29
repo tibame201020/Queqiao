@@ -154,8 +154,8 @@ export async function resolveInstalledExtensionId(
     description: `${extension.manifest.id} · ${extension.manifest.version}`,
   }));
   const selected = dependencies.choose
-    ? await dependencies.choose("Select Extension", choices)
-    : await queqiaoSelect({ message: "Select Extension", choices });
+    ? await dependencies.choose("Extension", choices)
+    : await queqiaoSelect({ message: "Extension", choices });
   if (isCancel(selected)) {
     cancel("Extension selection cancelled");
     const error = new Error("Extension selection cancelled") as Error & { exitCode?: number };

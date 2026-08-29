@@ -25,7 +25,7 @@ describe("Queqiao single-select primitive", () => {
 
   it("summarizes the selected primary label on submit", () => {
     const output = stripVTControlCharacters(renderQueqiaoSelectFrame({
-      message: "Select Gateway",
+      message: "Gateway",
       options: [{ value: "stable", label: "stable" }],
       value: "stable",
       cursor: 0,
@@ -33,7 +33,7 @@ describe("Queqiao single-select primitive", () => {
       withGuide: true,
     }));
 
-    expect(output).toContain("◇  Select Gateway");
+    expect(output).toContain("◇  Gateway");
     expect(output).toContain("stable");
     expect(output).not.toContain("Enter confirm");
   });
