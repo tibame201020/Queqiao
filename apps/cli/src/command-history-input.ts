@@ -4,9 +4,8 @@ import { createInterface } from "node:readline/promises";
 import type { Readable, Writable } from "node:stream";
 import { resolveExtensionHubRoot, secureRuntimeDirectory, secureRuntimeFile } from "@queqiao/platform-paths";
 import { normalizeCommandHistory } from "./access-configuration.js";
+import { createQueqiaoTheme, shouldUseCliColor, TUI_GLYPHS } from "./tui-theme.js";
 
-const DIM = "\x1b[2m";
-const RESET = "\x1b[0m";
 const HISTORY_LIMIT = 20;
 
 type HistoryFile = { allowedExecutables: string[] };
@@ -55,8 +54,10 @@ export async function historyAwareTextInput(
     removeHistoryDuplicates: true,
   });
   try {
-    const ghost = fallback ? ` ${DIM}${fallback}${RESET}` : "";
-    const answer = await readline.question(`${message}${ghost}\n> `);
+    const outputIsTTY = Boolean((output as Writable & { isTTY?: boolean }).isTTY);
+    const theme = createQueqiaoTheme(shouldUseCliColor({ isTTY: outputIsTTY }));
+    const ghost = fallback ? `  ${theme.muted(fallback)}` : "";
+    const answer = await readline.question(`${theme.accent(TUI_GLYPHS.promptActive)}  ${theme.strong(message)}${ghost}\n${theme.accent(TUI_GLYPHS.focus)} `);
     return answer.trim() || fallback;
   } finally {
     readline.close();

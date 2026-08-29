@@ -2,13 +2,9 @@ import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it } from "vitest";
 import { renderQueqiaoMultiSelectFrame } from "./tui-multiselect.js";
 
-function plain(value: string): string {
-  return stripVTControlCharacters(value);
-}
-
 describe("Queqiao multi-select primitive", () => {
   it("renders focus and selection independently with multiline secondary information", () => {
-    const output = plain(renderQueqiaoMultiSelectFrame({
+    const output = stripVTControlCharacters(renderQueqiaoMultiSelectFrame({
       message: "Select local Queqiao data to remove",
       options: [
         {
@@ -28,15 +24,16 @@ describe("Queqiao multi-select primitive", () => {
       withGuide: false,
     }));
 
-    expect(output).toContain("  [x] Gateway: stable");
-    expect(output).toContain("      Persistent: C:\\Queqiao\\gateway");
-    expect(output).toContain("      Runtime: C:\\Temp\\gateway");
-    expect(output).toContain("> [ ] Extension Hub");
-    expect(output).toContain("      Path: C:\\Queqiao\\extensions");
+    expect(output).toContain("  ■ Gateway: stable");
+    expect(output).toContain("    Persistent: C:\\Queqiao\\gateway");
+    expect(output).toContain("    Runtime: C:\\Temp\\gateway");
+    expect(output).toContain("› □ Extension Hub");
+    expect(output).toContain("    Path: C:\\Queqiao\\extensions");
+    expect(output).toContain("↑/↓ navigate · Space toggle · Enter confirm");
   });
 
   it("uses a domain-supplied submit summary", () => {
-    const output = plain(renderQueqiaoMultiSelectFrame({
+    const output = stripVTControlCharacters(renderQueqiaoMultiSelectFrame({
       message: "Tools",
       options: [{ value: "read_file", label: "read_file" }],
       selected: ["read_file"],
@@ -48,6 +45,6 @@ describe("Queqiao multi-select primitive", () => {
 
     expect(output).toContain("◇  Tools");
     expect(output).toContain("1 tools selected");
-    expect(output).not.toContain("Space: select");
+    expect(output).not.toContain("Space toggle");
   });
 });

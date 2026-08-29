@@ -2,13 +2,9 @@ import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it } from "vitest";
 import { renderQueqiaoSelectFrame } from "./tui-select.js";
 
-function plain(value: string): string {
-  return stripVTControlCharacters(value);
-}
-
 describe("Queqiao single-select primitive", () => {
   it("renders focus with structured secondary information", () => {
-    const output = plain(renderQueqiaoSelectFrame({
+    const output = stripVTControlCharacters(renderQueqiaoSelectFrame({
       message: "Access profile",
       options: [
         { value: "reader", label: "Reader", description: "Tools: read_file, search_text" },
@@ -22,13 +18,13 @@ describe("Queqiao single-select primitive", () => {
 
     expect(output).toContain("  Reader");
     expect(output).toContain("    Tools: read_file, search_text");
-    expect(output).toContain("> Editor");
-    expect(output).toContain("↑/↓ to navigate • Enter: confirm");
-    expect(output).not.toContain("[x]");
+    expect(output).toContain("› Editor");
+    expect(output).toContain("↑/↓ navigate · Enter confirm");
+    expect(output).not.toContain("■");
   });
 
   it("summarizes the selected primary label on submit", () => {
-    const output = plain(renderQueqiaoSelectFrame({
+    const output = stripVTControlCharacters(renderQueqiaoSelectFrame({
       message: "Select Gateway",
       options: [{ value: "stable", label: "stable" }],
       value: "stable",
@@ -39,6 +35,6 @@ describe("Queqiao single-select primitive", () => {
 
     expect(output).toContain("◇  Select Gateway");
     expect(output).toContain("stable");
-    expect(output).not.toContain("Enter: confirm");
+    expect(output).not.toContain("Enter confirm");
   });
 });

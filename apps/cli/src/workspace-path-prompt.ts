@@ -1,9 +1,8 @@
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { styleText } from "node:util";
 import type { Key } from "node:readline";
 import { AutocompletePrompt, settings } from "@clack/core";
-import { S_BAR, S_BAR_END, symbol } from "@clack/prompts";
+import { createQueqiaoTheme, renderPromptSymbol, TUI_GLYPHS } from "./tui-theme.js";
 
 type PathOption = { value: string };
 
@@ -50,20 +49,23 @@ class WorkspacePathPrompt extends AutocompletePrompt<PathOption> {
       options() { return directoryOptions(this.userInput); },
       filter: () => true,
       render() {
+        const theme = createQueqiaoTheme();
         const guide = settings.withGuide;
-        const bar = guide ? styleText("gray", S_BAR) : "";
-        const head = `${symbol(this.state)}  Workspace path`;
-        const input = this.userInputWithCursor || styleText("dim", initialValue);
+        const bar = guide ? theme.subtle(TUI_GLYPHS.guide) : "";
+        const end = guide ? `${theme.subtle(TUI_GLYPHS.guideEnd)}  ` : "";
+        const head = `${renderPromptSymbol(this.state, theme)}  ${theme.strong("Workspace path")}`;
+        const input = this.userInputWithCursor || theme.muted(initialValue);
         if (this.state === "submit") {
-          return `${guide ? `${bar}\n` : ""}${head}\n${guide ? styleText("gray", S_BAR_END) + "  " : ""}${styleText("dim", this.value ? String(this.value) : this.userInput)}`;
+          return `${guide ? `${bar}\n` : ""}${head}\n${end}${theme.muted(this.value ? String(this.value) : this.userInput)}`;
         }
         if (this.state === "cancel") {
-          return `${guide ? `${bar}\n` : ""}${head}\n${guide ? styleText("gray", S_BAR_END) + "  " : ""}${styleText("dim", "Cancelled")}`;
+          return `${guide ? `${bar}\n` : ""}${head}\n${end}${theme.muted("Cancelled")}`;
         }
         const choices = this.filteredOptions.slice(0, 5)
-          .map((entry) => styleText("dim", `  ${entry.value}`))
+          .map((entry) => theme.muted(`    ${entry.value}`))
           .join("\n");
-        return `${guide ? `${bar}\n` : ""}${head}\n${guide ? `${bar}  ` : ""}${input}${choices ? `\n${choices}` : ""}`;
+        const hint = theme.muted("Tab complete · Enter confirm");
+        return `${guide ? `${bar}\n` : ""}${head}\n${guide ? `${bar}  ` : ""}${input}${choices ? `\n${choices}` : ""}\n${guide ? `${bar}  ` : ""}${hint}`;
       },
     });
     this.on("key", (_char, key) => {

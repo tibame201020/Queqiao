@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it } from "vitest";
 import { multiChoicePresentation, renderMultiChoiceLines, renderSingleChoiceLines } from "./tui-choice-renderer.js";
+import { createQueqiaoTheme } from "./tui-theme.js";
 
 const option = {
   label: "read_file",
@@ -11,15 +12,17 @@ function plain(lines: string[]): string[] {
   return lines.map((line) => stripVTControlCharacters(line));
 }
 
-describe("Queqiao multi-choice renderer", () => {
+const monochrome = createQueqiaoTheme(false);
+
+describe("Queqiao choice renderer", () => {
   it("uses independent non-color channels for focus and selection", () => {
-    expect(plain(renderMultiChoiceLines(option, { focused: false, selected: false }))[0]).toBe("  [ ] read_file");
-    expect(plain(renderMultiChoiceLines(option, { focused: false, selected: true }))[0]).toBe("  [x] read_file");
-    expect(plain(renderMultiChoiceLines(option, { focused: true, selected: false }))[0]).toBe("> [ ] read_file");
-    expect(plain(renderMultiChoiceLines(option, { focused: true, selected: true }))[0]).toBe("> [x] read_file");
+    expect(renderMultiChoiceLines(option, { focused: false, selected: false }, monochrome)[0]).toBe("  □ read_file");
+    expect(renderMultiChoiceLines(option, { focused: false, selected: true }, monochrome)[0]).toBe("  ■ read_file");
+    expect(renderMultiChoiceLines(option, { focused: true, selected: false }, monochrome)[0]).toBe("› □ read_file");
+    expect(renderMultiChoiceLines(option, { focused: true, selected: true }, monochrome)[0]).toBe("› ■ read_file");
   });
 
-  it("keeps descriptions fully emphasized for selected or focused rows", () => {
+  it("keeps descriptions emphasized for selected or focused rows", () => {
     expect(multiChoicePresentation({ focused: false, selected: false }).descriptionMuted).toBe(true);
     expect(multiChoicePresentation({ focused: false, selected: true }).descriptionMuted).toBe(false);
     expect(multiChoicePresentation({ focused: true, selected: false }).descriptionMuted).toBe(false);
@@ -37,25 +40,29 @@ describe("Queqiao multi-choice renderer", () => {
     }
   });
 
-  it("renders multiline secondary information as separately indented lines", () => {
+  it("renders multiline secondary information on a stable content column", () => {
     expect(plain(renderMultiChoiceLines({
       label: "Gateway: stable",
       description: "Persistent: C:\\Queqiao\\gateway\nRuntime: C:\\Temp\\gateway",
     }, { focused: true, selected: true }))).toEqual([
-      "> [x] Gateway: stable",
-      "      Persistent: C:\\Queqiao\\gateway",
-      "      Runtime: C:\\Temp\\gateway",
+      "› ■ Gateway: stable",
+      "    Persistent: C:\\Queqiao\\gateway",
+      "    Runtime: C:\\Temp\\gateway",
     ]);
   });
 
-  it("uses the same focus grammar for single-choice rows without a fake selection marker", () => {
+  it("uses the same focus grammar for single-choice rows without a selection marker", () => {
     expect(plain(renderSingleChoiceLines({
       label: "Reader",
       description: "Tools: read_file, search_text",
     }, { focused: true }))).toEqual([
-      "> Reader",
+      "› Reader",
       "    Tools: read_file, search_text",
     ]);
     expect(plain(renderSingleChoiceLines({ label: "Editor" }, { focused: false }))).toEqual(["  Editor"]);
+  });
+
+  it("keeps disabled state readable without relying on color", () => {
+    expect(renderMultiChoiceLines({ label: "shell" }, { focused: false, selected: false, disabled: true }, monochrome)[0]).toBe("  □ shell");
   });
 });

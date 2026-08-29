@@ -18,6 +18,7 @@ import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./servic
 import { addWorkspace, removeWorkspace, setWorkspaceAccess, updateWorkspaceCommandPolicy, updateWorkspaceToolPolicy } from "./workspace-cli.js";
 import { attachExtension, detachExtension, doctorExtensionHub, installExtension, listExtensions, resolveInstalledExtensionId, showExtension, uninstallExtension } from "./extension-cli.js";
 import { formatCliOutput } from "./cli-output.js";
+import { createQueqiaoTheme, shouldUseCliColor, styleCliHelpText } from "./tui-theme.js";
 import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, resolveCliDispatch, renderCliHelp, renderCliRouteError, renderRemovedSelectorError, validateCliArgs } from "./command-surface.js";
 import { listRoleInstances, resolveRoleInstance, selectorRoleForCliArgs, withRoleSelector } from "./instance-selector.js";
 
@@ -34,12 +35,12 @@ let args = normalizeCliArgs(commandArgs);
 let selectedRoleName: string | undefined;
 const USAGE = renderCliHelp([]);
 
-function print(value: unknown) { process.stdout.write(`${formatCliOutput(outputArgs, value)}\n`); }
+function print(value: unknown) { process.stdout.write(`${formatCliOutput(outputArgs, value, { color: shouldUseCliColor() })}\n`); }
 
 async function main() {
   if (isRemovedCliRoute(args)) throw new Error(args[1]);
-  if (helpRequested) { process.stdout.write(`${renderCliHelp(commandArgs)}\n`); return; }
-  if (isCliHelpContext(commandArgs)) { process.stdout.write(`${renderCliHelp(commandArgs)}\n`); return; }
+  if (helpRequested) { process.stdout.write(`${styleCliHelpText(renderCliHelp(commandArgs))}\n`); return; }
+  if (isCliHelpContext(commandArgs)) { process.stdout.write(`${styleCliHelpText(renderCliHelp(commandArgs))}\n`); return; }
   const selectorError = renderRemovedSelectorError(commandArgs);
   if (selectorError) throw new Error(selectorError);
   const routeError = renderCliRouteError(commandArgs);
@@ -54,7 +55,8 @@ async function main() {
     selectedRoleName = await resolveRoleInstance(selectorRole, rawArgs);
     outputArgs = withRoleSelector(rawArgs, selectorRole, selectedRoleName);
     if (!commandArgs.includes(`--${selectorRole}`) && !rawArgs.includes("--json")) {
-      process.stderr.write(`Using ${selectorRole === "gateway" ? "Gateway" : "Worker"}: ${selectedRoleName}\n`);
+      const theme = createQueqiaoTheme(shouldUseCliColor());
+      process.stderr.write(`${theme.muted(`Using ${selectorRole === "gateway" ? "Gateway" : "Worker"}: ${selectedRoleName}`)}\n`);
     }
     commandArgs = withRoleSelector(commandArgs, selectorRole, selectedRoleName);
     dispatch = resolveCliDispatch(commandArgs);
@@ -146,8 +148,9 @@ async function main() {
 main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
   const exitCode = typeof error === "object" && error && "exitCode" in error ? Number(error.exitCode) : 1;
+  const humanMessage = createQueqiaoTheme(shouldUseCliColor()).danger(message);
   process.stderr.write(rawArgs.includes("--json")
     ? `${JSON.stringify({ schemaVersion: "1.0", error: { message, exitCode } })}\n`
-    : `${message}\n`);
+    : `${humanMessage}\n`);
   process.exitCode = exitCode;
 });

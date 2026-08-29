@@ -88,7 +88,7 @@ async function resolveJoinInputs(args: string[], prompt?: JoinPrompt): Promise<{
     return { gateway: decoded.gateway, token: decoded.token, interactive: true };
   }
 
-  intro("Join worker");
+  intro("Join Worker");
   const code = String(assertJoinNotCancelled(await password({
     message: "Join code",
     validate: (value) => {
@@ -414,7 +414,7 @@ export async function updateWorkerPort(configFile: string, args: string[], promp
     if (prompt) {
       portValue = (await prompt("port", "Worker port", currentPort)).trim() || currentPort;
     } else {
-      intro("Configure worker");
+      intro("Configure Worker");
       portValue = String(assertJoinNotCancelled(await text({
         message: "Worker port",
         placeholder: currentPort,
@@ -447,7 +447,7 @@ export async function setupWorker(configFile: string, args: string[], secretsDir
     if (prompt) {
       portValue = (await prompt("port", "Worker port", initialPort)).trim() || initialPort;
     } else {
-      intro(existingWorker ? "Edit worker" : "Setup worker");
+      intro(existingWorker ? "Edit Worker" : "Setup Worker");
       portValue = String(assertJoinNotCancelled(await text({
         message: "Worker port",
         placeholder: initialPort,

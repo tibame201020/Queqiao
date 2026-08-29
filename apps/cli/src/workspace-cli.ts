@@ -129,7 +129,7 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
   } else if (prompt) {
     answers = await testPromptAnswers(prompt);
   } else {
-    intro("Add workspace");
+    intro("Add Workspace");
     const prompts = createAccessConfigurationPrompts({ cancelMessage: "Workspace setup cancelled" });
     const profileStore = new AccessProfileStore(resolveAccessProfileFile());
     const candidate = await interactiveWorkspaceCandidate({
@@ -199,7 +199,7 @@ export async function setWorkspaceAccess(
   }
 
   if (!current.worker) throw new Error("Worker setup is required before changing Workspace access");
-  if (!injected) intro("Workspace access");
+  if (!injected) intro("Workspace Access");
   const prompts = dependencies.prompts ?? createAccessConfigurationPrompts({ cancelMessage: "Workspace access setup cancelled" });
   let workspaceId = requestedWorkspaceId;
   if (workspaceId) {

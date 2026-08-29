@@ -69,7 +69,8 @@ describe("CLI presentation", () => {
       "  Status: Not configured",
       "  Managed: No",
       "",
-      "Next: queqiao gateway setup",
+      "Next",
+      "  queqiao gateway setup",
     ].join("\n"));
   });
 
@@ -97,10 +98,11 @@ describe("CLI presentation", () => {
       bindings: [],
     });
     expect(output).toBe([
-      "Join code copied to clipboard",
+      "✓ Join code copied to clipboard",
       "  Expires At: 2026-08-28T14:30:00.000Z",
       "",
-      "Next (before expiry, on the target Worker host):",
+      "Next",
+      "  Before expiry, on the target Worker host:",
       "  queqiao worker join --worker <worker>",
     ].join("\n"));
   });
@@ -122,7 +124,7 @@ describe("CLI presentation", () => {
   it("renders a successful Worker join as an operation result", () => {
     const output = formatCliOutput(["worker", "join", "--worker", "wins-worker"], { joined: true, workerId: "worker-1", environmentId: "windows" });
     expect(output).toBe([
-      "Worker joined Gateway: wins-worker",
+      "✓ Worker joined Gateway: wins-worker",
       "  Worker Id: worker-1",
       "  Environment Id: windows",
     ].join("\n"));

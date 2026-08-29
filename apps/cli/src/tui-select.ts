@@ -1,11 +1,6 @@
-import { styleText } from "node:util";
 import { SelectPrompt, settings } from "@clack/core";
 import { renderSingleChoiceLines } from "./tui-choice-renderer.js";
-
-const ACTIVE = "◆";
-const SUBMIT = "◇";
-const BAR = "│";
-const END = "└";
+import { createQueqiaoTheme, renderPromptSymbol, TUI_GLYPHS, TUI_HINTS } from "./tui-theme.js";
 
 export type QueqiaoSelectOption<T extends string = string> = {
   value: T;
@@ -25,24 +20,27 @@ export type QueqiaoSelectFrame<T extends string = string> = {
 };
 
 export function renderQueqiaoSelectFrame<T extends string>(frame: QueqiaoSelectFrame<T>): string {
-  const prefix = frame.withGuide ? `${styleText("cyan", BAR)}  ` : "";
-  const headerSymbol = frame.state === "submit" ? styleText("green", SUBMIT) : styleText("cyan", ACTIVE);
-  const header = `${headerSymbol}  ${frame.message}`;
+  const theme = createQueqiaoTheme();
+  const prefix = frame.withGuide ? `${theme.subtle(TUI_GLYPHS.guide)}  ` : "";
+  const submitted = frame.state === "submit";
+  const header = `${renderPromptSymbol(frame.state, theme)}  ${theme.strong(frame.message)}`;
 
-  if (frame.state === "submit") {
+  if (submitted) {
     const selected = frame.options.find((option) => option.value === frame.value);
-    return `${header}\n${frame.withGuide ? styleText("gray", BAR) : ""}  ${styleText("dim", selected?.label ?? String(frame.value ?? ""))}`;
+    const summary = selected?.label ?? String(frame.value ?? "");
+    return `${header}\n${frame.withGuide ? theme.subtle(TUI_GLYPHS.guide) : ""}  ${theme.muted(summary)}`;
   }
 
   const lines = frame.options.flatMap((option, index) => renderSingleChoiceLines(option, {
     focused: index === frame.cursor,
-  }).map((line) => `${prefix}${line}`));
+    disabled: option.disabled === true,
+  }, theme).map((line) => `${prefix}${line}`));
   const error = frame.state === "error" && frame.error
-    ? [`${prefix}${styleText("yellow", frame.error)}`]
+    ? [`${prefix}${theme.danger(`${TUI_GLYPHS.danger} ${frame.error}`)}`]
     : [];
-  const footer = `${prefix}${styleText("dim", "↑/↓ to navigate • Enter: confirm")}`;
-  const end = frame.withGuide ? styleText("cyan", END) : "";
-  return [header, ...(frame.withGuide ? [styleText("gray", BAR)] : []), ...lines, ...error, footer, end].join("\n");
+  const footer = `${prefix}${theme.muted(TUI_HINTS.select)}`;
+  const end = frame.withGuide ? theme.subtle(TUI_GLYPHS.guideEnd) : "";
+  return [header, ...(frame.withGuide ? [theme.subtle(TUI_GLYPHS.guide)] : []), ...lines, ...error, footer, end].join("\n");
 }
 
 export async function queqiaoSelect<T extends string>(options: {

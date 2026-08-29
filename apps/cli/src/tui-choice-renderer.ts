@@ -1,8 +1,9 @@
-import { styleText } from "node:util";
+import { createQueqiaoTheme, TUI_GLYPHS, type QueqiaoTheme } from "./tui-theme.js";
 
 export type MultiChoiceVisualState = {
   focused: boolean;
   selected: boolean;
+  disabled?: boolean;
 };
 
 export type MultiChoiceContent = {
@@ -12,18 +13,19 @@ export type MultiChoiceContent = {
 
 export type SingleChoiceVisualState = {
   focused: boolean;
+  disabled?: boolean;
 };
 
 export type MultiChoicePresentation = {
-  focusMarker: ">" | " ";
-  selectionMarker: "[x]" | "[ ]";
+  focusMarker: typeof TUI_GLYPHS.focus | " ";
+  selectionMarker: typeof TUI_GLYPHS.selected | typeof TUI_GLYPHS.unselected;
   descriptionMuted: boolean;
 };
 
 export function multiChoicePresentation(state: MultiChoiceVisualState): MultiChoicePresentation {
   return {
-    focusMarker: state.focused ? ">" : " ",
-    selectionMarker: state.selected ? "[x]" : "[ ]",
+    focusMarker: state.focused ? TUI_GLYPHS.focus : " ",
+    selectionMarker: state.selected ? TUI_GLYPHS.selected : TUI_GLYPHS.unselected,
     descriptionMuted: !state.focused && !state.selected,
   };
 }
@@ -31,11 +33,16 @@ export function multiChoicePresentation(state: MultiChoiceVisualState): MultiCho
 export function renderSingleChoiceLines(
   option: MultiChoiceContent,
   state: SingleChoiceVisualState,
+  theme: QueqiaoTheme = createQueqiaoTheme(),
 ): string[] {
-  const focus = state.focused ? styleText("cyan", ">") : " ";
-  const label = state.focused ? styleText("cyan", option.label) : option.label;
+  const focus = state.focused ? theme.accent(TUI_GLYPHS.focus) : " ";
+  const label = state.disabled
+    ? theme.muted(option.label)
+    : state.focused
+      ? theme.strong(option.label)
+      : option.label;
   const descriptionLines = option.description
-    ? option.description.split("\n").map((line) => state.focused ? line : styleText("dim", line))
+    ? option.description.split("\n").map((line) => state.focused && !state.disabled ? line : theme.muted(line))
     : [];
 
   return [
@@ -47,17 +54,26 @@ export function renderSingleChoiceLines(
 export function renderMultiChoiceLines(
   option: MultiChoiceContent,
   state: MultiChoiceVisualState,
+  theme: QueqiaoTheme = createQueqiaoTheme(),
 ): string[] {
   const presentation = multiChoicePresentation(state);
-  const focus = state.focused ? styleText("cyan", presentation.focusMarker) : presentation.focusMarker;
-  const selection = state.selected ? styleText("green", presentation.selectionMarker) : presentation.selectionMarker;
-  const label = state.focused ? styleText("cyan", option.label) : option.label;
+  const focus = state.focused ? theme.accent(presentation.focusMarker) : presentation.focusMarker;
+  const selection = state.selected
+    ? theme.success(presentation.selectionMarker)
+    : state.disabled
+      ? theme.muted(presentation.selectionMarker)
+      : theme.subtle(presentation.selectionMarker);
+  const label = state.disabled
+    ? theme.muted(option.label)
+    : state.focused
+      ? theme.strong(option.label)
+      : option.label;
   const descriptionLines = option.description
-    ? option.description.split("\n").map((line) => presentation.descriptionMuted ? styleText("dim", line) : line)
+    ? option.description.split("\n").map((line) => presentation.descriptionMuted || state.disabled ? theme.muted(line) : line)
     : [];
 
   return [
     `${focus} ${selection} ${label}`,
-    ...descriptionLines.map((line) => `      ${line}`),
+    ...descriptionLines.map((line) => `    ${line}`),
   ];
 }

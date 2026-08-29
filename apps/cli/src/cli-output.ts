@@ -1,3 +1,5 @@
+import { createQueqiaoTheme, TUI_GLYPHS, type QueqiaoTheme } from "./tui-theme.js";
+
 function option(args: readonly string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
   return index >= 0 ? args[index + 1] : undefined;
@@ -15,17 +17,21 @@ function scalar(value: unknown): string {
   return String(value);
 }
 
-function renderStructured(value: unknown, indent = 0): string[] {
+function field(theme: QueqiaoTheme, key: string, value: unknown, indent = 0): string {
+  return `${" ".repeat(indent)}${theme.subtle(`${key}:`)} ${scalar(value)}`;
+}
+
+function renderStructured(value: unknown, theme: QueqiaoTheme, indent = 0): string[] {
   const pad = " ".repeat(indent);
   if (Array.isArray(value)) {
-    if (!value.length) return [`${pad}None`];
+    if (!value.length) return [`${pad}${theme.muted("None")}`];
     const lines: string[] = [];
     for (const item of value) {
       if (item && typeof item === "object") {
-        lines.push(`${pad}-`);
-        lines.push(...renderStructured(item, indent + 2));
+        lines.push(`${pad}${theme.subtle("-")}`);
+        lines.push(...renderStructured(item, theme, indent + 2));
       } else {
-        lines.push(`${pad}- ${scalar(item)}`);
+        lines.push(`${pad}${theme.subtle("-")} ${scalar(item)}`);
       }
     }
     return lines;
@@ -34,10 +40,10 @@ function renderStructured(value: unknown, indent = 0): string[] {
     const lines: string[] = [];
     for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
       if (child && typeof child === "object") {
-        lines.push(`${pad}${label(key)}:`);
-        lines.push(...renderStructured(child, indent + 2));
+        lines.push(`${pad}${theme.subtle(`${label(key)}:`)}`);
+        lines.push(...renderStructured(child, theme, indent + 2));
       } else {
-        lines.push(`${pad}${label(key)}: ${scalar(child)}`);
+        lines.push(field(theme, label(key), child, indent));
       }
     }
     return lines;
@@ -50,24 +56,34 @@ function isNotConfigured(role: string, health: Record<string, unknown>): boolean
   return error === `${role} is not configured` || (/ENOENT/.test(error) && /config\.yaml/.test(error));
 }
 
-function renderRoleInventory(args: readonly string[], value: unknown): string | undefined {
+function renderRoleInventory(args: readonly string[], value: unknown, theme: QueqiaoTheme): string | undefined {
   if (!((args[0] === "gateway" || args[0] === "worker") && args[1] === "list")) return undefined;
   if (!value || typeof value !== "object") return undefined;
   const result = value as Record<string, unknown>;
   if (!Array.isArray(result.instances)) return undefined;
-  const label = args[0] === "gateway" ? "Gateways" : "Workers";
-  if (!result.instances.length) return `${label}: None`;
-  const lines = [`${label}:`];
+  const heading = args[0] === "gateway" ? "Gateways" : "Workers";
+  if (!result.instances.length) return `${theme.strong(heading)}\n  ${theme.muted("None")}`;
+  const lines = [theme.strong(heading)];
   for (const item of result.instances) {
     const instance = item as Record<string, unknown>;
-    lines.push(`  ${scalar(instance.name)}  ${instance.running === true ? "Running" : instance.configured === false ? "Invalid configuration" : "Stopped"}`);
-    if (args[0] === "gateway") lines.push(`    URL: ${scalar(instance.publicUrl)}`, `    Ports: ${scalar(instance.servicePort)} / management ${scalar(instance.managementPort)}`);
-    else lines.push(`    Endpoint: ${scalar(instance.endpoint)}`, `    Workspaces: ${scalar(instance.workspaceCount)}`);
+    const status = instance.running === true
+      ? theme.success("Running")
+      : instance.configured === false
+        ? theme.danger("Invalid configuration")
+        : theme.muted("Stopped");
+    lines.push(`  ${theme.strong(scalar(instance.name))}  ${status}`);
+    if (args[0] === "gateway") {
+      lines.push(field(theme, "URL", instance.publicUrl, 4));
+      lines.push(field(theme, "Ports", `${scalar(instance.servicePort)} / management ${scalar(instance.managementPort)}`, 4));
+    } else {
+      lines.push(field(theme, "Endpoint", instance.endpoint, 4));
+      lines.push(field(theme, "Workspaces", instance.workspaceCount, 4));
+    }
   }
   return lines.join("\n");
 }
 
-function renderJoinToken(args: readonly string[], value: unknown): string | undefined {
+function renderJoinToken(args: readonly string[], value: unknown, theme: QueqiaoTheme): string | undefined {
   if (args[0] !== "gateway" || args[1] !== "join-token") return undefined;
   if (!value || typeof value !== "object") return undefined;
   const result = value as Record<string, unknown>;
@@ -76,34 +92,32 @@ function renderJoinToken(args: readonly string[], value: unknown): string | unde
   const lines: string[] = [];
 
   if (copied) {
-    lines.push("Join code copied to clipboard", `  Expires At: ${expiresAt}`);
+    lines.push(`${theme.success(TUI_GLYPHS.success)} ${theme.strong("Join code copied to clipboard")}`, field(theme, "Expires At", expiresAt, 2));
   } else {
-    lines.push("Join code could not be copied", `  Expires At: ${expiresAt}`);
+    lines.push(`${theme.warning(TUI_GLYPHS.warning)} ${theme.strong("Join code could not be copied")}`, field(theme, "Expires At", expiresAt, 2));
     if (typeof result.joinCode === "string" && result.joinCode) {
-      lines.push("", "Join code:", `  ${result.joinCode}`);
+      lines.push("", theme.strong("Join code"), `  ${result.joinCode}`);
     }
-    if (typeof result.copyError === "string" && result.copyError) {
-      lines.push(`  Copy Error: ${result.copyError}`);
-    }
+    if (typeof result.copyError === "string" && result.copyError) lines.push(field(theme, "Copy Error", result.copyError, 2));
   }
 
-  lines.push("", "Next (before expiry, on the target Worker host):", "  queqiao worker join --worker <worker>");
+  lines.push("", theme.strong("Next"), theme.muted("  Before expiry, on the target Worker host:"), "  queqiao worker join --worker <worker>");
   return lines.join("\n");
 }
 
-function renderWorkerJoin(args: readonly string[], value: unknown): string | undefined {
+function renderWorkerJoin(args: readonly string[], value: unknown, theme: QueqiaoTheme): string | undefined {
   if (args[0] !== "worker" || args[1] !== "join") return undefined;
   if (!value || typeof value !== "object") return undefined;
   const result = value as Record<string, unknown>;
   if (result.joined !== true) return undefined;
   const name = option(args, "worker") || "worker";
-  const lines = [`Worker joined Gateway: ${name}`];
-  if (typeof result.workerId === "string") lines.push(`  Worker Id: ${result.workerId}`);
-  if (typeof result.environmentId === "string") lines.push(`  Environment Id: ${result.environmentId}`);
+  const lines = [`${theme.success(TUI_GLYPHS.success)} ${theme.strong(`Worker joined Gateway: ${name}`)}`];
+  if (typeof result.workerId === "string") lines.push(field(theme, "Worker Id", result.workerId, 2));
+  if (typeof result.environmentId === "string") lines.push(field(theme, "Environment Id", result.environmentId, 2));
   return lines.join("\n");
 }
 
-function renderStatus(args: readonly string[], value: unknown): string | undefined {
+function renderStatus(args: readonly string[], value: unknown, theme: QueqiaoTheme): string | undefined {
   const [role, action] = args;
   if ((role !== "gateway" && role !== "worker") || action !== "status") return undefined;
   if (!value || typeof value !== "object") return undefined;
@@ -115,34 +129,40 @@ function renderStatus(args: readonly string[], value: unknown): string | undefin
   const configured = !isNotConfigured(roleLabel, health) && !isNotConfigured(role, health);
   const active = result.active === true;
   const managed = result.managed === true;
+  const status = !configured ? theme.warning("Not configured") : active ? theme.success("Running") : theme.muted("Stopped");
   const lines = [
-    `${roleLabel} ${name}`,
-    `  Status: ${!configured ? "Not configured" : active ? "Running" : "Stopped"}`,
-    `  Managed: ${managed ? "Yes" : "No"}`,
+    theme.strong(`${roleLabel} ${name}`),
+    `${theme.subtle("  Status:")} ${status}`,
+    field(theme, "Managed", managed ? "Yes" : "No", 2),
   ];
-  if (typeof result.pid === "number") lines.push(`  PID: ${result.pid}`);
+  if (typeof result.pid === "number") lines.push(field(theme, "PID", result.pid, 2));
   if (configured && !active) {
     const error = typeof health.error === "string" ? health.error : "";
-    if (error) lines.push(`  Detail: ${error}`);
+    if (error) lines.push(field(theme, "Detail", error, 2));
   }
   if (!configured) {
-    lines.push("", `Next: queqiao ${role} setup`);
+    lines.push("", theme.strong("Next"), `  queqiao ${role} setup`);
   } else if (!active) {
-    lines.push("", `Next: queqiao ${role} serve --bg --${selector} ${name}`);
+    lines.push("", theme.strong("Next"), `  queqiao ${role} serve --bg --${selector} ${name}`);
   }
   return lines.join("\n");
 }
 
-export function formatCliOutput(input: readonly string[], value: unknown): string {
+export type CliOutputOptions = {
+  color?: boolean;
+};
+
+export function formatCliOutput(input: readonly string[], value: unknown, options: CliOutputOptions = {}): string {
   if (input.includes("--json")) return JSON.stringify(value, null, 2);
+  const theme = createQueqiaoTheme(options.color ?? false);
   const args = input.filter((arg) => arg !== "--json");
-  const inventory = renderRoleInventory(args, value);
+  const inventory = renderRoleInventory(args, value, theme);
   if (inventory) return inventory;
-  const joinToken = renderJoinToken(args, value);
+  const joinToken = renderJoinToken(args, value, theme);
   if (joinToken) return joinToken;
-  const workerJoin = renderWorkerJoin(args, value);
+  const workerJoin = renderWorkerJoin(args, value, theme);
   if (workerJoin) return workerJoin;
-  const status = renderStatus(args, value);
+  const status = renderStatus(args, value, theme);
   if (status) return status;
-  return renderStructured(value).join("\n");
+  return renderStructured(value, theme).join("\n");
 }

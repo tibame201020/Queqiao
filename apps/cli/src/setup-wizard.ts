@@ -16,10 +16,9 @@ import { AccessProfileStore, resolveAccessProfileFile } from "./access-profile-s
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
 import { workspacePath } from "./workspace-path-prompt.js";
 import { suggestedWorkspaceId, workspaceConfigFromAnswers, type WorkspaceProfile } from "./workspace-cli.js";
+import { createQueqiaoTheme } from "./tui-theme.js";
 
 const CREATE_NEW = "__create__";
-const DIM = "\x1b[2m";
-const RESET_DIM = "\x1b[22m";
 
 export type RoleSetupPrompts = AccessConfigurationPrompts;
 
@@ -37,7 +36,7 @@ type RoleSetupDependencies = {
 };
 
 function hint(label: string, description: string): string {
-  return `${label} ${DIM}${description}${RESET_DIM}`;
+  return `${label} ${createQueqiaoTheme().muted(description)}`;
 }
 
 function validateName(value: string): string | undefined {
@@ -192,7 +191,7 @@ export async function runRoleSetupWizard(
   const portAvailable = dependencies.portAvailable ?? defaultPortAvailable;
   const roleLabel = role === "gateway" ? "Gateway" : "Worker";
 
-  if (!injectedPrompts) intro(`${roleLabel} setup`);
+  if (!injectedPrompts) intro(`${roleLabel} Setup`);
   const selected = await prompts.choose(`Select ${roleLabel}`, [
     ...existing.map((name) => ({ value: name, label: `Edit ${name}` })),
     { value: CREATE_NEW, label: `Create new ${roleLabel}` },
