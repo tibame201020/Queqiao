@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Server } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { stringify } from "yaml";
 import { readRuntimeConfig, serializeRuntimeConfig } from "@queqiao/config";
 import { createGatewayApp } from "../../gateway/src/app.js";
 import { EnrollmentService } from "../../gateway/src/enrollment-service.js";
@@ -244,6 +245,25 @@ describe("role setup CLI", () => {
     expect(after.worker?.tokenFile).toBe(before.worker?.tokenFile);
     expect(after.worker?.listen.port).toBe(7676);
     expect(after.workspaces).toEqual(before.workspaces);
+  });
+
+  it("atomically repairs a legacy Worker config that has no Workspace without rotating identity or credential", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-repair-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const secretsDirectory = path.join(root, "secrets");
+    await setupWorker(configFile, ["worker", "setup", "--port", "7576"], secretsDirectory, undefined, setupWorkspace(root, "old-workspace"));
+    const before = await readRuntimeConfig(configFile);
+    await writeFile(configFile, stringify({ ...before, workspaces: [] }), "utf8");
+
+    const repairWorkspace = setupWorkspace(root, "repaired-workspace");
+    const result: any = await setupWorker(configFile, ["worker", "setup", "--port", "8076"], secretsDirectory, undefined, repairWorkspace);
+    const after = await readRuntimeConfig(configFile);
+
+    expect(result).toMatchObject({ mode: "edit", port: 8076, workspaceCount: 1 });
+    expect(after.worker?.workerId).toBe(before.worker?.workerId);
+    expect(after.worker?.tokenFile).toBe(before.worker?.tokenFile);
+    expect(after.worker?.listen.port).toBe(8076);
+    expect(after.workspaces.map((workspace) => workspace.id)).toEqual(["repaired-workspace"]);
   });
 });
 describe("worker join CLI transaction", () => {

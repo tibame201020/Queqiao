@@ -99,11 +99,12 @@ async function resolveJoinInputs(args: string[], prompt?: JoinPrompt): Promise<{
   return { gateway: decoded.gateway, token: decoded.token, interactive: true };
 }
 
-async function persistRuntimeConfig(configFile: string, next: RuntimeConfig): Promise<void> {
+async function persistRuntimeConfig(configFile: string, next: RuntimeConfig, replaceExisting = false): Promise<void> {
   const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
   try { await store.initialize(next); } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    await store.update(() => next);
+    if (replaceExisting) await store.replace(next);
+    else await store.update(() => next);
   }
   await secureRuntimeFile(configFile);
 }
@@ -471,7 +472,7 @@ export async function setupWorker(configFile: string, args: string[], secretsDir
       worker: { ...existingWorker, listen: { ...existingWorker.listen, port } },
       workspaces,
     });
-    await persistRuntimeConfig(configFile, next);
+    await persistRuntimeConfig(configFile, next, true);
     if (!portArg && !prompt) outro(`Worker updated: ${environmentId}`);
     return { setup: true, mode: "edit", role: "worker", file: configFile, workerId: existingWorker.workerId, environmentId, port, workspaceCount: workspaces.length };
   }
