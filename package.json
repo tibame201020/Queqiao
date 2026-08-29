@@ -1,6 +1,6 @@
 {
   "name": "@tibame201020/queqiao",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": false,
   "type": "module",
   "exports": {
@@ -50,7 +50,8 @@
     "start:gateway": "tsx apps/gateway/src/index.ts",
     "queqiao": "tsx apps/cli/src/index.ts",
     "test:cli-acceptance": "vitest run apps/cli/src/cli-isolated-acceptance.test.ts apps/cli/src/tui-viewport.test.ts apps/cli/src/enrollment-cli-cancel.test.ts",
-    "docs:cli:components": "python scripts/cli-demo/render_components.py docs/assets/cli/components"
+    "docs:cli:components": "python scripts/cli-demo/render_components.py docs/assets/cli/components",
+    "docs:cli:flows": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/cli-demo/record.ps1 -Demo all"
   },
   "engines": {
     "node": ">=22.19 <25",

@@ -1,77 +1,92 @@
 # CLI flows
 
-This page documents the production command sequences. It intentionally does not embed the retired 2026-08-20 flow GIFs: those recordings predate the current selector, Workspace authority, Extension Hub, Access Profile, and TUI contracts.
+These animations are recorded from a **real packed Queqiao package** installed into isolated synthetic runtime state. The recorder executes the packaged `queqiao` binary, captures real command output, redacts transient identifiers/secrets, and then renders the transcript as a deterministic terminal GIF.
 
-A flow GIF may be added here only when it is captured from a real packaged CLI transcript using isolated synthetic runtime state. Component animations belong in [CLI components](../components/README.md) instead.
+The fixture itself is prepared through the production setup wizard API with deterministic prompt answers; no hidden setup flags are added to the public CLI just for documentation.
 
-## 1. Configure Gateway and Worker roles
+## Roles and Workspaces
+
+![Queqiao roles and Workspaces](../../assets/cli/flows/01-roles-workspaces.gif)
+
+The first flow verifies configured Gateway/Worker instances and the Workspaces owned by the Worker:
 
 ```text
-queqiao gateway setup
-queqiao worker setup
+queqiao gateway list
+queqiao worker list
+queqiao worker workspace list --worker demo-worker
 ```
 
-`gateway setup` and `worker setup` remain independent role primitives. Worker setup creates the first Workspace authority as part of making the Worker valid; there is no persisted default Workspace.
+## Workspace authority
 
-## 2. Add or replace Workspace authority
+![Queqiao Workspace authority](../../assets/cli/flows/02-workspace-authority.gif)
+
+A scriptable Workspace can be added with an explicit authority ceiling, then inspected through the Worker-owned permission projection:
 
 ```text
-queqiao worker workspace add [--worker <worker>]
-queqiao worker workspace profile set [--worker <worker>] [--workspace <id>]
+queqiao worker workspace add --worker demo-worker --root <path> --display-name "Demo App" --profile coding
+queqiao worker workspace permissions show --worker demo-worker --workspace workspace-two
 ```
 
-Interactive setup starts with an Access Profile choice: built-in `Reader`, built-in `Editor`, saved profiles, or `Custom`. Custom access is the explicit Tools × Commands matrix.
+Interactive Workspace setup starts from the higher-level Access Profile UX (`Reader`, `Editor`, saved profiles, or `Custom`). See [CLI components](../components/README.md) for the select/multiselect/input interaction grammar.
 
-Additional Workspace inspection/removal:
+## Extension Hub
 
-```text
-queqiao worker workspace list [--worker <worker>]
-queqiao worker workspace permissions show [--worker <worker>] [--workspace <id>]
-queqiao worker workspace remove [--worker <worker>] --id <id>
-```
+![Queqiao Extension Hub](../../assets/cli/flows/03-extension-hub.gif)
 
-## 3. Start runtimes and enroll the Worker
+Installation and Worker attachment remain separate operations:
 
 ```text
-queqiao worker serve [--worker <worker>] --bg
-queqiao gateway serve [--gateway <gateway>] --bg
-queqiao gateway join-token [--gateway <gateway>]
-queqiao worker join [--worker <worker>]
-```
-
-Starting processes and creating Gateway membership are separate operations. Join material is one-time enrollment data and must never be published in screenshots/GIFs.
-
-## 4. Manage Extensions
-
-```text
-queqiao extension install <npm:package|local-path> [--worker <worker>|--attach-all]
-queqiao extension attach [<id>] [--worker <worker>]
-queqiao extension detach [<id>] [--worker <worker>]
-queqiao extension show [<id>]
-queqiao extension uninstall [<id>] [--force]
+queqiao extension install <local-path> --json
+queqiao extension attach dev.queqiao.demo --worker demo-worker --json
+queqiao extension list
 queqiao doctor extension
 ```
 
-The Extension Hub owns installed package/source inventory. Worker attachment is separate execution intent and does not automatically broaden Workspace authority.
+The demo package is synthetic and local to the isolated recording fixture. No registry package or user extension is modified.
 
-## 5. Verify the deployment
+## Start, enroll, and verify
+
+![Queqiao start, enroll, and verify](../../assets/cli/flows/04-start-enroll-verify.gif)
+
+This flow starts both managed runtimes, creates one short-lived self-contained join code, enrolls the Worker, then verifies membership and lifecycle status:
 
 ```text
-queqiao gateway status [--gateway <gateway>]
-queqiao worker status [--worker <worker>]
-queqiao gateway workers list [--gateway <gateway>]
-queqiao worker workspace list [--worker <worker>]
-queqiao worker workspace permissions show [--worker <worker>] [--workspace <id>]
-queqiao doctor manifest show [--gateway <gateway>]
+queqiao worker serve --bg --worker demo-worker --json
+queqiao gateway serve --bg --gateway demo-gateway --json
+queqiao gateway join-token --gateway demo-gateway --expires 120 --json
+queqiao worker join --worker demo-worker --join-code <redacted> --json
+queqiao gateway workers list --gateway demo-gateway
+queqiao gateway status --gateway demo-gateway
+queqiao worker status --worker demo-worker
 ```
 
-For interactive TTY commands, omitted Gateway/Worker selectors resolve according to the implemented selector grammar: zero instances fail, one instance auto-selects, and multiple instances open the selector. Non-TTY and JSON modes require explicit selectors and do not prompt.
+Join codes, credentials, PIDs, Worker IDs, user paths, and machine-specific identifiers are redacted before the transcript is rendered.
 
-## Recording gate for future flow GIFs
+## Re-recording
+
+On Windows, regenerate all production flow GIFs with:
+
+```powershell
+npm run docs:cli:flows
+```
+
+The recorder lives at `scripts/cli-demo/record.ps1`. It:
+
+1. builds the package into a staging directory without touching the live Shadow `dist/`;
+2. creates an npm tarball from that staged package;
+3. installs the tarball into an isolated npm prefix;
+4. prepares synthetic Gateway/Worker/Workspace/Extension state;
+5. executes the packed public CLI for every recorded step;
+6. redacts sensitive or machine-specific values;
+7. renders `docs/assets/cli/flows/*.gif` from the captured transcripts.
+
+Generated transcripts and package staging data are implementation evidence, not release assets.
+
+## Recording gate
 
 A flow GIF is publishable only when all of these hold:
 
-1. The command sequence ran against a real packed/installable Queqiao artifact.
+1. The command sequence ran against the packed/installable Queqiao artifact from the same source revision.
 2. The command/help grammar matches the checked-in production CLI.
 3. Runtime/config state is isolated and synthetic.
 4. Join codes, OAuth material, credentials, PIDs, real user paths, public endpoints, and other machine-specific identifiers are absent or deterministically redacted.

@@ -18,6 +18,10 @@ Install Queqiao from npm:
 npm install --global @tibame201020/queqiao
 ```
 
+![Queqiao CLI start, enroll, and verify flow](docs/assets/cli/flows/04-start-enroll-verify.gif)
+
+The animation above is recorded from a real packed Queqiao CLI running against isolated synthetic state. See the [CLI visual guide](docs/cli/README.md) for the complete flow and component GIF set.
+
 Create the Gateway, then create the Worker. Worker setup includes its first authorized
 Workspace, so a configured Worker is immediately meaningful as a remote execution host:
 
@@ -104,7 +108,7 @@ unbounded SDK compatibility range.
 
 ### Validated MCP clients and runtime platforms
 
-The 0.7.0 release candidate is client-neutral at the MCP boundary. Real-client validation
+The 0.8.0 release is client-neutral at the MCP boundary. Real-client validation
 covers **ChatGPT**, **Claude Code 2.1.235**, and the MCP Inspector. Claude Code was
 validated through remote HTTP discovery, Dynamic Client Registration, PKCE OAuth,
 and a final `Connected` health check against the public Shadow deployment. Native OAuth
@@ -114,10 +118,10 @@ configured; exact redirect-URI binding remains enforced after registration.
 Gateway and Worker runtimes are release-supported on **Windows** and **Linux**. WSL runs
 the Linux Worker/runtime path rather than a Windows-specific Worker adapter. The packed
 npm artifact is exercised by CI with a real Linux Gateway + Linux Worker authenticated
-handshake. macOS is not a supported 0.7.0 lifecycle target; unsupported platforms fail
+handshake. macOS is not a supported 0.8.0 lifecycle target; unsupported platforms fail
 explicitly rather than silently using a Windows or Linux lifecycle implementation.
 
-See the [0.7.0 interoperability acceptance](docs/validation/release-v0.7.0-interoperability-acceptance-2026-08-19.md).
+See the [0.8.0 CLI release acceptance](docs/validation/release-v0.8.0-cli-acceptance-2026-08-29.md). The prior [0.7.0 interoperability acceptance](docs/validation/release-v0.7.0-interoperability-acceptance-2026-08-19.md) is retained as historical client/runtime evidence.
 
 The v0 public path was validated through ChatGPT on 2026-08-12. See the
 [validation evidence](docs/validation/v0-chatgpt-2026-08-12.md).
@@ -179,7 +183,7 @@ public Core schema after the Revision 7 connector migration. See
 [ADR-0012](docs/adr/0012-extension-hub-and-worker-attachment.md) and the
 [Revision 7 candidate evidence](docs/validation/core-manifest-revision-7-extension-platform-candidate-2026-08-27.md).
 
-The current development candidate advances to **Core Manifest Revision 8**. Configured Workers own one or more peer Workspaces; there is no persisted default Workspace. Calls that omit `workspaceId` are resolved only when exactly one online Workspace is available; otherwise Queqiao returns `workspace_required`.
+The 0.8.0 release uses **Core Manifest Revision 8**. Configured Workers own one or more peer Workspaces; there is no persisted default Workspace. Calls that omit `workspaceId` are resolved only when exactly one online Workspace is available; otherwise Queqiao returns `workspace_required`.
 
 Security Baseline v1 is frozen. OAuth replay protection, MCP request budgets, sanitized
 health reporting, fail-closed Worker routing, native policy enforcement, filesystem and

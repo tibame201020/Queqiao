@@ -35,4 +35,6 @@ This distinction prevents a polished animation from being mistaken for runtime e
 
 ## Current visual baseline
 
-The current component GIFs correspond to the production TUI system introduced on 2026-08-29. The older first-run GIF set recorded on 2026-08-20 predates the current selector, Access Profile, Workspace authority, Extension, and TUI presentation contracts and is intentionally retired rather than reused.
+The current component GIFs correspond to the production TUI system introduced on 2026-08-29. The current flow GIFs are regenerated from a staged npm package built from the same source revision and execute the real packed CLI in isolated synthetic state.
+
+The older first-run GIF set recorded on 2026-08-20 predates the current selector, Access Profile, Workspace authority, Extension, and TUI presentation contracts and is intentionally retired rather than reused.
