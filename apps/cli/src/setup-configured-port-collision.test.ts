@@ -13,6 +13,8 @@ function envFor(root: string): NodeJS.ProcessEnv {
 function prompts(answers: string[]): RoleSetupPrompts {
   return {
     choose: async () => answers.shift() || "",
+    multi: async () => (answers.shift() || "").split(",").map((value) => value.trim()).filter(Boolean),
+    commandText: async () => answers.shift() || "",
     text: async (_message, initialValue, validate) => {
       const value = answers.shift() || initialValue || "";
       const problem = validate?.(value);

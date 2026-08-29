@@ -13,6 +13,8 @@ function envFor(root: string): NodeJS.ProcessEnv {
 function scriptedPrompts(answers: string[], messages: string[]): RoleSetupPrompts {
   return {
     choose: async (message) => { messages.push(message); return answers.shift() || ""; },
+    multi: async (message) => { messages.push(message); return (answers.shift() || "").split(",").map((value) => value.trim()).filter(Boolean); },
+    commandText: async (message) => { messages.push(message); return answers.shift() || ""; },
     text: async (message, initialValue, validate) => {
       messages.push(`${message} [${initialValue || ""}]`);
       const value = answers.shift() || initialValue || "";

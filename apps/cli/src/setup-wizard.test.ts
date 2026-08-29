@@ -8,6 +8,8 @@ import { listNamedRoleInstances, runRoleSetupWizard, type RoleSetupPrompts } fro
 function prompts(answers: Array<string>): RoleSetupPrompts {
   return {
     choose: async () => answers.shift() || "",
+    multi: async () => (answers.shift() || "").split(",").map((value) => value.trim()).filter(Boolean),
+    commandText: async () => answers.shift() || "",
     text: async (_message, initialValue) => answers.shift() || initialValue || "",
   };
 }
@@ -51,14 +53,72 @@ describe("role setup wizard", () => {
     const result = await runRoleSetupWizard("worker", ["worker", "setup"], {
       env,
       platform: process.platform,
-      prompts: prompts(["__create__", "windows", "7576", workspaceRoot, "Project", "read-only"]),
+      prompts: prompts(["__create__", "windows", "7576", workspaceRoot, "Project", "read_file,search_text"]),
       portAvailable: async () => true,
       setupWorker: async (_config, _args, _secrets, _prompt, options) => { calls.push("windows"); setupOptions = options; return { mode: "create" }; },
     });
 
     expect(calls).toEqual(["windows"]);
-    expect(setupOptions).toMatchObject({ initialWorkspace: { id: "project", displayName: "Project", profile: "read-only" } });
+    expect(setupOptions).toMatchObject({ initialWorkspace: { id: "project", displayName: "Project", profile: "coding" } });
     expect(result).toMatchObject({ name: "windows", mode: "create" });
+  });
+
+  it("collects run command allowlist only when run is selected", async () => {
+    const root = await mkdirFixture();
+    const env = fixtureEnv(root);
+    const workspaceRoot = path.join(root, "project");
+    await mkdir(workspaceRoot);
+    let setupOptions: any;
+
+    await runRoleSetupWizard("worker", ["worker", "setup"], {
+      env,
+      platform: process.platform,
+      prompts: prompts(["__create__", "windows", "7576", workspaceRoot, "Project", "read_file,run", "git, NPM, git"]),
+      portAvailable: async () => true,
+      setupWorker: async (_config, _args, _secrets, _prompt, options) => { setupOptions = options; return { mode: "create" }; },
+    });
+
+    expect(setupOptions.initialWorkspace).toMatchObject({
+      profile: "coding",
+      tools: { allow: ["read_file", "run"], deny: [], explicit: [] },
+      commands: { allow: ["git", "npm"] },
+    });
+  });
+
+  it("saves a custom access configuration and reuses it for another Worker", async () => {
+    const root = await mkdirFixture();
+    const env = fixtureEnv(root);
+    const firstWorkspace = path.join(root, "first");
+    const secondWorkspace = path.join(root, "second");
+    await mkdir(firstWorkspace);
+    await mkdir(secondWorkspace);
+    let firstOptions: any;
+    let secondOptions: any;
+
+    await runRoleSetupWizard("worker", ["worker", "setup"], {
+      env,
+      platform: process.platform,
+      prompts: prompts(["__create__", "windows", "7576", firstWorkspace, "First", "read_file,run", "git,npm", "yes", "development"]),
+      portAvailable: async () => true,
+      setupWorker: async (_config, _args, _secrets, _prompt, options) => { firstOptions = options; return { mode: "create" }; },
+    });
+
+    await runRoleSetupWizard("worker", ["worker", "setup"], {
+      env,
+      platform: process.platform,
+      prompts: prompts(["__create__", "linux", "7577", secondWorkspace, "Second", "profile:0"]),
+      portAvailable: async () => true,
+      setupWorker: async (_config, _args, _secrets, _prompt, options) => { secondOptions = options; return { mode: "create" }; },
+    });
+
+    expect(firstOptions.initialWorkspace).toMatchObject({
+      tools: { allow: ["read_file", "run"] },
+      commands: { allow: ["git", "npm"] },
+    });
+    expect(secondOptions.initialWorkspace).toMatchObject({
+      tools: { allow: ["read_file", "run"] },
+      commands: { allow: ["git", "npm"] },
+    });
   });
 
   it("repairs an existing incomplete Worker by collecting its first authorized Workspace", async () => {
@@ -73,11 +133,11 @@ describe("role setup wizard", () => {
     const result = await runRoleSetupWizard("worker", ["worker", "setup"], {
       env,
       platform: process.platform,
-      prompts: prompts(["wins-worker", "8076", workspaceRoot, "Codes", "read-only"]),
+      prompts: prompts(["wins-worker", "8076", workspaceRoot, "Codes", "read_file,search_text"]),
       portAvailable: async () => true,
       setupWorker: async (_config, _args, _secrets, _prompt, options) => { setupOptions = options; return { mode: "edit", workerId: "11111111-1111-4111-8111-111111111111" }; },
     });
-    expect(setupOptions).toMatchObject({ initialWorkspace: { id: "codes", displayName: "Codes", profile: "read-only" } });
+    expect(setupOptions).toMatchObject({ initialWorkspace: { id: "codes", displayName: "Codes", profile: "coding" } });
     expect(result).toMatchObject({ name: "wins-worker", mode: "edit", workerId: "11111111-1111-4111-8111-111111111111" });
   });
 
