@@ -95,7 +95,7 @@ function setupWorkspace(root: string, id = "workspace") {
 }
 
 describe("role setup CLI", () => {
-  it("sets up Gateway and Worker independently without creating cluster membership", async () => {
+  it("sets up Gateway and Worker independently without creating Gateway membership", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-role-setup-"));
     const configFile = path.join(root, "config", "config.yaml");
     const stateDirectory = path.join(root, "gateway-state");

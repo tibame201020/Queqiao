@@ -10,7 +10,7 @@ The public MCP endpoint belongs to a lightweight Gateway. Windows, WSL, Linux, a
 future remote environments each run their own Worker, so filesystem and process work
 always executes inside the native environment.
 
-## Quick CLI demo
+## Quick CLI flow
 
 Install Queqiao from npm:
 
@@ -18,38 +18,40 @@ Install Queqiao from npm:
 npm install --global @tibame201020/queqiao
 ```
 
-### 1. Create the Gateway and Worker roles
+Create the Gateway, then create the Worker. Worker setup includes its first authorized
+Workspace, so a configured Worker is immediately meaningful as a remote execution host:
 
-![Create the Queqiao Gateway and Worker roles](docs/assets/cli/01-bootstrap-roles.gif)
+```text
+queqiao gateway setup
+queqiao worker setup
+```
 
-Gateway and Worker setup are separate role-local operations. Neither grants Workspace
-authority or enrolls the Worker.
+Start both roles:
 
-### 2. Grant a Workspace
+```text
+queqiao gateway serve --name <gateway> --bg
+queqiao worker serve --name <worker> --bg
+```
 
-![Grant explicit Workspace authority](docs/assets/cli/02-workspace-authority.gif)
+Create one short-lived self-contained join code on the Gateway host, then join from the
+Worker host. Human-mode `join-token` copies the join code to the clipboard automatically;
+`worker join` securely prompts for it:
 
-Grant one explicit directory to the Worker. Setup and discovery do not silently broaden
-filesystem authority.
+```text
+queqiao gateway join-token --name <gateway>
+queqiao worker join --name <worker>
+```
 
-### 3. Start and enroll the Worker
+Verify both runtimes and Gateway membership before connecting an MCP client:
 
-![Start Queqiao and enroll the Worker](docs/assets/cli/03-start-enroll.gif)
+```text
+queqiao gateway status --name <gateway>
+queqiao worker status --name <worker>
+queqiao gateway workers list --name <gateway>
+```
 
-Start both roles, issue one-time enrollment material, and join the Worker to the Gateway.
-Process startup and Gateway membership remain separate operations.
-
-### 4. Verify the deployment
-
-![Verify the Queqiao deployment](docs/assets/cli/04-verify-deployment.gif)
-
-Confirm that the Gateway and Worker are running and that the enrolled Worker is reachable
-before connecting an MCP client.
-
-These demos are rendered from commands executed against the published `0.7.0` npm artifact
-in an isolated Windows demo runtime. Ephemeral identifiers and enrollment material are
-redacted; displayed command results are projected from the real CLI responses rather than
-fabricated terminal output.
+Additional Workspaces can be added or removed while the Worker is running. Workspace
+configuration is hot-reloaded; a Worker must always retain at least one Workspace.
 
 ## Production architecture
 
@@ -163,13 +165,15 @@ Core Manifest Revision 6 makes `workspace_info` explicitly targetable by Workspa
 adds safe deployment attestation to `list_workspaces` without adding an eighteenth public
 tool. See the [Revision 6 evidence](docs/validation/core-manifest-revision-6-workspace-attestation-2026-08-13.md).
 
-The current development candidate advances to **Core Manifest Revision 7** with one fixed
+Core Manifest Revision 7 introduced one fixed
 public `extension` proxy tool plus an environment-local Extension Hub. Hub installation and
 Worker attachment are separate: attachment itself means the Worker uses the extension, so
 there is no additional enable/disable state. Proxy-mode extension changes do not mutate the
 public Core schema after the Revision 7 connector migration. See
 [ADR-0012](docs/adr/0012-extension-hub-and-worker-attachment.md) and the
 [Revision 7 candidate evidence](docs/validation/core-manifest-revision-7-extension-platform-candidate-2026-08-27.md).
+
+The current development candidate advances to **Core Manifest Revision 8**. Configured Workers own one or more peer Workspaces; there is no persisted default Workspace. Calls that omit `workspaceId` are resolved only when exactly one online Workspace is available; otherwise Queqiao returns `workspace_required`.
 
 Security Baseline v1 is frozen. OAuth replay protection, MCP request budgets, sanitized
 health reporting, fail-closed Worker routing, native policy enforcement, filesystem and
@@ -195,7 +199,8 @@ queqiao gateway setup
 queqiao gateway serve --name <gateway> [--bg]
 queqiao gateway stop --name <gateway>
 queqiao gateway status --name <gateway>
-queqiao gateway join-token --name <gateway> [--expires <seconds>] [--copy]
+queqiao gateway remove
+queqiao gateway join-token --name <gateway> [--expires <seconds>] [--json]
 queqiao gateway workers list --name <gateway>
 queqiao gateway workers update --name <gateway> --worker-id <id> --endpoint <loopback-worker-url>
 queqiao gateway workers remove --name <gateway> --worker-id <id>
@@ -205,6 +210,7 @@ queqiao worker port --name <worker> [--port <port>]
 queqiao worker serve --name <worker> [--bg]
 queqiao worker stop --name <worker>
 queqiao worker status --name <worker>
+queqiao worker remove
 queqiao worker join --name <worker>
 queqiao worker workspace add --worker <worker>
 queqiao worker workspace list --worker <worker>
@@ -226,6 +232,8 @@ queqiao doctor extension
 queqiao doctor manifest show --gateway <name>
 queqiao doctor tool explain <tool> --gateway <name>
 queqiao doctor paths
+
+queqiao uninstall
 ```
 
 The previous flat command paths are removed from the public CLI surface. Use the hierarchical forms above. Obsolete repository-search discovery-root configuration has also been removed; repository/project discovery belongs to extensions or clients operating inside an explicitly authorized Workspace.
@@ -279,30 +287,47 @@ Revision 7 Extension Hub installation accepts Worker-hosted registry npm package
 
 A running Worker hot-reloads attachment config generation-by-generation. A candidate ExtensionHost must load and validate before atomic replacement; rejected candidates preserve the last-known-good generation. In-flight requests retain the generation they started with, and retired extensions receive `dispose()` only after the final lease completes.
 
-Core Workspace authority is created only through explicit `worker workspace add --worker <name>` operations against an existing directory. Generic discovery-root state has been removed; repository/worktree/project discovery belongs to the owning extension or client and operates only inside an already-authorized Workspace using bounded Core filesystem primitives.
+A configured Worker always owns at least one authorized Workspace. The first Workspace is
+created during `worker setup`; additional Workspaces are managed with `worker workspace
+add/remove` while the Worker is running. Generic discovery-root state has been removed;
+repository/worktree/project discovery belongs to the owning extension or client and
+operates only inside an already-authorized Workspace using bounded Core filesystem
+primitives.
 
-Configuration changes use an exclusive lock, validated temporary file, and atomic
-rename. A Worker validates every new root before replacing its in-memory catalog; a
-rejected update leaves the last-known-good catalog active.
+Configuration changes use an exclusive lock, validated temporary file, and atomic rename.
+A running Worker hot-reloads Workspace and Extension attachment changes. A rejected update
+leaves the last-known-good runtime generation active.
 
-The same compiled CLI runs inside WSL with Linux-native XDG paths and explicit `serve`/`stop` lifecycle. Queqiao does not require or install a systemd user service for the Worker.
+The same compiled CLI runs inside WSL with Linux-native XDG paths and explicit
+`serve`/`stop` lifecycle. Queqiao does not require or install a systemd user service for
+the Worker.
 
 ### First-time setup contract
 
-The current CLI exposes the role-level primitives below. A product-level `queqiao setup` onboarding flow is intended to orchestrate these same primitives without merging Gateway and Worker roles or changing Workspace authority semantics:
+The current CLI exposes independent Gateway and Worker role primitives:
 
 ```text
 queqiao gateway setup
 queqiao worker setup
-queqiao worker workspace add --worker <worker>
-queqiao worker serve --name <worker> --bg
 queqiao gateway serve --name <gateway> --bg
-queqiao gateway join-token --name <gateway> --copy
+queqiao worker serve --name <worker> --bg
+queqiao gateway join-token --name <gateway>
 queqiao worker join --name <worker>
 ```
 
-`gateway setup` and `worker setup` are interactive create/edit flows. They first select an existing named instance or Create new. Gateway setup asks for the Public Gateway URL, Gateway port, and Management port; Worker setup asks for the Worker port. Existing values are prefilled during edit. New or changed local ports must be in range, must not collide with another configured Queqiao instance, and must be available on loopback. `worker workspace add` is the separate authority grant for an existing directory. `worker join` is the separate atomic membership transaction. `--bg` means a background process managed by Queqiao's explicit PID-aware lifecycle; it is not an OS service, autostart entry, Run key, or systemd unit.
+`gateway setup` and `worker setup` are interactive create/edit flows. They first select an
+existing named instance or Create new. Gateway setup asks for the Public Gateway URL,
+Gateway port, and Management port. A new Worker setup asks for the Worker port and its
+initial authorized Workspace; editing a valid Worker preserves its existing Workspaces.
+Legacy incomplete Workers can be repaired through the same setup flow without rotating
+their identity or credential. New or changed local ports must be in range, must not collide
+with another configured Queqiao instance, and must be available on loopback.
 
+Human-mode `gateway join-token` creates a short-lived self-contained join code and copies
+it to the clipboard automatically. `worker join` prompts securely for that code unless
+`--join-code` is supplied for scripted use. Enrollment is separate from process startup;
+`--bg` means a background process managed by Queqiao's explicit PID-aware lifecycle, not
+an OS service, autostart entry, Run key, or systemd unit.
 The mocked first-time setup flow and cross-platform Workspace-ID behavior are protected by
 dedicated required GitHub checks on both Ubuntu and Windows:
 `CLI setup flow (ubuntu-latest)` and `CLI setup flow (windows-latest)`. They run only after
@@ -318,21 +343,25 @@ The bundled CLI reports the named-role configuration roots and Extension Hub loc
 npm run queqiao -- doctor paths
 ```
 
-Installed from npm, run each role's interactive setup to choose an existing named instance or create a new one. Lifecycle and management commands continue to address named instances explicitly:
+Installed from npm, run each role's interactive setup to choose an existing named instance
+or create a new one. Creating a Worker includes its initial authorized Workspace. Lifecycle
+and management commands continue to address named instances explicitly:
 
 ```shell
 npm install --global @tibame201020/queqiao
 queqiao gateway setup
 queqiao worker setup
-queqiao worker workspace add --worker windows
-queqiao worker serve --name windows --bg
 queqiao gateway serve --name shadow --bg
-queqiao gateway join-token --name shadow --copy
+queqiao worker serve --name windows --bg
+queqiao gateway join-token --name shadow
 queqiao worker join --name windows
 ```
 
-`gateway join-token --copy` copies a versioned join code that contains the Gateway public base URL plus the one-time enrollment token. Interactive `worker join` accepts that single join code. The join code is bearer-secret material and is only for Worker CLI ??Gateway enrollment; it does not publish or authorize the Gateway ??Worker runtime transport.
-
+Human-mode `gateway join-token` copies a versioned self-contained join code containing the
+Gateway public base URL, one-time enrollment token, and expiry. Interactive `worker join`
+accepts that single code. The join code is bearer-secret material used only for Worker CLI
+to Gateway enrollment; it does not publish or authorize the Gateway-to-Worker runtime
+transport.
 Local instances can be removed with `queqiao gateway remove` or `queqiao worker remove`. Removal uses the same interactive instance-selection model as setup, requires confirmation, and refuses to delete a running instance.
 
 Use `queqiao uninstall` for package cleanup. The command is always interactive. Its first phase shows a Space-toggle multi-select list of Queqiao-owned local cleanup targets that npm does not remove: discovered Gateway instances, Worker instances, and the Extension Hub. Each entry includes the actual local path(s) that will be removed. The normal named-role runtime model has no global Queqiao config or global Queqiao state root. After the selected local paths are reviewed and confirmed, Queqiao stops selected managed runtimes as needed and removes only those paths. A separate final prompt then asks whether to uninstall `@tibame201020/queqiao` from global npm; the npm package is not part of the cleanup multi-select. There is no `--yes` bypass. Direct `npm uninstall --global @tibame201020/queqiao` removes the package but cannot guarantee runtime/config cleanup because modern npm does not run package uninstall lifecycle hooks. Explicit `QUEQIAO_*` override directories are not recursively deleted by the cleanup command because they may point at user-owned locations outside Queqiao's standard roots.

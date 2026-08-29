@@ -243,7 +243,6 @@ Commands:
   add --worker <worker>
   list --worker <worker>
   remove --worker <worker> --id <id>
-  default set --worker <worker> --workspace <id>
   profile set --worker <worker> --workspace <id> --profile read-only|editor|coding
   tool allow|deny --worker <worker> --workspace <id> --tool <tool>
   command allow|deny --worker <worker> --workspace <id> --command <executable>

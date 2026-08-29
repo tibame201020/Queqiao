@@ -47,9 +47,9 @@ export const workerMembershipRegistrySchema = z.object({
   const transportKeys = new Set<string>();
   for (const [index, worker] of registry.workers.entries()) {
     if (workerIds.has(worker.workerId)) ctx.addIssue({ code: "custom", path: ["workers", index, "workerId"], message: "workerId must be unique" });
-    if (environmentIds.has(worker.environmentId)) ctx.addIssue({ code: "custom", path: ["workers", index, "environmentId"], message: "environmentId must be unique within a Gateway cluster" });
+    if (environmentIds.has(worker.environmentId)) ctx.addIssue({ code: "custom", path: ["workers", index, "environmentId"], message: "environmentId must be unique within a Gateway" });
     const transportKey = gatewayVisibleTransportKey(worker.transport);
-    if (transportKeys.has(transportKey)) ctx.addIssue({ code: "custom", path: ["workers", index, "transport"], message: "Gateway-visible Worker transport endpoint must be unique within a Gateway cluster" });
+    if (transportKeys.has(transportKey)) ctx.addIssue({ code: "custom", path: ["workers", index, "transport"], message: "Gateway-visible Worker transport endpoint must be unique within a Gateway" });
     workerIds.add(worker.workerId);
     environmentIds.add(worker.environmentId);
     transportKeys.add(transportKey);
