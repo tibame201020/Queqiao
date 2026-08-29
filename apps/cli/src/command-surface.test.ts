@@ -94,7 +94,7 @@ describe("CLI hierarchy consolidation", () => {
     expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("profile set --worker <worker> [--workspace <id>] [--profile read-only|editor|coding]");
     expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("interactively applies an Access Profile");
     expect(renderCliHelp(["worker", "workspace", "--help"])).not.toContain("worker workspace add");
-    expect(renderCliHelp(["extension", "--help"])).toContain("\n  install npm:<package>");
+    expect(renderCliHelp(["extension", "--help"])).toContain("\n  install <npm:package|local-path>");
     expect(renderCliHelp(["extension", "--help"])).not.toContain("extension install");
     expect(renderCliHelp(["doctor", "--help"])).toContain("\n  extension\n");
     expect(renderCliHelp(["uninstall", "--help"])).toContain("Usage: queqiao uninstall");

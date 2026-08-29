@@ -126,6 +126,7 @@ export const extensionPackageMetadataSchema = z.object({
 
 export const extensionSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("local-module"), module: z.string().min(1).max(4096) }),
+  z.object({ kind: z.literal("local"), package: z.string().min(1).max(214), version: semanticVersionSchema, root: z.string().min(1).max(4096), module: z.string().min(1).max(4096) }),
   z.object({
     kind: z.literal("npm"),
     package: z.string().min(1).max(214),

@@ -42,9 +42,11 @@ const hubSourceSchema = z.object({
   installDirectory: z.string().min(1).max(4096),
 });
 
+const localHubSourceSchema = z.object({ kind: z.literal("local"), package: z.string().min(1).max(214), version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/), root: z.string().min(1).max(4096), module: z.string().min(1).max(4096) });
+
 const hubExtensionSchema = z.object({
   trusted: z.literal(true),
-  source: hubSourceSchema,
+  source: z.union([hubSourceSchema, localHubSourceSchema]),
   manifest: extensionManifestSchema,
 });
 
@@ -186,10 +188,14 @@ function attachedConfig(extension: HubExtension): InstalledExtensionConfig {
 }
 
 function isHubOwnedAttachment(entry: InstalledExtensionConfig, extension: HubExtension): boolean {
-  return entry.manifest.id === extension.manifest.id
-    && entry.source.kind === "npm"
-    && entry.source.module === extension.source.module
-    && entry.source.installDirectory === extension.source.installDirectory;
+  if (entry.manifest.id !== extension.manifest.id || entry.source.kind !== extension.source.kind) return false;
+  if (entry.source.kind === "npm" && extension.source.kind === "npm") {
+    return entry.source.module === extension.source.module && entry.source.installDirectory === extension.source.installDirectory;
+  }
+  if (entry.source.kind === "local" && extension.source.kind === "local") {
+    return entry.source.module === extension.source.module && entry.source.root === extension.source.root;
+  }
+  return false;
 }
 function assertWorkerCompatible(config: RuntimeConfig, extension: HubExtension, workerName: string): void {
   if (!config.worker) throw new Error(`Worker runtime config is required: ${workerName}`);
@@ -232,6 +238,69 @@ export async function detachExtension(id: string, workerName: string, workerLayo
     return changed ? { ...config, extensions } : config;
   });
   return { changed, worker: workerName, detached: id };
+}
+
+export async function installLocalExtension(
+  hubLayout: HubLocation,
+  sourcePath: string,
+  options: { workerName?: string; attachAll?: boolean } = {},
+  workerDiscovery: WorkerDiscovery = discoverWorkers,
+  baseDirectory = process.cwd(),
+): Promise<unknown> {
+  if (options.workerName && options.attachAll) throw new Error("Choose either --worker <name> or --attach-all, not both");
+  const requestedRoot = path.resolve(baseDirectory, sourcePath);
+  const root = await realpath(requestedRoot).catch(() => { throw new Error(`Local extension directory does not exist: ${requestedRoot}`); });
+  if (!(await stat(root)).isDirectory()) throw new Error(`Local extension source must be a directory: ${root}`);
+  const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as InstalledPackageJson;
+  if (typeof packageJson.name !== "string" || !PACKAGE_NAME.test(packageJson.name)) throw new Error("Local extension package name is invalid");
+  if (typeof packageJson.version !== "string") throw new Error("Local extension package version is invalid");
+  const metadata = z.object({ apiVersion: z.literal(1), module: z.string().min(1).max(4096), manifest: extensionManifestSchema }).parse(packageJson.queqiao);
+  if (metadata.manifest.version !== packageJson.version) throw new Error("Queqiao extension manifest version must match package version");
+  if (metadata.manifest.host.kind !== "worker") throw new Error("Extension Hub v1 accepts Worker-hosted extensions only");
+  if (!metadata.module.startsWith("./") && !metadata.module.startsWith(".\\")) throw new Error("queqiao.module must be a package-relative path beginning with ./");
+  const moduleCandidate = path.resolve(root, metadata.module);
+  const module = await realpath(moduleCandidate).catch(() => { throw new Error(`Local extension module is missing: ${moduleCandidate}. Build the extension first.`); });
+  if (!contained(root, module)) throw new Error("queqiao.module escapes the local extension package");
+  if (!(await stat(module)).isFile()) throw new Error("queqiao.module must resolve to a file");
+
+  const currentHub = await readHub(hubLayout);
+  if (currentHub.extensions.some((entry) => entry.manifest.id === metadata.manifest.id)) throw new Error(`Extension is already installed in the Hub: ${metadata.manifest.id}`);
+  const extension: HubExtension = {
+    trusted: true,
+    source: { kind: "local", package: packageJson.name, version: packageJson.version, root, module },
+    manifest: metadata.manifest,
+  };
+  await updateHub(hubLayout, (hub) => ({ ...hub, extensions: [...hub.extensions, extension] }));
+
+  const attachments: unknown[] = [];
+  try {
+    if (options.workerName) attachments.push(await attachHubEntryToWorker(extension, options.workerName, resolveRuntimeLayoutForNamedRole("worker", options.workerName)));
+    if (options.attachAll) {
+      for (const worker of await workerDiscovery()) {
+        if (extension.manifest.host.kind === "worker" && extension.manifest.host.environmentId && extension.manifest.host.environmentId !== worker.config.worker?.environmentId) continue;
+        attachments.push(await attachHubEntryToWorker(extension, worker.name, worker.layout));
+      }
+    }
+  } catch (error) {
+    for (const attachment of attachments.slice().reverse()) {
+      const worker = (attachment as { worker?: string }).worker;
+      if (worker) await detachExtension(extension.manifest.id, worker).catch(() => undefined);
+    }
+    await updateHub(hubLayout, (hub) => ({ ...hub, extensions: hub.extensions.filter((entry) => entry.manifest.id !== extension.manifest.id) })).catch(() => undefined);
+    throw error;
+  }
+
+  return { changed: true, id: extension.manifest.id, version: extension.manifest.version, package: packageJson.name, source: "local", root, hub: hubRoot(hubLayout), attachments, proxyAvailable: true, connectorManifestImpact: "none" };
+}
+
+export async function installExtension(
+  hubLayout: HubLocation,
+  source: string,
+  options: { workerName?: string; attachAll?: boolean } = {},
+): Promise<unknown> {
+  return source.startsWith("npm:")
+    ? installNpmExtension(hubLayout, source, options)
+    : installLocalExtension(hubLayout, source, options);
 }
 
 export async function installNpmExtension(
@@ -336,15 +405,20 @@ export async function uninstallExtension(hubLayout: HubLocation, id: string, for
   const attachedWorkers = workers.filter((worker) => worker.config.extensions.some((entry) => isHubOwnedAttachment(entry, extension)));
   const attachedWorkerNames = attachedWorkers.map((worker) => worker.name);
   if (attachedWorkerNames.length && !force) throw new Error(`Cannot uninstall ${id}; attached Workers: ${attachedWorkerNames.join(", ")}. Detach first or use --force.`);
-  const extensionsRoot = path.resolve(packagesRoot(hubLayout));
-  const installDirectory = path.resolve(extension.source.installDirectory);
-  if (!contained(extensionsRoot, installDirectory) || installDirectory === extensionsRoot) throw new Error("Refusing to remove extension package outside the managed Extension Hub package directory");
+  let installDirectory: string | undefined;
+  if (extension.source.kind === "npm") {
+    const extensionsRoot = path.resolve(packagesRoot(hubLayout));
+    installDirectory = path.resolve(extension.source.installDirectory);
+    if (!contained(extensionsRoot, installDirectory) || installDirectory === extensionsRoot) throw new Error("Refusing to remove extension package outside the managed Extension Hub package directory");
+  }
 
   if (force) for (const worker of attachedWorkers) await detachExtension(id, worker.name, worker.layout);
   await updateHub(hubLayout, (current) => ({ ...current, extensions: current.extensions.filter((entry) => entry.manifest.id !== id) }));
-  let packageCleanup: "removed" | "orphaned" = "removed";
-  try { await rm(installDirectory, { recursive: true, force: true }); }
-  catch { packageCleanup = "orphaned"; }
+  let packageCleanup: "removed" | "orphaned" | "preserved" = installDirectory ? "removed" : "preserved";
+  if (installDirectory) {
+    try { await rm(installDirectory, { recursive: true, force: true }); }
+    catch { packageCleanup = "orphaned"; }
+  }
   return { changed: true, removed: id, detachedWorkers: force ? attachedWorkerNames : [], packageCleanup };
 }
 
@@ -389,12 +463,13 @@ export async function doctorExtensionHub(hubLayout: HubLocation): Promise<unknow
   const issues: string[] = [];
   for (const extension of hub.extensions) {
     await access(extension.source.module).catch(() => issues.push(`${extension.manifest.id}: module is missing`));
-    await access(extension.source.installDirectory).catch(() => issues.push(`${extension.manifest.id}: install directory is missing`));
+    if (extension.source.kind === "npm") await access(extension.source.installDirectory).catch(() => issues.push(`${extension.manifest.id}: install directory is missing`));
+    if (extension.source.kind === "local") await access(extension.source.root).catch(() => issues.push(`${extension.manifest.id}: local source directory is missing`));
   }
   const hubIds = new Set(hub.extensions.map((entry) => entry.manifest.id));
   for (const worker of workers) {
     for (const extension of worker.config.extensions) {
-      if (extension.source.kind === "npm" && !hubIds.has(extension.manifest.id)) issues.push(`${worker.name}: attached extension is missing from Hub: ${extension.manifest.id}`);
+      if (extension.source.kind !== "local-module" && !hubIds.has(extension.manifest.id)) issues.push(`${worker.name}: attached extension is missing from Hub: ${extension.manifest.id}`);
     }
   }
   return { ok: issues.length === 0, hub: hubRoot(hubLayout), extensionCount: hub.extensions.length, workerCount: workers.length, issues };

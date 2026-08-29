@@ -1,10 +1,10 @@
-import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readRuntimeConfig, runtimeConfigSchema, serializeRuntimeConfig } from "@queqiao/config";
 import type { RuntimeLayout } from "@queqiao/platform-paths";
-import { attachExtension, detachExtension, installNpmExtension, parseExtensionSource, uninstallExtension } from "./extension-cli.js";
+import { attachExtension, detachExtension, installExtension, installLocalExtension, installNpmExtension, parseExtensionSource, uninstallExtension } from "./extension-cli.js";
 
 let temporary: string | undefined;
 afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); temporary = undefined; });
@@ -106,6 +106,40 @@ describe("extension CLI", () => {
     await uninstallExtension(hub, "dev.queqiao.mcp");
     expect((await readdir(packageStore)).filter((entry) => !entry.startsWith(".staging-"))).toHaveLength(0);
   });
+  it("installs a prepared local package by path without copying or deleting the source", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-cli-local-"));
+    const hub = layout(path.join(temporary, "hub"));
+    const worker = layout(path.join(temporary, "worker"));
+    await workerConfig(worker);
+    const prepared = path.join(temporary, "prepared");
+    await fakePackage(prepared);
+    const localRoot = path.join(prepared, "node_modules", "queqiao-mcp");
+
+    await installExtension(hub, localRoot);
+    await attachExtension(hub, "dev.queqiao.mcp", "windows", worker);
+    let config = await readRuntimeConfig(worker.configFile);
+    expect(config.extensions[0]?.source.kind).toBe("local");
+    if (config.extensions[0]?.source.kind !== "local") throw new Error("expected local source");
+    expect(config.extensions[0].source.root).toBe(await realpath(localRoot));
+    await expect(access(config.extensions[0].source.module)).resolves.toBeUndefined();
+
+    await detachExtension("dev.queqiao.mcp", "windows", worker);
+    await expect(uninstallExtension(hub, "dev.queqiao.mcp")).resolves.toMatchObject({ packageCleanup: "preserved" });
+    await expect(access(path.join(localRoot, "package.json"))).resolves.toBeUndefined();
+    config = await readRuntimeConfig(worker.configFile);
+    expect(config.extensions).toHaveLength(0);
+  });
+
+  it("rejects an unbuilt local package without running package scripts", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-cli-unbuilt-"));
+    const hub = layout(path.join(temporary, "hub"));
+    const prepared = path.join(temporary, "prepared");
+    await fakePackage(prepared);
+    const localRoot = path.join(prepared, "node_modules", "queqiao-mcp");
+    await rm(path.join(localRoot, "dist"), { recursive: true, force: true });
+    await expect(installLocalExtension(hub, localRoot)).rejects.toThrow(/Build the extension first/);
+  });
+
   it("does not claim or detach a foreign legacy attachment that only shares the Hub extension id", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-cli-foreign-"));
     const hub = layout(path.join(temporary, "hub"));

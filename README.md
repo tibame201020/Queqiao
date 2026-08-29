@@ -223,7 +223,7 @@ queqiao worker workspace tool allow|deny --worker <worker> --workspace <id> --to
 queqiao worker workspace command allow|deny --worker <worker> --workspace <id> --command <executable>
 queqiao worker workspace permissions show --worker <worker> [--workspace <id>]
 
-queqiao extension install npm:<package> [--worker <name>|--attach-all]
+queqiao extension install <npm:package|local-path> [--worker <name>|--attach-all]
 queqiao extension attach <id> [--worker <name>]
 queqiao extension detach <id> [--worker <name>]
 queqiao extension uninstall <id> [--force]
@@ -288,7 +288,7 @@ The npm package must also declare Queqiao package metadata in `package.json`. `a
 }
 ```
 
-Revision 7 Extension Hub installation accepts Worker-hosted registry npm packages only. Install runs with npm lifecycle scripts disabled and validates package metadata, manifest/version identity, entry-point containment, and Worker compatibility before committing the Hub entry. `install` changes package state only unless `--worker` or `--attach-all` is supplied. `attach` is the Worker activation state; there is no separate enable/disable lifecycle.
+The Extension Hub accepts Worker-hosted npm packages (`npm:<package>`) and prepared local package directories (`<local-path>`). npm installs use a Hub-managed copy with lifecycle scripts disabled. Local installs keep the canonical user-owned package path in place: Queqiao does not copy it, run package scripts, or delete it during uninstall. Both sources validate package metadata, manifest/version identity, entry-point containment, and Worker compatibility before committing the Hub entry. `install` changes Hub package state only unless `--worker` or `--attach-all` is supplied. `attach` is the Worker activation state; there is no separate enable/disable lifecycle. See [Extension authoring](docs/extensions.md) for the package contract, public Worker capability surface, local development workflow, and an LLM-oriented authoring template.
 
 A running Worker hot-reloads attachment config generation-by-generation. A candidate ExtensionHost must load and validate before atomic replacement; rejected candidates preserve the last-known-good generation. In-flight requests retain the generation they started with, and retired extensions receive `dispose()` only after the final lease completes.
 
