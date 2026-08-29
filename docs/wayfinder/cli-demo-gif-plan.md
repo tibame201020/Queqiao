@@ -1,6 +1,8 @@
 # Quick CLI Demo GIF Plan
 
-Status: implementation candidates for GIFs 1-4 exist in the isolated demo worktree. The current README is still unchanged, and the legacy GIF remains in place until the four-part set is reviewed and accepted.
+> **Superseded visual plan (2026-08-29):** The four flow GIFs described below were recorded on 2026-08-20 and predate the current selector, Access Profile, Workspace authority, Extension Hub, and TUI design-system contracts. They have been retired from production documentation. Current user-facing visual documentation lives under `docs/cli/`; reusable component GIFs are generated from the production TUI grammar, while future flow GIFs require a fresh real packaged-CLI transcript. The remainder of this file is retained as recording/design history.
+
+Status: superseded by `docs/cli/README.md` and `docs/cli/components/README.md`.
 
 ## Goal
 

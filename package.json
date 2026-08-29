@@ -49,7 +49,8 @@
     "start:worker": "tsx apps/worker/src/index.ts",
     "start:gateway": "tsx apps/gateway/src/index.ts",
     "queqiao": "tsx apps/cli/src/index.ts",
-    "test:cli-acceptance": "vitest run apps/cli/src/cli-isolated-acceptance.test.ts apps/cli/src/tui-viewport.test.ts apps/cli/src/enrollment-cli-cancel.test.ts"
+    "test:cli-acceptance": "vitest run apps/cli/src/cli-isolated-acceptance.test.ts apps/cli/src/tui-viewport.test.ts apps/cli/src/enrollment-cli-cancel.test.ts",
+    "docs:cli:components": "python scripts/cli-demo/render_components.py docs/assets/cli/components"
   },
   "engines": {
     "node": ">=22.19 <25",

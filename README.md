@@ -53,6 +53,10 @@ queqiao gateway workers list --gateway <gateway>
 Additional Workspaces can be added or removed while the Worker is running. Workspace
 configuration is hot-reloaded; a Worker must always retain at least one Workspace.
 
+For the interaction grammar and visual component examples, see the
+[CLI visual guide](docs/cli/README.md). The README intentionally keeps only the shortest
+first-run command flow; detailed component and flow documentation lives under `docs/cli/`.
+
 ## Production architecture
 
 - **Gateway** owns the public MCP endpoint, OAuth, stable tool schemas, routing, and
