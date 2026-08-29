@@ -2,7 +2,7 @@
 
 These animations are recorded from a **real packed Queqiao package** installed into isolated synthetic runtime state. The recorder executes the packaged `queqiao` binary, captures real command output, redacts transient identifiers/secrets, and then renders the transcript as a deterministic terminal GIF.
 
-The fixture itself is prepared through the production setup wizard API with deterministic prompt answers; no hidden setup flags are added to the public CLI just for documentation.
+The fixture itself is prepared through the production setup wizard API with deterministic prompt answers; no hidden setup flags are added to the public CLI just for documentation. For recordings of the public interactive wizard itself, including real selector and multiselect key navigation, see [Interactive CLI flows](../interactive/README.md).
 
 ## Roles and Workspaces
 

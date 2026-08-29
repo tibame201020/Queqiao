@@ -21,6 +21,7 @@ import { formatCliOutput } from "./cli-output.js";
 import { createQueqiaoTheme, shouldUseCliColor, styleCliHelpText } from "./tui-theme.js";
 import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, resolveCliDispatch, renderCliHelp, renderCliRouteError, renderRemovedSelectorError, validateCliArgs } from "./command-surface.js";
 import { listRoleInstances, resolveRoleInstance, selectorRoleForCliArgs, withRoleSelector } from "./instance-selector.js";
+import { QUEQIAO_CLI_VERSION } from "./version.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
@@ -36,8 +37,13 @@ let selectedRoleName: string | undefined;
 const USAGE = renderCliHelp([]);
 
 function print(value: unknown) { process.stdout.write(`${formatCliOutput(outputArgs, value, { color: shouldUseCliColor() })}\n`); }
+function printVersion() {
+  if (rawArgs.includes("--json")) process.stdout.write(`${JSON.stringify({ schemaVersion: "1.0", version: QUEQIAO_CLI_VERSION })}\n`);
+  else process.stdout.write(`${QUEQIAO_CLI_VERSION}\n`);
+}
 
 async function main() {
+  if (rawArgs.includes("--version") || rawArgs.includes("-v")) return printVersion();
   if (isRemovedCliRoute(args)) throw new Error(args[1]);
   if (helpRequested) { process.stdout.write(`${styleCliHelpText(renderCliHelp(commandArgs))}\n`); return; }
   if (isCliHelpContext(commandArgs)) { process.stdout.write(`${styleCliHelpText(renderCliHelp(commandArgs))}\n`); return; }
@@ -47,6 +53,7 @@ async function main() {
   if (routeError) throw new Error(routeError);
   validateCliArgs(commandArgs);
 
+  if (dispatch?.handler === "version") return printVersion();
   if (dispatch?.handler === "list-role-instances" && dispatch.route === "gateway list") return print({ schemaVersion: "1.0", role: "gateway", instances: await listRoleInstances("gateway") });
   if (dispatch?.handler === "list-role-instances" && dispatch.route === "worker list") return print({ schemaVersion: "1.0", role: "worker", instances: await listRoleInstances("worker") });
 

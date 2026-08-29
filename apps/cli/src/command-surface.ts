@@ -63,6 +63,7 @@ type CommandNode = {
 const terminal: CommandNode = { terminal: true };
 export const COMMAND_TREE: CommandNode = {
   children: {
+    version: terminal,
     gateway: {
       children: {
         list: terminal,
@@ -127,7 +128,7 @@ export type CliHandlerKey =
   | "gateway-join-token" | "membership-list" | "membership-update" | "membership-remove" | "worker-port" | "worker-join"
   | "workspace-add" | "workspace-list" | "workspace-remove" | "workspace-profile-set" | "workspace-tool-policy" | "workspace-command-policy" | "workspace-permissions-show"
   | "extension-install" | "extension-attach" | "extension-detach" | "extension-uninstall" | "extension-list" | "extension-show" | "extension-doctor"
-  | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
+  | "version" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
 
 type CliLeafContract = {
   route: string;
@@ -139,6 +140,7 @@ type CliLeafContract = {
 
 /** Public parser contract. Keep handler-only compatibility flags explicit here. */
 export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
+  { route: "version", handler: "version", options: [] },
   { route: "gateway list", handler: "list-role-instances", options: [] },
   { route: "gateway setup", handler: "role-setup", options: [] },
   { route: "gateway remove", handler: "role-remove", options: ["gateway"], valueOptions: ["gateway"] },
@@ -352,6 +354,7 @@ export function renderCliRouteError(input: readonly string[]): string | undefine
 const ROOT_HELP = `Usage: queqiao <command> [options]
 
 Commands:
+  version      Print the installed Queqiao version
   gateway      Manage a Queqiao Gateway
   worker       Manage a Queqiao Worker
   extension    Manage Queqiao extensions
@@ -359,7 +362,8 @@ Commands:
   uninstall    Remove Queqiao and Queqiao-owned local state
 
 Global options:
-  --json       Print machine-readable JSON
+  --version, -v  Print the installed Queqiao version
+  --json         Print machine-readable JSON
 
 Run "queqiao <command> --help" for command details.`;
 
