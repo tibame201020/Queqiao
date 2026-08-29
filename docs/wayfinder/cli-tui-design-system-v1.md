@@ -139,6 +139,8 @@ Completed:
 
 Prompt headers are strong. Key hints are secondary. Error messages use the error glyph plus danger emphasis.
 
+Prompt frames are compact by default. The first choice or input row follows the prompt header immediately; renderers must not insert a guide-only blank row merely for decoration. Blank rows are reserved for real section boundaries or content that needs deliberate separation.
+
 ### Result output
 
 Human-readable command results use a stable hierarchy:

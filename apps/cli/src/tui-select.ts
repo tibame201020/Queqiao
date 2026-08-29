@@ -44,7 +44,7 @@ export function renderQueqiaoSelectFrame<T extends string>(frame: QueqiaoSelectF
     ? [`${prefix}${theme.danger(`${TUI_GLYPHS.danger} ${frame.error}`)}`]
     : [];
   const terminalRows = Math.max(6, frame.terminalRows ?? process.stdout.rows ?? 24);
-  const chromeRows = 1 + (frame.withGuide ? 1 : 0) + error.length + 1 + (frame.withGuide ? 1 : 0);
+  const chromeRows = 1 + error.length + 1 + (frame.withGuide ? 1 : 0);
   const viewport = resolveChoiceViewport(renderedOptions, frame.cursor, Math.max(1, terminalRows - chromeRows));
   const lines: string[] = [];
   if (viewport.hiddenBefore) lines.push(`${prefix}${theme.muted(`↑ ${viewport.hiddenBefore} more`)}`);
@@ -52,7 +52,7 @@ export function renderQueqiaoSelectFrame<T extends string>(frame: QueqiaoSelectF
   if (viewport.hiddenAfter) lines.push(`${prefix}${theme.muted(`↓ ${viewport.hiddenAfter} more`)}`);
   const footer = `${prefix}${theme.muted(TUI_HINTS.select)}`;
   const end = frame.withGuide ? theme.subtle(TUI_GLYPHS.guideEnd) : "";
-  return [header, ...(frame.withGuide ? [theme.subtle(TUI_GLYPHS.guide)] : []), ...lines, ...error, footer, end].join("\n");
+  return [header, ...lines, ...error, footer, end].join("\n");
 }
 
 export async function queqiaoSelect<T extends string>(options: {

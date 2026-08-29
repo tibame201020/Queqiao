@@ -32,6 +32,24 @@ describe("Queqiao multi-select primitive", () => {
     expect(output).toContain("↑/↓ navigate · Space toggle · Enter confirm");
   });
 
+  it("places the first choice directly under the prompt header", () => {
+    const output = stripVTControlCharacters(renderQueqiaoMultiSelectFrame({
+      message: "Tools",
+      options: [
+        { value: "read_file", label: "read_file" },
+        { value: "write_file", label: "write_file" },
+      ],
+      selected: ["read_file"],
+      cursor: 0,
+      state: "active",
+      withGuide: true,
+    }));
+
+    const lines = output.split("\n");
+    expect(lines[0]).toBe("◆  Tools");
+    expect(lines[1]).toBe("│  › ■ read_file");
+  });
+
   it("uses a domain-supplied submit summary", () => {
     const output = stripVTControlCharacters(renderQueqiaoMultiSelectFrame({
       message: "Tools",

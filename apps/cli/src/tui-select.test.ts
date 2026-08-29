@@ -23,6 +23,24 @@ describe("Queqiao single-select primitive", () => {
     expect(output).not.toContain("■");
   });
 
+  it("places the first choice directly under the prompt header", () => {
+    const output = stripVTControlCharacters(renderQueqiaoSelectFrame({
+      message: "Gateway",
+      options: [
+        { value: "shadow", label: "shadow (running)" },
+        { value: "stable", label: "stable" },
+      ],
+      value: "shadow",
+      cursor: 0,
+      state: "active",
+      withGuide: true,
+    }));
+
+    const lines = output.split("\n");
+    expect(lines[0]).toBe("◆  Gateway");
+    expect(lines[1]).toBe("│  › shadow (running)");
+  });
+
   it("summarizes the selected primary label on submit", () => {
     const output = stripVTControlCharacters(renderQueqiaoSelectFrame({
       message: "Gateway",
