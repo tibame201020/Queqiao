@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveRuntimeLayout } from "@queqiao/platform-paths";
-import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
+import { runtimeLifecycleInternals, runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-runtime-lifecycle-")); const layout = resolveRuntimeLayout({ LOCALAPPDATA: root, TEMP: root, USERPROFILE: root }, "win32"); await import("node:fs/promises").then(({ mkdir }) => mkdir(layout.configDir, { recursive: true }));
@@ -28,6 +28,12 @@ describe("runtime lifecycle", () => {
     const status = await runtimeStatus(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, fetchImpl: async () => new Response("{}", { status: 200 }), entryPoints: { gateway: "C:\\global-link\\dist\\queqiao-gateway.js" } });
     expect(status).toMatchObject({ active: true, managed: true, pid: 4321 });
     expect(JSON.parse(await readFile(pidFile, "utf8"))).toMatchObject({ pid: 4321, entryPoint: "C:\\repo\\dist\\queqiao-gateway.js" });
+  });
+  it("keeps Linux entrypoint ownership case-sensitive", () => {
+    const entryPoint = "/tmp/Queqiao-Acceptance-AbC123/package/queqiao-worker.js";
+    expect(runtimeLifecycleInternals.commandOwnsEntryPoint(`node ${entryPoint}`, entryPoint, "linux")).toBe(true);
+    expect(runtimeLifecycleInternals.commandOwnsEntryPoint(`node ${entryPoint.toLowerCase()}`, entryPoint, "linux")).toBe(false);
+    expect(runtimeLifecycleInternals.commandOwnsEntryPoint("node C:\\PKG\\QUEQIAO-WORKER.JS", "C:\\pkg\\queqiao-worker.js", "win32")).toBe(true);
   });
   it("rejects PID metadata owned by a different named config", async () => {
     const { layout } = await fixture();

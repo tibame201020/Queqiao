@@ -25,8 +25,12 @@ function packageEntryPoint(role: RuntimeRole) { const dir = path.dirname(fileURL
 function windowsSystemExecutable(name: string, env: NodeJS.ProcessEnv) { const root = env.SystemRoot || env.WINDIR; if (!root) throw new Error("Windows system root is unavailable"); return path.win32.join(root, "System32", name); }
 function pathsFor(layout: RuntimeLayout, role: RuntimeRole) { const dir = path.join(layout.stateDir, "processes"); return { dir, pidFile: path.join(dir, `${role}.pid.json`), stdout: path.join(layout.logDir, `${role}.out.log`), stderr: path.join(layout.logDir, `${role}.err.log`) }; }
 function comparablePath(value: string, platform: NodeJS.Platform) {
-  const resolved = platform === "win32" ? path.win32.resolve(value) : path.resolve(value);
+  const resolved = platform === "win32" ? path.win32.resolve(value) : path.posix.resolve(value);
   return platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+function commandOwnsEntryPoint(command: string, entryPoint: string, platform: NodeJS.Platform) {
+  const comparableCommand = platform === "win32" ? command.toLowerCase() : command;
+  return comparableCommand.includes(comparablePath(entryPoint, platform));
 }
 async function exists(file: string) { try { await access(file); return true; } catch { return false; } }
 async function validateConfiguredRole(configFile: string, role: RuntimeRole) { const runtime = await readRuntimeConfig(configFile); if (role === "gateway" && !runtime.gateway) throw new Error("gateway setup is required before serve"); if (role === "worker" && !runtime.worker) throw new Error("worker setup is required before serve"); if (role === "worker" && runtime.workspaces.length < 1) throw new Error("Worker has no Workspace; run worker setup to configure one before serving"); return runtime; }
@@ -67,9 +71,9 @@ async function reconcileManagedPid(layout: RuntimeLayout, role: RuntimeRole, dep
   const platform = dependencies.platform || process.platform; const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const currentEntryPoint = dependencies.entryPoints?.[role] || packageEntryPoint(role); const p = pathsFor(layout, role); const metadata = await readPid(p.pidFile); if (!metadata) return undefined;
   const recordedConfig = metadata.configFile ? comparablePath(metadata.configFile, platform) : undefined;
   if (recordedConfig && recordedConfig !== comparablePath(layout.configFile, platform)) { await rm(p.pidFile, { force: true }); return undefined; }
-  const ownedEntryPoint = comparablePath(metadata.entryPoint || currentEntryPoint, platform);
+  const ownedEntryPoint = metadata.entryPoint || currentEntryPoint;
   const command = await processCommandLine(metadata.pid, platform, env, execFile);
-  if (!command || !command.toLowerCase().includes(ownedEntryPoint)) { await rm(p.pidFile, { force: true }); return undefined; }
+  if (!command || !commandOwnsEntryPoint(command, ownedEntryPoint, platform)) { await rm(p.pidFile, { force: true }); return undefined; }
   return metadata.pid;
 }
 async function stopManaged(layout: RuntimeLayout, role: RuntimeRole, dependencies: Dependencies = {}) {
@@ -95,4 +99,4 @@ export async function runtimeStatus(configFile: string, layout: RuntimeLayout, r
 export async function serveRuntime(configFile: string, roleValue: string, nameValue: string, dependencies: Dependencies = {}) {
   const role = validateRole(roleValue); const name = validateName(nameValue); await validateConfiguredRole(configFile, role); const current = await health(configFile, role, dependencies.fetchImpl || fetch); if (current.reachable && current.identityMatches) throw new Error(`${role} ${name} is already running`); if (current.reachable && !current.identityMatches) throw new Error(`Cannot serve ${role} ${name}: configured port is already occupied by another runtime`); const nodePath = path.resolve(dependencies.nodePath || process.execPath); const entryPoint = path.resolve(dependencies.entryPoints?.[role] || packageEntryPoint(role)); const child = spawn(nodePath, [entryPoint], { cwd: path.dirname(entryPoint), stdio: "inherit", env: { ...(dependencies.env || process.env), QUEQIAO_CONFIG_FILE: path.resolve(configFile) } }); const exitCode = await new Promise<number>((resolve, reject) => { child.once("error", reject); child.once("exit", (code, signal) => resolve(code ?? (signal ? 1 : 0))); }); return { served: true, name, role, exitCode };
 }
-export const runtimeLifecycleInternals = { validateName, pathsFor, exists };
+export const runtimeLifecycleInternals = { validateName, pathsFor, exists, comparablePath, commandOwnsEntryPoint };
