@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.1 - 2026-08-30
+
+CLI version reporting and interactive documentation patch.
+
+### Highlights
+
+- Adds `queqiao version`, `queqiao --version`, and `queqiao -v`, all sourced from the packaged npm version at build time; `--json` returns the stable `{ schemaVersion, version }` shape.
+- Adds packaged acceptance coverage for command, flag, short-flag, and JSON version reporting.
+- Replaces the README's single representative CLI animation with a five-stage onboarding sequence covering Gateway setup, Worker/Workspace Access, named-instance selection, Extension attachment, and runtime start/enroll/verify.
+- Adds reproducible real-PTY interactive CLI recording through isolated staged npm packages, ANSI/asciicast capture, and pinned/checksum-verified GIF rendering.
+- Keeps interactive recordings, operational flow recordings, and component grammar examples in separate documentation layers.
+
+### Release validation
+
+- CLI contract/dispatch and packaged version acceptance are validated before release.
+- Full, security, packaged CLI, documentation-link, GIF privacy, and cross-platform CI gates remain required.
+- npm publication remains GitHub Release-bound through Trusted Publishing with provenance.
+
+
 ## 0.8.0 - 2026-08-29
 
 CLI hierarchy and management UX release.

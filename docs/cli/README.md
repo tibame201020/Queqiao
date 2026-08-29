@@ -17,8 +17,9 @@ Gateway and Worker remain separate runtime roles. Workspaces remain Worker-owned
 
 ## Guides
 
+- [Interactive flows](interactive/README.md) — real PTY recordings of setup, Access, named-instance selection, and Extension attachment.
 - [Components](components/README.md) — the reusable terminal interaction grammar: selectors, multiselect, inputs, results, help, and errors.
-- [Flows](flows/README.md) — the production command sequences for role setup, Workspace authority, enrollment, Extensions, and verification.
+- [Operational flows](flows/README.md) — real packaged CLI command execution for Workspace authority, Extension operations, enrollment, and runtime verification.
 - [Workspace authority](../workspace-authority.md) — the filesystem/tool/command authority model.
 - [Extensions](../extensions.md) — Extension Hub installation, attachment, and authoring.
 - [CLI selector grammar](../wayfinder/cli-selector-grammar.yaml) — the implemented TTY/non-TTY/JSON selector contract.
@@ -26,15 +27,16 @@ Gateway and Worker remain separate runtime roles. Workspaces remain Worker-owned
 
 ## Visual documentation contract
 
-Visual assets are split into two classes:
+Visual assets are split into three classes:
 
-1. **Component GIFs** document presentation state transitions. They are generated deterministically from the production TUI grammar and may use synthetic identifiers/paths because they do not claim that a command was executed.
-2. **Flow GIFs** document command execution. They must come from a real packaged CLI transcript with secrets and machine-specific values removed. A flow GIF is not published when the recorder cannot reproduce the current production interaction safely.
+1. **Interactive GIFs** are recordings of the real packaged CLI inside a PTY. The recorder types commands, waits for production prompts, sends navigation/text keys, captures the raw ANSI stream, and renders that stream as a GIF.
+2. **Operational flow GIFs** execute the real packaged CLI against isolated synthetic runtime state. They are useful for longer scriptable lifecycle and diagnostic sequences where a terminal selector is not the focus.
+3. **Component GIFs** document reusable presentation-state transitions. They are generated deterministically from the production TUI grammar and may use synthetic identifiers/paths because they do not claim that a command was executed.
 
-This distinction prevents a polished animation from being mistaken for runtime evidence.
+Interactive and operational recordings must never use live user configuration, credentials, endpoints, or join secrets. Component animations must never be presented as runtime execution evidence.
 
 ## Current visual baseline
 
-The current component GIFs correspond to the production TUI system introduced on 2026-08-29. The current flow GIFs are regenerated from a staged npm package built from the same source revision and execute the real packed CLI in isolated synthetic state.
+The current visual set corresponds to the production CLI/TUI system introduced in v0.8.0. Interactive setup recordings are generated from a staged npm package of the same source revision through WSL PTY capture. Operational flows are generated from the same staged package against isolated fixture state.
 
 The older first-run GIF set recorded on 2026-08-20 predates the current selector, Access Profile, Workspace authority, Extension, and TUI presentation contracts and is intentionally retired rather than reused.

@@ -18,6 +18,7 @@ const WORKER = "accept-worker";
 const EXTENSION_ID = "dev.queqiao.acceptance";
 
 const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
+  "version": "packaged-version",
   "gateway list": "packaged-process-state",
   "gateway setup": "interactive-setup",
   "gateway remove": "interactive-destructive",
@@ -216,6 +217,15 @@ describe.sequential("isolated packaged CLI acceptance", () => {
 
   it("requires every public CLI leaf to name an acceptance scenario", () => {
     expect(Object.keys(ACCEPTANCE_COVERAGE).sort()).toEqual(CLI_LEAF_CONTRACTS.map((entry) => entry.route).sort());
+  });
+
+  it("reports the packaged CLI version through command, flags, and JSON", async () => {
+    const packageVersion = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8")).version as string;
+    expect((await runCli(["version"])).stdout.trim()).toBe(packageVersion);
+    expect((await runCli(["--version"])).stdout.trim()).toBe(packageVersion);
+    expect((await runCli(["-v"])).stdout.trim()).toBe(packageVersion);
+    expect(parseJson<any>(await runCli(["version", "--json"]))).toEqual({ schemaVersion: "1.0", version: packageVersion });
+    expect(parseJson<any>(await runCli(["--version", "--json"]))).toEqual({ schemaVersion: "1.0", version: packageVersion });
   });
 
   it("creates isolated Gateway and Worker instances through the real setup wizards and packaged read paths", async () => {

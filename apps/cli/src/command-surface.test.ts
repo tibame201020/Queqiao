@@ -80,8 +80,10 @@ describe("CLI hierarchy consolidation", () => {
     expect(normalizeCliArgs(input)).toEqual(input);
   });
 
-  it("keeps the root mental model limited to Gateway, Worker, Extension, and Doctor", () => {
+  it("keeps the root surface limited to the version utility and primary management domains", () => {
     const help = renderCliHelp([]);
+    expect(help).toContain("version");
+    expect(help).toContain("--version, -v");
     expect(help).toContain("gateway");
     expect(help).toContain("worker");
     expect(help).toContain("extension");
@@ -147,7 +149,7 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it("freezes every public leaf in one parser contract", () => {
-    expect(CLI_LEAF_CONTRACTS).toHaveLength(41);
+    expect(CLI_LEAF_CONTRACTS).toHaveLength(42);
     expect(new Set(CLI_LEAF_CONTRACTS.map(({ route }) => route)).size).toBe(CLI_LEAF_CONTRACTS.length);
     expect(CLI_LEAF_CONTRACTS.map(({ route }) => route).sort()).toEqual(listCanonicalCliRoutes());
   });
