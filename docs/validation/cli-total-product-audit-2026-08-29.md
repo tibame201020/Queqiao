@@ -1,5 +1,11 @@
 # CLI total product audit — 2026-08-29
 
+> **Historical pre-convergence snapshot:** The command tree and selector findings below record
+> the state before the selector/TUI convergence implemented later on 2026-08-29. Current
+> operational grammar is defined by `apps/cli/src/command-surface.ts`, `README.md`, and
+> `docs/wayfinder/cli-selector-grammar.yaml`. The untracked product-setup prototypes remain
+> unshipped; the generic setup direction has been superseded by a future Workstation TUI.
+
 ## Scope and evidence
 
 This is the pre-redesign baseline for the complete public CLI. It records the checked-out repository, including current working-tree changes, without changing product behavior. Sources of truth, in descending order, are dispatch/normalization code, handlers and schemas, tests, current README/current docs, then historical validation documents.

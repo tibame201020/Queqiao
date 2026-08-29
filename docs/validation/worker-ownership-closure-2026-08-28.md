@@ -1,5 +1,11 @@
 # Worker Ownership Closure — 2026-08-28
 
+> **Follow-up (2026-08-29):** The ownership closure remains valid, but the proposed next step
+> changed. Queqiao will not add a generic product-level `queqiao setup` as the integrated UX
+> layer; the planned integrated operator surface is a Workstation TUI built on the same
+> independent Gateway / Worker / Workspace / Extension management primitives. Historical
+> references to `queqiao setup` below are retained as decision history.
+
 ## Goal
 
 Verify that Queqiao's bottom model matches the intended product model before adding product-level onboarding such as `queqiao setup`.

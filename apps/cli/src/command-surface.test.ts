@@ -119,12 +119,16 @@ describe("CLI hierarchy consolidation", () => {
     expect(renderCliHelp(["gateway", "workers", "--help"])).not.toContain("gateway workers list");
     expect(renderCliHelp(["worker", "--help"])).toContain("\n  remove\n");
     expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("\n  add [--worker <worker>]");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("profile set --worker <worker> [--workspace <id>] [--profile read-only|editor|coding]");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("profile set [--worker <worker>] [--workspace <id>] [--profile read-only|editor|coding]");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("list [--worker <worker>]");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("tool allow|deny [--worker <worker>] --workspace <id> --tool <tool>");
     expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("interactively applies an Access Profile");
     expect(renderCliHelp(["worker", "workspace", "--help"])).not.toContain("worker workspace add");
     expect(renderCliHelp(["extension", "--help"])).toContain("\n  install <npm:package|local-path>");
     expect(renderCliHelp(["extension", "--help"])).not.toContain("extension install");
     expect(renderCliHelp(["doctor", "--help"])).toContain("\n  extension\n");
+    expect(renderCliHelp(["doctor", "--help"])).toContain("manifest show [--gateway <name>]");
+    expect(renderCliHelp(["doctor", "--help"])).toContain("tool explain <tool> [--gateway <name>]");
     expect(renderCliHelp(["uninstall", "--help"])).toContain("Usage: queqiao uninstall");
     expect(renderCliHelp(["uninstall", "--help"])).not.toContain("--yes");
     expect(renderCliHelp(["workspace", "--help"])).toBe(renderCliHelp([]));

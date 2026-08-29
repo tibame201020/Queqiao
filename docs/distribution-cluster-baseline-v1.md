@@ -38,7 +38,9 @@ The setup commands are interactive instance choosers; `worker setup` also create
 Workspace authority. Use `worker workspace add` for additional Workspaces. `worker join` separately creates Gateway membership through
 the one-time enrollment transaction defined by ADR-0011.
 
-There is no generic `queqiao setup` and Worker startup does not auto-register.
+There is no generic `queqiao setup` and Worker startup does not auto-register. A future
+Workstation TUI may compose these existing management primitives into one persistent operator
+surface, but it does not merge runtime roles or create a second management model.
 
 ## Enrollment, membership, and Worker validation
 

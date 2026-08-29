@@ -83,8 +83,9 @@ package is installed and attached. Its seven capabilities are `git_repositories`
 `git_worktree_remove`. Registry, package naming, and publishing policy are intentionally
 handled outside this Core/CLI freeze.
 
-`workspace_info` may explicitly target a configured Workspace or use the deployment
-default. `list_workspaces` includes a safe deployment-attestation projection containing
+`workspace_info` may explicitly target a configured Workspace or omit `workspaceId` only
+when exactly one online Workspace is available. `list_workspaces` includes a safe
+deployment-attestation projection containing
 the Core Manifest Revision, Deployment Manifest Fingerprint, public tool count, Worker
 Protocol Version, and bounded MCP compatibility window. OAuth still uses only the
 `queqiao:access` handshake scope; Workspace profile/tool/command policy remains the
@@ -216,19 +217,19 @@ queqiao worker status [--worker <worker>]
 queqiao worker remove
 queqiao worker join [--worker <worker>]
 queqiao worker workspace add [--worker <worker>] [--display-name <name>]
-queqiao worker workspace list --worker <worker>
-queqiao worker workspace remove --worker <worker> --id <id>
-queqiao worker workspace profile set --worker <worker> [--workspace <id>] [--profile read-only|editor|coding]
-queqiao worker workspace tool allow|deny --worker <worker> --workspace <id> --tool <tool>
-queqiao worker workspace command allow|deny --worker <worker> --workspace <id> --command <executable>
-queqiao worker workspace permissions show --worker <worker> [--workspace <id>]
+queqiao worker workspace list [--worker <worker>]
+queqiao worker workspace remove [--worker <worker>] --id <id>
+queqiao worker workspace profile set [--worker <worker>] [--workspace <id>] [--profile read-only|editor|coding]
+queqiao worker workspace tool allow|deny [--worker <worker>] --workspace <id> --tool <tool>
+queqiao worker workspace command allow|deny [--worker <worker>] --workspace <id> --command <executable>
+queqiao worker workspace permissions show [--worker <worker>] [--workspace <id>]
 
 queqiao extension install <npm:package|local-path> [--worker <name>|--attach-all]
-queqiao extension attach <id> [--worker <name>]
-queqiao extension detach <id> [--worker <name>]
-queqiao extension uninstall <id> [--force]
+queqiao extension attach [<id>] [--worker <name>]
+queqiao extension detach [<id>] [--worker <name>]
+queqiao extension uninstall [<id>] [--force]
 queqiao extension list
-queqiao extension show <id>
+queqiao extension show [<id>]
 
 queqiao doctor
 queqiao doctor extension
@@ -309,7 +310,10 @@ the Worker.
 
 ### First-time setup contract
 
-The current CLI exposes independent Gateway and Worker role primitives:
+The current CLI exposes independent Gateway and Worker role primitives. There is intentionally
+no generic `queqiao setup`: integrated operator UX is planned as a Workstation TUI that
+composes these same management primitives without merging Gateway, Worker, Workspace, or
+Extension ownership.
 
 ```text
 queqiao gateway setup
@@ -321,7 +325,8 @@ queqiao worker join --worker <worker>
 ```
 
 `gateway setup` and `worker setup` are interactive create/edit flows. They first select an
-existing named instance or Create new. Gateway setup asks for the Public Gateway URL,
+existing named instance or `New Gateway` / `New Worker`. Gateway setup asks for the Public
+Gateway URL,
 Gateway port, and Management port. A new Worker setup asks for the Worker port and its
 initial authorized Workspace. Interactive first-Workspace setup and interactive `worker workspace add` use the same Access Profile flow. Queqiao
 provides built-in `Reader` and `Editor` profiles, then lists any user-saved profiles, followed

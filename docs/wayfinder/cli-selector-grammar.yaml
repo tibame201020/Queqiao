@@ -1,0 +1,121 @@
+document:
+  title: CLI selector grammar
+  date: 2026-08-29
+  status: implemented
+  purpose: Define the production instance-selection contract shared by CLI help, parsing, dispatch, and automation.
+
+principles:
+  - Gateway and Worker are independent named runtime roles.
+  - Human TTY commands may omit a role selector and resolve from the existing instance inventory.
+  - Automation, non-TTY execution, and JSON mode never prompt for a selector.
+  - Queqiao never silently targets an implicit named default instance.
+  - Gateway uses --gateway; Worker uses --worker; Workspace display names use --display-name.
+  - Selector behavior is presentation/orchestration only and does not change runtime ownership.
+
+instance_inventory:
+  gateway:
+    command: queqiao gateway list
+    selector: --gateway <name>
+    fields: [name, configured, running, managed, publicUrl, servicePort, managementPort]
+  worker:
+    command: queqiao worker list
+    selector: --worker <name>
+    fields: [name, configured, running, managed, endpoint, workspaceCount]
+  json_contract:
+    schemaVersion: "1.0"
+    ordering: name_ascending
+    optional_fields: omitted_not_null
+    url_sanitization: remove_userinfo_query_fragment
+
+selection_contract:
+  tty_human:
+    explicit_selector: use_exact_instance
+    omitted_selector:
+      zero_instances: error_with_setup_guidance
+      one_instance: auto_select_and_display_target
+      multiple_instances: interactive_selector
+    cancel:
+      exit_code: 130
+      mutation: false
+  non_tty:
+    omitted_selector:
+      behavior: error
+      exit_code: 2
+  json:
+    interactive_selector: false
+    omitted_selector:
+      behavior: structured_error
+      exit_code: 2
+  explicit_layout_override:
+    inventory_name: default
+    selector_required: true
+    note: Explicit QUEQIAO_* layouts do not participate in named-runtime discovery.
+
+production_grammar:
+  gateway:
+    - queqiao gateway list [--json]
+    - queqiao gateway setup
+    - queqiao gateway remove
+    - queqiao gateway serve [--gateway <name>] [--bg]
+    - queqiao gateway stop [--gateway <name>]
+    - queqiao gateway status [--gateway <name>]
+    - queqiao gateway join-token [--gateway <name>] [--expires <seconds>] [--json]
+    - queqiao gateway workers list [--gateway <name>]
+    - queqiao gateway workers update [--gateway <name>] --worker-id <id> --endpoint <url>
+    - queqiao gateway workers remove [--gateway <name>] --worker-id <id>
+  worker:
+    - queqiao worker list [--json]
+    - queqiao worker setup
+    - queqiao worker remove
+    - queqiao worker port [--worker <name>] [--port <port>]
+    - queqiao worker serve [--worker <name>] [--bg]
+    - queqiao worker stop [--worker <name>]
+    - queqiao worker status [--worker <name>]
+    - queqiao worker join [--worker <name>] [--join-code <code>]
+    - queqiao worker workspace add [--worker <name>] [--root <dir>] [--display-name <name>] [--profile <profile>]
+    - queqiao worker workspace list [--worker <name>]
+    - queqiao worker workspace remove [--worker <name>] --id <id>
+    - queqiao worker workspace profile set [--worker <name>] [--workspace <id>] [--profile <profile>]
+    - queqiao worker workspace tool allow|deny [--worker <name>] --workspace <id> --tool <tool>
+    - queqiao worker workspace command allow|deny [--worker <name>] --workspace <id> --command <executable>
+    - queqiao worker workspace permissions show [--worker <name>] [--workspace <id>]
+  extension:
+    - queqiao extension install <npm:package|local-path> [--worker <name>|--attach-all]
+    - queqiao extension attach [<id>] [--worker <name>]
+    - queqiao extension detach [<id>] [--worker <name>]
+    - queqiao extension uninstall [<id>] [--force]
+    - queqiao extension list
+    - queqiao extension show [<id>]
+  doctor:
+    - queqiao doctor
+    - queqiao doctor extension
+    - queqiao doctor manifest show [--gateway <name>]
+    - queqiao doctor tool explain <tool> [--gateway <name>]
+    - queqiao doctor paths
+  maintenance:
+    - queqiao uninstall
+    - queqiao migrate from-repo [--repo <directory>] [--execute]
+    - queqiao migrate runtime-v1 [--execute]
+
+compatibility:
+  release_kind: breaking
+  removed_forms:
+    - old: queqiao gateway <command> --name <name>
+      replacement: queqiao gateway <command> --gateway <name>
+    - old: queqiao worker <command> --name <name>
+      replacement: queqiao worker <command> --worker <name>
+    - old: queqiao worker workspace add --name <display-name>
+      replacement: queqiao worker workspace add --display-name <display-name>
+  aliases: none
+  error_policy: removed selectors fail with replacement guidance
+
+future_operator_surface:
+  generic_setup_command: not_planned
+  planned_layer: Workstation TUI
+  constraint: Reuse the same CLI/config/operations management model; do not merge Gateway, Worker, Workspace, or Extension ownership.
+
+verification:
+  command_contract_source: apps/cli/src/command-surface.ts
+  acceptance: apps/cli/src/cli-isolated-acceptance.test.ts
+  selector_tests: apps/cli/src/instance-selector.test.ts
+  status: passed

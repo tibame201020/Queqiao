@@ -33,7 +33,11 @@ queqiao extension show dev.example.my-extension
 queqiao doctor extension
 ```
 
-A running Worker hot-reloads attachment changes. Detaching removes the capability from that Worker. Uninstalling a local extension removes only the Hub registration; it never removes the user-owned source directory.
+A running Worker hot-reloads attachment changes. Detaching removes the capability from that
+Worker. Uninstalling a local extension removes only the Hub registration; it never removes the
+user-owned source directory. In an interactive terminal, `attach`, `detach`, `show`, and
+`uninstall` may omit the extension id and select from the installed Hub inventory; scripts and
+`--json` flows should pass explicit identifiers/selectors.
 
 ## Minimal package layout
 

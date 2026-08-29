@@ -411,12 +411,12 @@ const WORKER_WORKSPACE_HELP = `Usage: queqiao worker workspace <command> [option
 
 Commands:
   add [--worker <worker>] [--root <dir>] [--display-name <name>] [--profile <profile>]
-  list --worker <worker>
-  remove --worker <worker> --id <id>
-  profile set --worker <worker> [--workspace <id>] [--profile read-only|editor|coding]
-  tool allow|deny --worker <worker> --workspace <id> --tool <tool>
-  command allow|deny --worker <worker> --workspace <id> --command <executable>
-  permissions show --worker <worker> [--workspace <id>]
+  list [--worker <worker>]
+  remove [--worker <worker>] --id <id>
+  profile set [--worker <worker>] [--workspace <id>] [--profile read-only|editor|coding]
+  tool allow|deny [--worker <worker>] --workspace <id> --tool <tool>
+  command allow|deny [--worker <worker>] --workspace <id> --command <executable>
+  permissions show [--worker <worker>] [--workspace <id>]
 
 Without --profile, profile set interactively applies an Access Profile or Custom tools/commands matrix.
 With --profile, --workspace is required and only the legacy capability ceiling is changed.`;
@@ -435,8 +435,8 @@ const DOCTOR_HELP = `Usage: queqiao doctor [diagnostic] [options]
 
 Diagnostics:
   extension
-  manifest show --gateway <name>
-  tool explain <tool> --gateway <name>
+  manifest show [--gateway <name>]
+  tool explain <tool> [--gateway <name>]
   paths`;
 
 const UNINSTALL_HELP = `Usage: queqiao uninstall

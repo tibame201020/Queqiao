@@ -1,5 +1,12 @@
 # CLI Command Audit — 2026-08-28
 
+> **Historical note (2026-08-29):** This audit records the decision state on 2026-08-28. Its
+> recommendation to add a generic `queqiao setup` onboarding command has since been
+> superseded. The production baseline keeps independent Gateway / Worker / Workspace /
+> Extension primitives; the next integrated human-management layer is planned as a
+> Workstation TUI that composes the same management model. Historical command/recommendation
+> text below is retained as evidence, not current operational guidance.
+
 ## Goal
 
 Review every current Queqiao CLI command after hierarchy consolidation. A public command should remain only when it has a real owner, a real consumer, and no more natural existing flow that already performs the same job.
