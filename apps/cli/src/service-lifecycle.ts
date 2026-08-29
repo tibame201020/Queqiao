@@ -24,6 +24,10 @@ function validateRole(value: string): RuntimeRole { if (value !== "gateway" && v
 function packageEntryPoint(role: RuntimeRole) { const dir = path.dirname(fileURLToPath(import.meta.url)); return path.join(dir, role === "gateway" ? "queqiao-gateway.js" : "queqiao-worker.js"); }
 function windowsSystemExecutable(name: string, env: NodeJS.ProcessEnv) { const root = env.SystemRoot || env.WINDIR; if (!root) throw new Error("Windows system root is unavailable"); return path.win32.join(root, "System32", name); }
 function pathsFor(layout: RuntimeLayout, role: RuntimeRole) { const dir = path.join(layout.stateDir, "processes"); return { dir, pidFile: path.join(dir, `${role}.pid.json`), stdout: path.join(layout.logDir, `${role}.out.log`), stderr: path.join(layout.logDir, `${role}.err.log`) }; }
+function comparablePath(value: string, platform: NodeJS.Platform) {
+  const resolved = platform === "win32" ? path.win32.resolve(value) : path.resolve(value);
+  return platform === "win32" ? resolved.toLowerCase() : resolved;
+}
 async function exists(file: string) { try { await access(file); return true; } catch { return false; } }
 async function validateConfiguredRole(configFile: string, role: RuntimeRole) { const runtime = await readRuntimeConfig(configFile); if (role === "gateway" && !runtime.gateway) throw new Error("gateway setup is required before serve"); if (role === "worker" && !runtime.worker) throw new Error("worker setup is required before serve"); if (role === "worker" && runtime.workspaces.length < 1) throw new Error("Worker has no Workspace; run worker setup to configure one before serving"); return runtime; }
 async function health(configFile: string, role: RuntimeRole, fetchImpl: typeof fetch) {
@@ -60,12 +64,12 @@ async function processCommandLine(pid: number, platform: NodeJS.Platform, env: N
   try { return (await execFile("ps", ["-p", String(pid), "-o", "args="])).stdout.trim(); } catch { return ""; }
 }
 async function reconcileManagedPid(layout: RuntimeLayout, role: RuntimeRole, dependencies: Dependencies = {}) {
-  const platform = dependencies.platform || process.platform; const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const currentEntryPoint = path.resolve(dependencies.entryPoints?.[role] || packageEntryPoint(role)); const p = pathsFor(layout, role); const metadata = await readPid(p.pidFile); if (!metadata) return undefined;
-  const recordedConfig = metadata.configFile ? path.resolve(metadata.configFile) : undefined;
-  if (recordedConfig && recordedConfig.toLowerCase() !== path.resolve(layout.configFile).toLowerCase()) { await rm(p.pidFile, { force: true }); return undefined; }
-  const ownedEntryPoint = path.resolve(metadata.entryPoint || currentEntryPoint);
+  const platform = dependencies.platform || process.platform; const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const currentEntryPoint = dependencies.entryPoints?.[role] || packageEntryPoint(role); const p = pathsFor(layout, role); const metadata = await readPid(p.pidFile); if (!metadata) return undefined;
+  const recordedConfig = metadata.configFile ? comparablePath(metadata.configFile, platform) : undefined;
+  if (recordedConfig && recordedConfig !== comparablePath(layout.configFile, platform)) { await rm(p.pidFile, { force: true }); return undefined; }
+  const ownedEntryPoint = comparablePath(metadata.entryPoint || currentEntryPoint, platform);
   const command = await processCommandLine(metadata.pid, platform, env, execFile);
-  if (!command || !command.toLowerCase().includes(ownedEntryPoint.toLowerCase())) { await rm(p.pidFile, { force: true }); return undefined; }
+  if (!command || !command.toLowerCase().includes(ownedEntryPoint)) { await rm(p.pidFile, { force: true }); return undefined; }
   return metadata.pid;
 }
 async function stopManaged(layout: RuntimeLayout, role: RuntimeRole, dependencies: Dependencies = {}) {

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -41,7 +41,7 @@ describe("workspace CLI", () => {
     });
 
     expect(candidate).toMatchObject({
-      root: workspaceRoot,
+      root: await realpath(workspaceRoot),
       displayName: "Project",
       profile: "coding",
       tools: { allow: expect.arrayContaining(["read_file", "write_file", "edit_file"]), deny: [], explicit: [] },
@@ -232,8 +232,8 @@ describe("workspace CLI", () => {
     const one = path.join(root, "one"); const two = path.join(root, "two"); await mkdir(one); await mkdir(two);
     const configFile = path.join(root, "config.yaml");
     await writeFile(configFile, serializeRuntimeConfig(workerConfig(root, one)), "utf8");
-    await addWorkspace(configFile, ["workspace", "add", "--worker", "windows", "--root", two, "--display-name", "Project Two", "--profile", "editor"]);
-    expect((await readRuntimeConfig(configFile)).workspaces.find(({ root: workspaceRoot }) => workspaceRoot === two)?.displayName).toBe("Project Two");
+    const result: any = await addWorkspace(configFile, ["workspace", "add", "--worker", "windows", "--root", two, "--display-name", "Project Two", "--profile", "editor"]);
+    expect(result.workspace).toMatchObject({ displayName: "Project Two", root: await realpath(two) });
   });
 
   it("refuses to remove the last Workspace from a configured Worker", async () => {
