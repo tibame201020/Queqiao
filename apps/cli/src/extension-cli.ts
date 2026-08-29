@@ -4,6 +4,7 @@ import { access, open, readFile, readdir, realpath, rename, rm, stat, writeFile 
 import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { cancel, isCancel } from "@clack/prompts";
 import {
   extensionManifestSchema,
   readRuntimeConfig,
@@ -20,6 +21,7 @@ import {
   type RuntimeLayout,
 } from "@queqiao/platform-paths";
 import { AtomicConfigStore } from "./atomic-config-store.js";
+import { queqiaoSelect } from "./tui-select.js";
 
 const execFileAsync = promisify(execFile);
 const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
@@ -124,6 +126,43 @@ async function readHub(location: HubLocation): Promise<ExtensionHub> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, extensions: [] };
     throw error;
   }
+}
+
+type ExtensionSelectorDependencies = {
+  interactive?: boolean;
+  choose?: (message: string, options: Array<{ value: string; label: string; description?: string }>) => Promise<string>;
+};
+
+export async function resolveInstalledExtensionId(
+  location: HubLocation,
+  requestedId?: string,
+  dependencies: ExtensionSelectorDependencies = {},
+): Promise<string> {
+  if (requestedId) return requestedId;
+  const interactive = dependencies.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  if (!interactive) {
+    const error = new Error("Extension id is required outside an interactive terminal. Run \"queqiao extension list\".") as Error & { exitCode?: number };
+    error.exitCode = 2;
+    throw error;
+  }
+  const hub = await readHub(location);
+  if (!hub.extensions.length) throw new Error("No extensions are installed in the Hub. Run \"queqiao extension install <source>\" first.");
+  if (hub.extensions.length === 1) return hub.extensions[0]!.manifest.id;
+  const choices = hub.extensions.map((extension) => ({
+    value: extension.manifest.id,
+    label: extension.manifest.displayName,
+    description: `${extension.manifest.id} · ${extension.manifest.version}`,
+  }));
+  const selected = dependencies.choose
+    ? await dependencies.choose("Select Extension", choices)
+    : await queqiaoSelect({ message: "Select Extension", choices });
+  if (isCancel(selected)) {
+    cancel("Extension selection cancelled");
+    const error = new Error("Extension selection cancelled") as Error & { exitCode?: number };
+    error.exitCode = 130;
+    throw error;
+  }
+  return String(selected);
 }
 
 async function updateHub(location: HubLocation, mutator: (current: ExtensionHub) => ExtensionHub): Promise<ExtensionHub> {

@@ -18,13 +18,14 @@ import { uninstallQueqiao } from "./uninstall-cli.js";
 import { doctorPaths, doctorQueqiao } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 import { addWorkspace, removeWorkspace, setWorkspaceAccess, updateWorkspaceCommandPolicy, updateWorkspaceToolPolicy } from "./workspace-cli.js";
-import { attachExtension, detachExtension, doctorExtensionHub, installExtension, listExtensions, showExtension, uninstallExtension } from "./extension-cli.js";
+import { attachExtension, detachExtension, doctorExtensionHub, installExtension, listExtensions, resolveInstalledExtensionId, showExtension, uninstallExtension } from "./extension-cli.js";
 import { formatCliOutput } from "./cli-output.js";
 import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, renderCliHelp, renderCliRouteError, renderRemovedSelectorError, validateCliArgs } from "./command-surface.js";
 import { listRoleInstances, resolveRoleInstance, selectorRoleForCliArgs, withRoleSelector } from "./instance-selector.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
+function positional(args: string[], index: number): string | undefined { const value = args[index]; return value && !value.startsWith("--") ? value : undefined; }
 function print(value: unknown) { process.stdout.write(`${formatCliOutput(outputArgs, value)}\n`); }
 function operations(config: RuntimeConfig) { return buildOperationsDiagnostics({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, workerProtocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, supportedMcpProtocolVersions: QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions }); }
 
@@ -69,26 +70,26 @@ async function main() {
   if (domain === "worker" && action === "remove") return print(await removeRoleInstance("worker", args));
   if (domain === "uninstall") return print(await uninstallQueqiao(args));
   if (domain === "extension" && action === "install") {
-    const source = args[2] || option(args, "source");
+    const source = positional(args, 2) || option(args, "source");
     if (!source) throw new Error("Extension source is required, for example: npm:queqiao-mcp or .\\my-extension");
     const workerName = option(args, "worker");
     return print(await installExtension(resolveExtensionHubRoot(), source, { ...(workerName ? { workerName } : {}), attachAll: args.includes("--attach-all") }));
   }
   if (domain === "extension" && action === "attach") {
-    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), positional(args, 2) || option(args, "id"));
     return print(await attachExtension(resolveExtensionHubRoot(), id, requiredOption(args, "worker")));
   }
   if (domain === "extension" && action === "detach") {
-    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), positional(args, 2) || option(args, "id"));
     return print(await detachExtension(id, requiredOption(args, "worker")));
   }
   if (domain === "extension" && action === "uninstall") {
-    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), positional(args, 2) || option(args, "id"));
     return print(await uninstallExtension(resolveExtensionHubRoot(), id, args.includes("--force")));
   }
   if (domain === "extension" && action === "list") return print(await listExtensions(resolveExtensionHubRoot()));
   if (domain === "extension" && action === "show") {
-    const id = args[2] || option(args, "id"); if (!id) throw new Error("Extension id is required");
+    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), positional(args, 2) || option(args, "id"));
     return print(await showExtension(resolveExtensionHubRoot(), id));
   }
   if (domain === "extension" && action === "doctor") return print(await doctorExtensionHub(resolveExtensionHubRoot()));

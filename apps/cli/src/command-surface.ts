@@ -372,11 +372,11 @@ const EXTENSION_HELP = `Usage: queqiao extension <command> [options]
 
 Commands:
   install <npm:package|local-path> [--worker <name>|--attach-all]
-  attach <id> [--worker <name>]
-  detach <id> [--worker <name>]
-  uninstall <id> [--force]
+  attach [<id>] [--worker <name>]
+  detach [<id>] [--worker <name>]
+  uninstall [<id>] [--force]
   list
-  show <id>`;
+  show [<id>]`;
 
 const DOCTOR_HELP = `Usage: queqiao doctor [diagnostic] [options]
 
@@ -408,10 +408,10 @@ const REQUIRED_OPTIONS: Readonly<Record<string, readonly string[]>> = {
 
 const POSITIONAL_USAGE: Readonly<Record<string, string>> = {
   "extension install": " <npm:package|local-path>",
-  "extension attach": " <id>",
-  "extension detach": " <id>",
-  "extension uninstall": " <id>",
-  "extension show": " <id>",
+  "extension attach": " [<id>]",
+  "extension detach": " [<id>]",
+  "extension uninstall": " [<id>]",
+  "extension show": " [<id>]",
   "doctor tool explain": " <tool>",
 };
 
