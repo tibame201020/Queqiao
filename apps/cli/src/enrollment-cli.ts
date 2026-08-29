@@ -54,10 +54,10 @@ export function decodeJoinCode(value: string): JoinCodeEnvelope {
   }
 }
 
-function assertJoinNotCancelled<T>(value: T | symbol): T {
+function assertPromptNotCancelled<T>(value: T | symbol, message: string): T {
   if (!isCancel(value)) return value as T;
-  cancel("Worker join cancelled");
-  throw new Error("Worker join cancelled");
+  cancel(message);
+  throw new Error(message);
 }
 
 function validateGatewayUrl(value: string): string | undefined {
@@ -89,13 +89,13 @@ async function resolveJoinInputs(args: string[], prompt?: JoinPrompt): Promise<{
   }
 
   intro("Join Worker");
-  const code = String(assertJoinNotCancelled(await password({
+  const code = String(assertPromptNotCancelled(await password({
     message: "Join code",
     validate: (value) => {
       if (!value?.trim()) return "Join code is required";
       try { decodeJoinCode(value); return undefined; } catch { return "Invalid join code"; }
     },
-  }))).trim();
+  }), "Worker join cancelled")).trim();
   const decoded = decodeJoinCode(code);
   return { gateway: decoded.gateway, token: decoded.token, interactive: true };
 }
@@ -415,12 +415,12 @@ export async function updateWorkerPort(configFile: string, args: string[], promp
       portValue = (await prompt("port", "Worker port", currentPort)).trim() || currentPort;
     } else {
       intro("Configure Worker");
-      portValue = String(assertJoinNotCancelled(await text({
+      portValue = String(assertPromptNotCancelled(await text({
         message: "Worker port",
         placeholder: currentPort,
         defaultValue: currentPort,
         validate: (value) => validatePort(value || currentPort),
-      }))).trim() || currentPort;
+      }), "Worker port update cancelled")).trim() || currentPort;
     }
   }
   const portError = validatePort(portValue);
@@ -448,12 +448,12 @@ export async function setupWorker(configFile: string, args: string[], secretsDir
       portValue = (await prompt("port", "Worker port", initialPort)).trim() || initialPort;
     } else {
       intro(existingWorker ? "Edit Worker" : "Setup Worker");
-      portValue = String(assertJoinNotCancelled(await text({
+      portValue = String(assertPromptNotCancelled(await text({
         message: "Worker port",
         placeholder: initialPort,
         defaultValue: initialPort,
         validate: (value) => validatePort(value || initialPort),
-      }))).trim() || initialPort;
+      }), "Worker setup cancelled")).trim() || initialPort;
     }
   }
   const portError = validatePort(portValue);

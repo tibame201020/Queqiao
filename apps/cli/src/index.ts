@@ -108,7 +108,7 @@ async function main() {
     if (status.active) throw new Error("Stop the Worker before changing its listener port");
     return print(await updateWorkerPort(configFile, args));
   }
-  if (dispatch?.handler === "gateway-join-token") return print(await createJoinToken(configFile, args));
+  if (dispatch?.handler === "gateway-join-token") return print(await createJoinToken(configFile, outputArgs));
   if (dispatch?.handler === "worker-join") return print(await joinWorker(configFile, args));
   if (dispatch?.handler === "membership-list") return print(await listJoinedWorkers(configFile));
   if (dispatch?.handler === "membership-update") return print(await updateJoinedWorkerTransport(configFile, requiredOption(args, "worker-id"), requiredOption(args, "endpoint")));
