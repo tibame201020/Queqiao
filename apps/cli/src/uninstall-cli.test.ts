@@ -26,7 +26,7 @@ describe("Queqiao uninstall", () => {
     await writeFile(path.join(legacyGlobal.configDir, "legacy-marker"), "legacy", "utf8");
     await writeFile(path.join(legacyGlobal.stateDir, "legacy-marker"), "legacy", "utf8");
 
-    const seenChoices: Array<{ value: string; label: string; hint?: string }> = [];
+    const seenChoices: Array<{ value: string; label: string; description?: string }> = [];
     const confirmations: string[] = [];
     const stopped: string[] = [];
     const npmCalls: string[][] = [];
@@ -50,16 +50,14 @@ describe("Queqiao uninstall", () => {
       "extension-hub",
     ]);
     const gatewayChoice = seenChoices.find((choice) => choice.value === "gateway:stable");
-    expect(gatewayChoice?.hint).toBeUndefined();
-    expect(gatewayChoice?.label).toContain(`\n    Persistent: ${path.dirname(gateway.configDir)}`);
-    expect(gatewayChoice?.label).toContain(`\n    Runtime:    ${gateway.runtimeDir}`);
-    expect(gatewayChoice?.label.endsWith("\n")).toBe(true);
+    expect(gatewayChoice?.label).toBe("Gateway: stable (running)");
+    expect(gatewayChoice?.description).toContain(`Persistent: ${path.dirname(gateway.configDir)}`);
+    expect(gatewayChoice?.description).toContain(`Runtime:    ${gateway.runtimeDir}`);
     const workerChoice = seenChoices.find((choice) => choice.value === "worker:windows");
-    expect(workerChoice?.label.endsWith("\n")).toBe(true);
+    expect(workerChoice?.label).toBe("Worker: windows (running)");
     const hubChoice = seenChoices.find((choice) => choice.value === "extension-hub");
-    expect(hubChoice?.hint).toBeUndefined();
-    expect(hubChoice?.label).toContain(`\n    Path: ${hubRoot}`);
-    expect(hubChoice?.label.endsWith("\n")).toBe(false);
+    expect(hubChoice?.label).toBe("Extension Hub");
+    expect(hubChoice?.description).toBe(`Path: ${hubRoot}`);
     expect(seenChoices.some((choice) => choice.value === "package")).toBe(false);
     expect(confirmations[0]).toMatch(/remove the selected local Queqiao data/i);
     expect(confirmations[1]).toMatch(/uninstall.*@tibame201020\/queqiao.*global npm/i);

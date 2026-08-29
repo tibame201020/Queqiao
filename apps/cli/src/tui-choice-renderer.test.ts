@@ -36,4 +36,15 @@ describe("Queqiao multi-choice renderer", () => {
       expect(renderMultiChoiceLines(option, state)[0]).not.toContain("\u001b[2m");
     }
   });
+
+  it("renders multiline secondary information as separately indented lines", () => {
+    expect(plain(renderMultiChoiceLines({
+      label: "Gateway: stable",
+      description: "Persistent: C:\\Queqiao\\gateway\nRuntime: C:\\Temp\\gateway",
+    }, { focused: true, selected: true }))).toEqual([
+      "> [x] Gateway: stable",
+      "      Persistent: C:\\Queqiao\\gateway",
+      "      Runtime: C:\\Temp\\gateway",
+    ]);
+  });
 });

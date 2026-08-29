@@ -2,17 +2,18 @@ import { execFile } from "node:child_process";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { cancel, confirm, intro, isCancel, multiselect, outro } from "@clack/prompts";
+import { cancel, confirm, intro, isCancel, outro } from "@clack/prompts";
 import { resolveExtensionHubRoot, resolveRuntimeLayoutForNamedRole, type RuntimeLayout, type RuntimeRole } from "@queqiao/platform-paths";
 import { roleRemoveInternals } from "./role-remove.js";
 import { listNamedRoleInstances } from "./setup-wizard.js";
 import { runtimeStatus, stopRuntime } from "./service-lifecycle.js";
+import { queqiaoMultiselect } from "./tui-multiselect.js";
 
 const PACKAGE_NAME = "@tibame201020/queqiao";
 const execFileAsync = promisify(execFile);
 
 type StatusResult = { active: boolean; managed: boolean };
-type CleanupChoice = { value: string; label: string; hint?: string };
+type CleanupChoice = { value: string; label: string; description?: string };
 type Dependencies = {
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
@@ -43,31 +44,25 @@ function roleOwnedPaths(layout: RuntimeLayout): string[] {
   return [...new Set([stateRoot, layout.runtimeDir])];
 }
 
-function displayRoleChoiceLabel(baseLabel: string, paths: string[]): string {
+function displayRoleChoiceDescription(paths: string[]): string {
   const [persistent, runtime] = paths;
   return [
-    baseLabel,
-    persistent ? `    Persistent: ${persistent}` : undefined,
-    runtime ? `    Runtime:    ${runtime}` : undefined,
+    persistent ? `Persistent: ${persistent}` : undefined,
+    runtime ? `Runtime:    ${runtime}` : undefined,
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
-function displayExtensionHubChoiceLabel(root: string): string {
-  return `Extension Hub\n    Path: ${root}`;
-}
-
-function spaceChoiceLabels(choices: CleanupChoice[]): CleanupChoice[] {
-  return choices.map((choice, index) => index < choices.length - 1
-    ? { ...choice, label: `${choice.label}\n` }
-    : choice);
+function displayExtensionHubChoiceDescription(root: string): string {
+  return `Path: ${root}`;
 }
 
 async function defaultSelectTargets(choices: CleanupChoice[]): Promise<string[]> {
-  const value = await multiselect({
+  const value = await queqiaoMultiselect({
     message: "Select local Queqiao data to remove",
-    options: choices,
+    choices,
     initialValues: choices.map((choice) => choice.value),
     required: false,
+    summary: (selected) => `${selected.length} targets selected`,
   });
   if (isCancel(value)) {
     cancel("Queqiao uninstall cancelled");
@@ -111,19 +106,18 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
   }
 
   const extensionHubRoot = extensionHubOwnedRoot(env, platform);
-  const choices: CleanupChoice[] = spaceChoiceLabels([
+  const choices: CleanupChoice[] = [
     ...instances.map(({ role, name, layout, status }) => ({
       value: `${role}:${name}`,
-      label: displayRoleChoiceLabel(
-        `${role === "gateway" ? "Gateway" : "Worker"}: ${name}${status.active ? status.managed ? " (running)" : " (running unmanaged)" : ""}`,
-        roleOwnedPaths(layout),
-      ),
+      label: `${role === "gateway" ? "Gateway" : "Worker"}: ${name}${status.active ? status.managed ? " (running)" : " (running unmanaged)" : ""}`,
+      description: displayRoleChoiceDescription(roleOwnedPaths(layout)),
     })),
     {
       value: "extension-hub",
-      label: displayExtensionHubChoiceLabel(extensionHubRoot),
+      label: "Extension Hub",
+      description: displayExtensionHubChoiceDescription(extensionHubRoot),
     },
-  ]);
+  ];
 
   if (!injected) intro("Uninstall Queqiao");
   const selected = await (dependencies.selectTargets ?? defaultSelectTargets)(choices);
@@ -143,7 +137,10 @@ export async function uninstallQueqiao(args: string[], dependencies: Dependencie
 
     const selectedLines = choices
       .filter((choice) => selectedSet.has(choice.value))
-      .map((choice) => `  - ${choice.label.replaceAll("\n", "\n    ")}`);
+      .map((choice) => [
+        `  - ${choice.label}`,
+        ...(choice.description ? choice.description.split("\n").map((line) => `      ${line}`) : []),
+      ].join("\n"));
     const approveCleanup = dependencies.confirmCleanup ?? defaultConfirm;
     const confirmed = await approveCleanup(`Remove the selected local Queqiao data?\n${selectedLines.join("\n")}`);
     if (!confirmed) {

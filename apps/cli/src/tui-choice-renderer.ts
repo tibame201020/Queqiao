@@ -32,13 +32,12 @@ export function renderMultiChoiceLines(
   const focus = state.focused ? styleText("cyan", presentation.focusMarker) : presentation.focusMarker;
   const selection = state.selected ? styleText("green", presentation.selectionMarker) : presentation.selectionMarker;
   const label = state.focused ? styleText("cyan", option.label) : option.label;
-  const description = option.description || "";
-  const renderedDescription = presentation.descriptionMuted
-    ? styleText("dim", description)
-    : description;
+  const descriptionLines = option.description
+    ? option.description.split("\n").map((line) => presentation.descriptionMuted ? styleText("dim", line) : line)
+    : [];
 
   return [
     `${focus} ${selection} ${label}`,
-    `      ${renderedDescription}`,
+    ...descriptionLines.map((line) => `      ${line}`),
   ];
 }
