@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { readRuntimeConfig, serializeRuntimeConfig } from "@queqiao/config";
-import { addWorkspace, removeWorkspace, workspaceCliInternals } from "./workspace-cli.js";
+import { addWorkspace, removeWorkspace, setWorkspaceAccess, workspaceCliInternals } from "./workspace-cli.js";
 
 function workerConfig(root: string, workspaceRoot: string) {
   return {
@@ -107,6 +107,56 @@ describe("workspace CLI", () => {
     await writeFile(configFile, serializeRuntimeConfig(initial), "utf8");
     const result: any = await addWorkspace(configFile, ["workspace", "add", "--worker", "windows"], await promptAnswers([second, "Other project", "1"]));
     expect(result.workspace.id).toBe("project-2");
+  });
+
+  it("keeps explicit legacy profile mutation as a scriptable capability-ceiling primitive", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-profile-legacy-"));
+    const one = path.join(root, "one"); await mkdir(one);
+    const configFile = path.join(root, "config.yaml");
+    await writeFile(configFile, serializeRuntimeConfig(workerConfig(root, one)), "utf8");
+
+    const result = await setWorkspaceAccess(configFile, ["profile", "set", "--worker", "windows", "--workspace", "one", "--profile", "editor"]);
+    const workspace = (await readRuntimeConfig(configFile)).workspaces[0]!;
+    expect(result).toMatchObject({ changed: true, workspaceId: "one", profile: "editor", mode: "legacy-profile" });
+    expect(workspace.profile).toBe("editor");
+    expect(workspace.tools).toEqual({ allow: [], deny: [], explicit: [] });
+    expect(workspace.commands).toEqual({ allow: [] });
+  });
+
+  it("applies the shared Access Profile flow to an existing Workspace when --profile is omitted", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-profile-interactive-"));
+    const one = path.join(root, "one"); await mkdir(one);
+    const configFile = path.join(root, "config.yaml");
+    await writeFile(configFile, serializeRuntimeConfig(workerConfig(root, one)), "utf8");
+    const choose = vi.fn(async (message: string, options: Array<{ value: string; label: string; description?: string }>) => {
+      if (message === "Workspace") {
+        expect(options).toEqual([{ value: "one", label: "one", description: one }]);
+        return "one";
+      }
+      if (message === "Access profile") return "builtin:editor";
+      throw new Error(`Unexpected choice prompt: ${message}`);
+    });
+
+    const result = await setWorkspaceAccess(configFile, ["profile", "set", "--worker", "windows"], {
+      interactive: true,
+      prompts: {
+        choose,
+        multi: vi.fn(async () => { throw new Error("Editor must not open Custom tools"); }),
+        commandText: vi.fn(async () => ""),
+        text: vi.fn(async () => { throw new Error("Editor must not ask for text"); }),
+      },
+      profileStore: { list: vi.fn(async () => []), save: vi.fn(async () => undefined) },
+    });
+
+    const workspace = (await readRuntimeConfig(configFile)).workspaces[0]!;
+    expect(result).toMatchObject({ changed: true, workspaceId: "one", mode: "access-profile" });
+    expect(workspace.profile).toBe("coding");
+    expect(workspace.tools.allow).toEqual(expect.arrayContaining(["read_file", "write_file", "edit_file"]));
+    expect(workspace.tools.allow).not.toContain("run");
+    expect(workspace.tools.allow).not.toContain("shell");
+    expect(workspace.commands).toEqual({ allow: [] });
+    expect(workspace.root).toBe(one);
+    expect(workspace.displayName).toBe("one");
   });
 
   it("rejects the legacy --id input because ids are implementation-managed", async () => {

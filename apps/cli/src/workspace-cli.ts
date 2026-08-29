@@ -153,6 +153,77 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
   return { added: true, workspace: next.workspaces.find((entry) => entry.id === addedWorkspace?.id) };
 }
 
+export type WorkspaceAccessDependencies = {
+  interactive?: boolean;
+  prompts?: AccessConfigurationPrompts;
+  profileStore?: Pick<AccessProfileStore, "list" | "save">;
+};
+
+export async function setWorkspaceAccess(
+  configFile: string,
+  args: string[],
+  dependencies: WorkspaceAccessDependencies = {},
+): Promise<unknown> {
+  const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
+  const requestedWorkspaceId = option(args, "workspace");
+  const requestedLegacyProfile = option(args, "profile");
+  const current = await store.read();
+
+  if (requestedLegacyProfile) {
+    if (!requestedWorkspaceId) throw new Error("--workspace is required when using --profile");
+    if (!current.workspaces.some((entry) => entry.id === requestedWorkspaceId)) throw new Error(`Workspace not found: ${requestedWorkspaceId}`);
+    const profile = parseWorkspaceProfile(requestedLegacyProfile);
+    await store.update((config) => runtimeConfigSchema.parse({
+      ...config,
+      workspaces: config.workspaces.map((entry) => entry.id === requestedWorkspaceId ? { ...entry, profile } : entry),
+    }));
+    await secureRuntimeFile(configFile);
+    return { changed: true, workspaceId: requestedWorkspaceId, profile, mode: "legacy-profile" };
+  }
+
+  const injected = Boolean(dependencies.prompts);
+  const interactive = dependencies.interactive ?? (injected || Boolean(process.stdin.isTTY && process.stdout.isTTY));
+  if (!interactive) {
+    throw new Error("Interactive Workspace access setup requires a terminal. Use --profile read-only|editor|coding for scripted capability-ceiling changes.");
+  }
+
+  if (!current.worker) throw new Error("Worker setup is required before changing Workspace access");
+  if (!injected) intro("Workspace access");
+  const prompts = dependencies.prompts ?? createAccessConfigurationPrompts({ cancelMessage: "Workspace access setup cancelled" });
+  let workspaceId = requestedWorkspaceId;
+  if (workspaceId) {
+    if (!current.workspaces.some((entry) => entry.id === workspaceId)) throw new Error(`Workspace not found: ${workspaceId}`);
+  } else {
+    workspaceId = await prompts.choose("Workspace", current.workspaces.map((entry) => ({
+      value: entry.id,
+      label: entry.displayName,
+      description: entry.root,
+    })));
+  }
+
+  const profileStore = dependencies.profileStore ?? new AccessProfileStore(resolveAccessProfileFile());
+  const configuration = await collectAccessConfiguration(prompts, profileStore);
+  const policy = accessConfigurationToWorkspacePolicy(configuration);
+  let updated: WorkspaceConfig | undefined;
+  await store.update((config) => runtimeConfigSchema.parse({
+    ...config,
+    workspaces: config.workspaces.map((entry) => {
+      if (entry.id !== workspaceId) return entry;
+      updated = workspaceConfigSchema.parse({ ...entry, ...policy });
+      return updated;
+    }),
+  }));
+  if (!updated) throw new Error(`Workspace not found: ${workspaceId}`);
+  await secureRuntimeFile(configFile);
+  if (!injected) outro(`Workspace access updated: ${updated.displayName}`);
+  return {
+    changed: true,
+    workspaceId,
+    mode: "access-profile",
+    policy: { profile: updated.profile, tools: updated.tools, commands: updated.commands },
+  };
+}
+
 export async function removeWorkspace(configFile: string, workerName: string, workspaceId: string): Promise<unknown> {
   const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
   const next = await store.update((config) => {

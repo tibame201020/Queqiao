@@ -242,10 +242,13 @@ Commands:
   add --worker <worker>
   list --worker <worker>
   remove --worker <worker> --id <id>
-  profile set --worker <worker> --workspace <id> --profile read-only|editor|coding
+  profile set --worker <worker> [--workspace <id>] [--profile read-only|editor|coding]
   tool allow|deny --worker <worker> --workspace <id> --tool <tool>
   command allow|deny --worker <worker> --workspace <id> --command <executable>
-  permissions show --worker <worker> [--workspace <id>]`;
+  permissions show --worker <worker> [--workspace <id>]
+
+Without --profile, profile set interactively applies an Access Profile or Custom tools/commands matrix.
+With --profile, --workspace is required and only the legacy capability ceiling is changed.`;
 
 const EXTENSION_HELP = `Usage: queqiao extension <command> [options]
 

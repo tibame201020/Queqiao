@@ -215,7 +215,7 @@ queqiao worker join --name <worker>
 queqiao worker workspace add --worker <worker>
 queqiao worker workspace list --worker <worker>
 queqiao worker workspace remove --worker <worker> --id <id>
-queqiao worker workspace profile set --worker <worker> --workspace <id> --profile read-only|editor|coding
+queqiao worker workspace profile set --worker <worker> [--workspace <id>] [--profile read-only|editor|coding]
 queqiao worker workspace tool allow|deny --worker <worker> --workspace <id> --tool <tool>
 queqiao worker workspace command allow|deny --worker <worker> --workspace <id> --command <executable>
 queqiao worker workspace permissions show --worker <worker> [--workspace <id>]
@@ -323,7 +323,7 @@ provides built-in `Reader` and `Editor` profiles, then lists any user-saved prof
 by `Custom`. Custom access is configured as an explicit tool allowlist; when `run` is selected,
 the flow additionally asks for a comma-separated executable allowlist. That executable input keeps
 local history for Up/Down recall and shows the most recent entry as the default. A Custom
-tools/commands matrix may optionally be saved after configuration as a reusable Access Profile. Editing a valid Worker preserves its existing Workspaces.
+tools/commands matrix may optionally be saved after configuration as a reusable Access Profile. Existing Workspace access can be changed with `worker workspace profile set --worker <worker>`: without `--profile`, it selects a Workspace when needed and applies the same Access Profile/Custom flow; explicit `--profile read-only|editor|coding` remains the scripting-compatible capability-ceiling primitive. Editing a valid Worker preserves its existing Workspaces.
 Legacy incomplete Workers can be repaired through the same setup flow without rotating
 their identity or credential. New or changed local ports must be in range, must not collide
 with another configured Queqiao instance, and must be available on loopback.

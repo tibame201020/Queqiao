@@ -17,7 +17,7 @@ import { removeRoleInstance } from "./role-remove.js";
 import { uninstallQueqiao } from "./uninstall-cli.js";
 import { doctorPaths, doctorQueqiao } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
-import { addWorkspace, removeWorkspace } from "./workspace-cli.js";
+import { addWorkspace, removeWorkspace, setWorkspaceAccess } from "./workspace-cli.js";
 import { attachExtension, detachExtension, doctorExtensionHub, installNpmExtension, listExtensions, showExtension, uninstallExtension } from "./extension-cli.js";
 import { formatCliOutput } from "./cli-output.js";
 import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, renderCliHelp, renderCliRouteError } from "./command-surface.js";
@@ -108,12 +108,7 @@ async function main() {
     return print(await removeWorkspace(configFile, workerName, id));
 
   }
-  if (domain === "profile" && action === "set") {
-    const id = requiredOption(args, "workspace"); const profile = z.enum(["read-only", "editor", "coding"]).parse(requiredOption(args, "profile"));
-    const config = await configStore.update((current) => ({ ...current, workspaces: current.workspaces.map((entry) => entry.id === id ? { ...entry, profile } : entry) })); const workspaces = config.workspaces;
-    if (!workspaces.some((entry) => entry.id === id)) throw new Error(`Workspace not found: ${id}`);
-    return print({ changed: true, workspaceId: id, profile });
-  }
+  if (domain === "profile" && action === "set") return print(await setWorkspaceAccess(configFile, args));
   if (domain === "tool" && (action === "allow" || action === "deny")) {
     const id = requiredOption(args, "workspace"); const tool = managedToolSchema.parse(requiredOption(args, "tool"));
     let found = false;
