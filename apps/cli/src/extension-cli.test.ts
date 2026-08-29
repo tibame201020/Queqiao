@@ -116,7 +116,8 @@ describe("extension CLI", () => {
     const localRoot = path.join(prepared, "node_modules", "queqiao-mcp");
 
     await installExtension(hub, localRoot);
-    await attachExtension(hub, "dev.queqiao.mcp", "windows", worker);
+    await expect(attachExtension(hub, "dev.queqiao.mcp", "windows", worker)).resolves.toMatchObject({ changed: true, worker: "windows", attached: "dev.queqiao.mcp" });
+    await expect(attachExtension(hub, "dev.queqiao.mcp", "windows", worker)).resolves.toMatchObject({ changed: false, worker: "windows", attached: "dev.queqiao.mcp" });
     let config = await readRuntimeConfig(worker.configFile);
     expect(config.extensions[0]?.source.kind).toBe("local");
     if (config.extensions[0]?.source.kind !== "local") throw new Error("expected local source");

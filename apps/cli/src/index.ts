@@ -20,18 +20,18 @@ import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./servic
 import { addWorkspace, removeWorkspace, setWorkspaceAccess, updateWorkspaceCommandPolicy, updateWorkspaceToolPolicy } from "./workspace-cli.js";
 import { attachExtension, detachExtension, doctorExtensionHub, installExtension, listExtensions, resolveInstalledExtensionId, showExtension, uninstallExtension } from "./extension-cli.js";
 import { formatCliOutput } from "./cli-output.js";
-import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, renderCliHelp, renderCliRouteError, renderRemovedSelectorError, validateCliArgs } from "./command-surface.js";
+import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, parseCliLeafArguments, renderCliHelp, renderCliRouteError, renderRemovedSelectorError, validateCliArgs } from "./command-surface.js";
 import { listRoleInstances, resolveRoleInstance, selectorRoleForCliArgs, withRoleSelector } from "./instance-selector.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
-function positional(args: string[], index: number): string | undefined { const value = args[index]; return value && !value.startsWith("--") ? value : undefined; }
 function print(value: unknown) { process.stdout.write(`${formatCliOutput(outputArgs, value)}\n`); }
 function operations(config: RuntimeConfig) { return buildOperationsDiagnostics({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, workerProtocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, supportedMcpProtocolVersions: QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions }); }
 
 const rawArgs = process.argv.slice(2);
 let outputArgs = rawArgs;
 let commandArgs = rawArgs.filter((arg) => arg !== "--json");
+let leafArgs = parseCliLeafArguments(commandArgs);
 const helpRequested = commandArgs.includes("--help") || commandArgs.includes("-h");
 let args = normalizeCliArgs(commandArgs);
 let domain = args[0];
@@ -59,6 +59,7 @@ async function main() {
       process.stderr.write(`Using ${selectorRole === "gateway" ? "Gateway" : "Worker"}: ${selectedRoleName}\n`);
     }
     commandArgs = withRoleSelector(commandArgs, selectorRole, selectedRoleName);
+    leafArgs = parseCliLeafArguments(commandArgs);
     args = normalizeCliArgs(commandArgs);
     domain = args[0];
     action = args[1];
@@ -70,26 +71,26 @@ async function main() {
   if (domain === "worker" && action === "remove") return print(await removeRoleInstance("worker", args));
   if (domain === "uninstall") return print(await uninstallQueqiao(args));
   if (domain === "extension" && action === "install") {
-    const source = positional(args, 2) || option(args, "source");
+    const source = leafArgs?.positionals[0] || (typeof leafArgs?.options.source === "string" ? leafArgs.options.source : undefined);
     if (!source) throw new Error("Extension source is required, for example: npm:queqiao-mcp or .\\my-extension");
     const workerName = option(args, "worker");
     return print(await installExtension(resolveExtensionHubRoot(), source, { ...(workerName ? { workerName } : {}), attachAll: args.includes("--attach-all") }));
   }
   if (domain === "extension" && action === "attach") {
-    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), positional(args, 2) || option(args, "id"));
+    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), leafArgs?.positionals[0] || (typeof leafArgs?.options.id === "string" ? leafArgs.options.id : undefined));
     return print(await attachExtension(resolveExtensionHubRoot(), id, requiredOption(args, "worker")));
   }
   if (domain === "extension" && action === "detach") {
-    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), positional(args, 2) || option(args, "id"));
+    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), leafArgs?.positionals[0] || (typeof leafArgs?.options.id === "string" ? leafArgs.options.id : undefined));
     return print(await detachExtension(id, requiredOption(args, "worker")));
   }
   if (domain === "extension" && action === "uninstall") {
-    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), positional(args, 2) || option(args, "id"));
+    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), leafArgs?.positionals[0] || (typeof leafArgs?.options.id === "string" ? leafArgs.options.id : undefined));
     return print(await uninstallExtension(resolveExtensionHubRoot(), id, args.includes("--force")));
   }
   if (domain === "extension" && action === "list") return print(await listExtensions(resolveExtensionHubRoot()));
   if (domain === "extension" && action === "show") {
-    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), positional(args, 2) || option(args, "id"));
+    const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), leafArgs?.positionals[0] || (typeof leafArgs?.options.id === "string" ? leafArgs.options.id : undefined));
     return print(await showExtension(resolveExtensionHubRoot(), id));
   }
   if (domain === "extension" && action === "doctor") return print(await doctorExtensionHub(resolveExtensionHubRoot()));
@@ -129,7 +130,7 @@ async function main() {
     return print({ ok: state.ok, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint, supportedMcpProtocolVersions: state.supportedMcpProtocolVersions, manifest: state.ok ? buildDeploymentManifest({ coreManifestRevision: state.coreManifestRevision, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions }) : null, ...(state.compositionFailure ? { compositionFailure: state.compositionFailure } : {}) });
   }
   if (domain === "tool" && action === "explain") {
-    const toolName = toolNameSchema.parse(args[2] || option(args, "tool")); const state = operations(await configStore.read()); const explanation = explainTool(state, toolName); if (!explanation) throw new Error(`Tool not found in effective composition: ${toolName}`); return print({ ...explanation, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint });
+    const toolName = toolNameSchema.parse(leafArgs?.positionals[0] || (typeof leafArgs?.options.tool === "string" ? leafArgs.options.tool : undefined)); const state = operations(await configStore.read()); const explanation = explainTool(state, toolName); if (!explanation) throw new Error(`Tool not found in effective composition: ${toolName}`); return print({ ...explanation, coreManifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint });
   }
   if ((domain === "gateway" || domain === "worker") && action === "stop") return print(await stopRuntime(layout, domain, selectedRoleName!));
   if ((domain === "gateway" || domain === "worker") && action === "status") return print(await runtimeStatus(configFile, layout, domain, selectedRoleName!));

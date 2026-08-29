@@ -174,6 +174,44 @@ export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "migrate runtime-v1", options: ["execute"] },
 ];
 
+export type ParsedCliLeafArguments = {
+  route: string;
+  positionals: string[];
+  options: Readonly<Record<string, string | true>>;
+};
+
+export function parseCliLeafArguments(input: readonly string[]): ParsedCliLeafArguments | undefined {
+  const tokens = input.filter((token) => token !== "--json" && token !== "--help" && token !== "-h");
+  const contract = [...CLI_LEAF_CONTRACTS]
+    .sort((a, b) => b.route.split(" ").length - a.route.split(" ").length)
+    .find(({ route }) => {
+      const parts = route.split(" ");
+      return parts.every((part, index) => tokens[index] === part);
+    });
+  if (!contract) return undefined;
+  const routeLength = contract.route.split(" ").length;
+  const positionals: string[] = [];
+  const options: Record<string, string | true> = {};
+  for (let index = routeLength; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    if (!token.startsWith("--")) {
+      positionals.push(token);
+      continue;
+    }
+    const name = token.slice(2);
+    if (contract.valueOptions?.includes(name)) {
+      const value = tokens[index + 1];
+      if (value && !value.startsWith("--")) {
+        options[name] = value;
+        index += 1;
+      }
+      continue;
+    }
+    options[name] = true;
+  }
+  return { route: contract.route, positionals, options };
+}
+
 export function validateCliArgs(input: readonly string[]): void {
   const tokens = input.filter((token) => token !== "--json" && token !== "--help" && token !== "-h");
   const contract = [...CLI_LEAF_CONTRACTS]

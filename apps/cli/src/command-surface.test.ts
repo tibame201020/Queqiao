@@ -1,5 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { CLI_LEAF_CONTRACTS, isCliHelpContext, isRemovedCliRoute, listCanonicalCliRoutes, normalizeCliArgs, renderCliHelp, renderCliRouteError, renderRemovedSelectorError, validateCliArgs } from "./command-surface.js";
+import { CLI_LEAF_CONTRACTS, isCliHelpContext, isRemovedCliRoute, listCanonicalCliRoutes, normalizeCliArgs, parseCliLeafArguments, renderCliHelp, renderCliRouteError, renderRemovedSelectorError, validateCliArgs } from "./command-surface.js";
+import { selectorRoleForCliArgs, withRoleSelector } from "./instance-selector.js";
+
+type LeafContract = (typeof CLI_LEAF_CONTRACTS)[number];
+
+const REQUIRED_SAMPLE_ARGS: Readonly<Record<string, readonly string[]>> = {
+  "gateway workers update": ["--worker-id", "worker-1", "--endpoint", "http://127.0.0.1:7576/"],
+  "gateway workers remove": ["--worker-id", "worker-1"],
+  "worker workspace remove": ["--id", "workspace-1"],
+  "worker workspace tool allow": ["--workspace", "workspace-1", "--tool", "read_file"],
+  "worker workspace tool deny": ["--workspace", "workspace-1", "--tool", "read_file"],
+  "worker workspace command allow": ["--workspace", "workspace-1", "--command", "git"],
+  "worker workspace command deny": ["--workspace", "workspace-1", "--command", "git"],
+};
+
+function positionalSamples(contract: LeafContract): string[] {
+  if (!contract.positionals) return [];
+  if (contract.route === "extension install") return [".\\extension"];
+  if (contract.route.startsWith("extension ")) return ["dev.queqiao.test"];
+  if (contract.route === "doctor tool explain") return ["read_file"];
+  return Array.from({ length: contract.positionals }, (_, index) => `arg-${index + 1}`);
+}
+
+function canonicalLeafInvocation(contract: LeafContract): string[] {
+  let args = [...contract.route.split(" "), ...positionalSamples(contract), ...(REQUIRED_SAMPLE_ARGS[contract.route] || [])];
+  const selectorRole = selectorRoleForCliArgs(args);
+  if (selectorRole) args = withRoleSelector(args, selectorRole, selectorRole === "gateway" ? "stable" : "windows");
+  return args;
+}
 
 describe("CLI hierarchy consolidation", () => {
   it.each([
@@ -118,6 +146,45 @@ describe("CLI hierarchy consolidation", () => {
     expect(CLI_LEAF_CONTRACTS).toHaveLength(41);
     expect(new Set(CLI_LEAF_CONTRACTS.map(({ route }) => route)).size).toBe(CLI_LEAF_CONTRACTS.length);
     expect(CLI_LEAF_CONTRACTS.map(({ route }) => route).sort()).toEqual(listCanonicalCliRoutes());
+  });
+
+  it.each(CLI_LEAF_CONTRACTS)("accepts the canonical invocation for $route", (contract) => {
+    const invocation = canonicalLeafInvocation(contract);
+    expect(() => validateCliArgs(invocation)).not.toThrow();
+  });
+
+  it.each(CLI_LEAF_CONTRACTS)("keeps selector insertion option-safe for $route", (contract) => {
+    const expectedPositionals = positionalSamples(contract);
+    const base = [...contract.route.split(" "), ...expectedPositionals, ...(REQUIRED_SAMPLE_ARGS[contract.route] || [])];
+    const selectorRole = selectorRoleForCliArgs(base);
+    const invocation = selectorRole
+      ? withRoleSelector(base, selectorRole, selectorRole === "gateway" ? "stable" : "windows")
+      : base;
+    expect(() => validateCliArgs(invocation)).not.toThrow();
+    const parsed = parseCliLeafArguments(invocation);
+    expect(parsed?.route).toBe(contract.route);
+    expect(parsed?.positionals).toEqual(expectedPositionals);
+    if (selectorRole) {
+      const selectorIndex = invocation.indexOf(`--${selectorRole}`);
+      expect(selectorIndex).toBeGreaterThanOrEqual(contract.route.split(" ").length);
+      expect(invocation[selectorIndex + 1]).toBe(selectorRole === "gateway" ? "stable" : "windows");
+      expect(parsed?.options[selectorRole]).toBe(selectorRole === "gateway" ? "stable" : "windows");
+    }
+  });
+
+  it.each(CLI_LEAF_CONTRACTS)("renders leaf help for $route", (contract) => {
+    const help = renderCliHelp([...contract.route.split(" "), "--help"]);
+    expect(help).toContain("Usage: queqiao");
+    expect(help).toContain(contract.route.split(" ")[0]!);
+  });
+
+  it("extracts extension positionals independently of option order", () => {
+    const parsed = parseCliLeafArguments(["extension", "attach", "--worker", "wins-worker", "dev.queqiao.mcp"]);
+    expect(parsed).toMatchObject({
+      route: "extension attach",
+      positionals: ["dev.queqiao.mcp"],
+      options: { worker: "wins-worker" },
+    });
   });
 
   it.each([
