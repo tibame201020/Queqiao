@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const repoRawBase = "https://raw.githubusercontent.com/tibame201020/Queqiao/main/";
 const interactiveAssets = [
   "docs/assets/cli/interactive/01-gateway-setup.gif",
   "docs/assets/cli/interactive/02-worker-access-setup.gif",
@@ -15,9 +16,9 @@ describe("CLI visual documentation", () => {
   it("keeps the README onboarding multi-step instead of collapsing to one demo", async () => {
     const readme = await readFile(path.join(repoRoot, "README.md"), "utf8");
     for (const asset of interactiveAssets) {
-      expect(readme).toContain(`](${asset})`);
+      expect(readme).toContain(`${repoRawBase}${asset}`);
     }
-    expect(readme).toContain("docs/assets/cli/flows/04-start-enroll-verify.gif");
+    expect(readme).toContain(`${repoRawBase}docs/assets/cli/flows/04-start-enroll-verify.gif`);
     expect(readme).not.toContain("README intentionally keeps only the shortest");
   });
 
