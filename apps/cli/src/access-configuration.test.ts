@@ -3,6 +3,8 @@ import {
   ACCESS_TOOL_OPTIONS,
   BUILTIN_ACCESS_PROFILES,
   accessConfigurationToWorkspacePolicy,
+  formatBuiltinAccessProfileLabel,
+  renderAccessToolOption,
   normalizeAllowedExecutables,
   normalizeCommandHistory,
 } from "./access-configuration.js";
@@ -16,11 +18,21 @@ describe("access configuration", () => {
     expect(BUILTIN_ACCESS_PROFILES[1]?.configuration.tools).not.toContain("shell");
   });
 
-  it("keeps tool names prominent and moves descriptions onto a separate dimmed line", () => {
-    const readFile = ACCESS_TOOL_OPTIONS.find((option) => option.value === "read_file");
-    expect(readFile?.label).toMatch(/^\x1b\[22mread_file\n/);
-    expect(readFile?.label).toContain("\x1b[2mRead text file");
-    expect(readFile?.hint).toBeUndefined();
+  it("keeps inactive tool descriptions dim but makes selected tool descriptions bright", () => {
+    const readFile = ACCESS_TOOL_OPTIONS.find((option) => option.value === "read_file")!;
+    expect(renderAccessToolOption(readFile, false, false)).toContain("\x1b[2mRead text file");
+    expect(renderAccessToolOption(readFile, true, false)).not.toContain("\x1b[2mRead text file");
+    expect(renderAccessToolOption(readFile, false, true)).not.toContain("\x1b[2mRead text file");
+  });
+
+  it("describes built-in profiles with their concrete tool sets", () => {
+    const reader = BUILTIN_ACCESS_PROFILES[0]!;
+    const editor = BUILTIN_ACCESS_PROFILES[1]!;
+    expect(formatBuiltinAccessProfileLabel(reader)).toContain("Reader");
+    expect(formatBuiltinAccessProfileLabel(reader)).toContain("read_file");
+    expect(formatBuiltinAccessProfileLabel(reader)).toContain("\x1b[2m");
+    expect(formatBuiltinAccessProfileLabel(editor)).toContain("write_file");
+    expect(formatBuiltinAccessProfileLabel(editor)).toContain("edit_file");
   });
 
   it("normalizes comma-separated executables without duplicate entries", () => {

@@ -1,7 +1,7 @@
 import { access, readdir } from "node:fs/promises";
 import path from "node:path";
 import { createServer } from "node:net";
-import { cancel, intro, isCancel, multiselect, outro, select, text } from "@clack/prompts";
+import { cancel, intro, isCancel, outro, select, text } from "@clack/prompts";
 import { readRuntimeConfig, readRuntimeConfigForRepair } from "@queqiao/config";
 import {
   resolveNamedRoleConfigRoot,
@@ -9,7 +9,8 @@ import {
   type RuntimeRole,
 } from "@queqiao/platform-paths";
 import { setupGateway as setupGatewayPrimitive, setupWorker as setupWorkerPrimitive, type WorkerSetupOptions } from "./enrollment-cli.js";
-import { ACCESS_TOOL_OPTIONS, BUILTIN_ACCESS_PROFILES, DEFAULT_ACCESS_TOOLS, accessConfigurationToWorkspacePolicy, normalizeAllowedExecutables, type AccessConfiguration } from "./access-configuration.js";
+import { ACCESS_TOOL_OPTIONS, BUILTIN_ACCESS_PROFILES, DEFAULT_ACCESS_TOOLS, accessConfigurationToWorkspacePolicy, formatBuiltinAccessProfileLabel, normalizeAllowedExecutables, type AccessConfiguration, type AccessToolOption } from "./access-configuration.js";
+import { accessToolMultiselect } from "./access-tool-prompt.js";
 import { AccessProfileStore, resolveAccessProfileFile } from "./access-profile-store.js";
 import { historyAwareTextInput, readAllowedExecutableHistory, recordAllowedExecutableHistory, resolveCommandHistoryFile } from "./command-history-input.js";
 import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
@@ -23,7 +24,7 @@ const RESET_DIM = "\x1b[22m";
 
 export type RoleSetupPrompts = {
   choose: (message: string, options: Array<{ value: string; label: string }>) => Promise<string>;
-  multi: (message: string, options: Array<{ value: string; label: string; hint?: string }>, initialValues: string[]) => Promise<string[]>;
+  multi: (message: string, options: AccessToolOption[], initialValues: Array<AccessToolOption["value"]>) => Promise<string[]>;
   commandText: (message: string) => Promise<string>;
   text: (
     message: string,
@@ -80,7 +81,7 @@ async function collectInitialWorkspace(prompts: RoleSetupPrompts, injected: bool
 
   const profiles = await profileStore.list();
   const selectedProfile = await prompts.choose("Access profile", [
-    ...BUILTIN_ACCESS_PROFILES.map((profile) => ({ value: `builtin:${profile.id}`, label: profile.name })),
+    ...BUILTIN_ACCESS_PROFILES.map((profile) => ({ value: `builtin:${profile.id}`, label: formatBuiltinAccessProfileLabel(profile) })),
     ...profiles.map((profile, index) => ({ value: `profile:${index}`, label: profile.name })),
     { value: CUSTOM_ACCESS, label: "Custom" },
   ]);
@@ -189,8 +190,8 @@ function defaultPrompts(role: RuntimeRole, env: NodeJS.ProcessEnv, platform: Nod
       }
       return String(value);
     },
-    multi: async (message, options, initialValues) => {
-      const value = await multiselect({ message, options, initialValues, required: true });
+    multi: async (_message, options, initialValues) => {
+      const value = await accessToolMultiselect(options, initialValues);
       if (isCancel(value)) {
         cancel(`${role === "gateway" ? "Gateway" : "Worker"} setup cancelled`);
         throw new Error(`${role === "gateway" ? "Gateway" : "Worker"} setup cancelled`);

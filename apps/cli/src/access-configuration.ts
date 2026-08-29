@@ -9,18 +9,29 @@ export type AccessConfiguration = {
 const DIM = "\x1b[2m";
 const RESET_DIM = "\x1b[22m";
 
-export const ACCESS_TOOL_OPTIONS = CORE_PUBLIC_TOOL_ORDER.map((name) => {
+export type AccessToolOption = {
+  value: CorePublicToolName;
+  label: string;
+  description: string;
+};
+
+export const ACCESS_TOOL_OPTIONS: AccessToolOption[] = CORE_PUBLIC_TOOL_ORDER.map((name) => {
   const contract = CORE_PUBLIC_TOOL_CONTRACTS[name];
-  const description = name === "shell"
-    ? `${contract.title} — high risk; unrestricted native shell`
-    : `${contract.title} — ${contract.description}`;
   return {
     value: name,
-    // @clack/prompts dims inactive labels as a whole. Reset dim before the tool id so the
-    // primary identifier remains readable, then dim only the descriptive line.
-    label: `${RESET_DIM}${name}\n  ${DIM}${description}${RESET_DIM}`,
+    label: name,
+    description: name === "shell"
+      ? `${contract.title} — high risk; unrestricted native shell`
+      : `${contract.title} — ${contract.description}`,
   };
 });
+
+export function renderAccessToolOption(option: AccessToolOption, selected: boolean, focused: boolean): string {
+  const description = selected || focused
+    ? option.description
+    : `${DIM}${option.description}${RESET_DIM}`;
+  return `${option.label}\n  ${description}`;
+}
 
 export const DEFAULT_ACCESS_TOOLS: readonly CorePublicToolName[] = CORE_PUBLIC_TOOL_ORDER.filter((name) =>
   CORE_PUBLIC_TOOL_CONTRACTS[name].risk === "read"
@@ -33,14 +44,20 @@ const EDITOR_ACCESS_TOOLS: readonly CorePublicToolName[] = [
   "edit_file",
 ];
 
-export const BUILTIN_ACCESS_PROFILES: ReadonlyArray<{
+export type BuiltinAccessProfile = {
   id: "reader" | "editor";
   name: "Reader" | "Editor";
   configuration: AccessConfiguration;
-}> = [
+};
+
+export const BUILTIN_ACCESS_PROFILES: ReadonlyArray<BuiltinAccessProfile> = [
   { id: "reader", name: "Reader", configuration: { tools: DEFAULT_ACCESS_TOOLS, allowedExecutables: [] } },
   { id: "editor", name: "Editor", configuration: { tools: EDITOR_ACCESS_TOOLS, allowedExecutables: [] } },
 ];
+
+export function formatBuiltinAccessProfileLabel(profile: BuiltinAccessProfile): string {
+  return `${RESET_DIM}${profile.name} ${DIM}${profile.configuration.tools.join(", ")}${RESET_DIM}`;
+}
 
 const EXECUTABLE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/;
 

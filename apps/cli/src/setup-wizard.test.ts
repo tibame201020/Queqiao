@@ -49,7 +49,12 @@ describe("role setup wizard", () => {
       setupWorker: async () => ({ mode: "create" } as any),
     });
 
-    expect(accessChoices).toEqual([["Reader", "Editor", "Custom"]]);
+    expect(accessChoices).toHaveLength(1);
+    expect(accessChoices[0]?.[0]).toContain("Reader");
+    expect(accessChoices[0]?.[0]).toContain("read_file");
+    expect(accessChoices[0]?.[1]).toContain("Editor");
+    expect(accessChoices[0]?.[1]).toContain("write_file");
+    expect(accessChoices[0]?.[2]).toBe("Custom");
   });
 
   it("edits an existing Gateway selected by the first prompt", async () => {
