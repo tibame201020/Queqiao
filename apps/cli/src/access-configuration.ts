@@ -6,9 +6,6 @@ export type AccessConfiguration = {
   allowedExecutables: readonly string[];
 };
 
-const DIM = "\x1b[2m";
-const RESET_DIM = "\x1b[22m";
-
 export type AccessToolOption = {
   value: CorePublicToolName;
   label: string;
@@ -48,8 +45,12 @@ export const BUILTIN_ACCESS_PROFILES: ReadonlyArray<BuiltinAccessProfile> = [
   { id: "editor", name: "Editor", configuration: { tools: EDITOR_ACCESS_TOOLS, allowedExecutables: [] } },
 ];
 
-export function formatBuiltinAccessProfileLabel(profile: BuiltinAccessProfile): string {
-  return `${RESET_DIM}${profile.name} ${DIM}${profile.configuration.tools.join(", ")}${RESET_DIM}`;
+export function describeAccessConfiguration(configuration: AccessConfiguration): string {
+  const lines = [`Tools: ${configuration.tools.join(", ")}`];
+  if (configuration.allowedExecutables.length) {
+    lines.push(`Commands: ${configuration.allowedExecutables.join(", ")}`);
+  }
+  return lines.join("\n");
 }
 
 const EXECUTABLE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BUILTIN_ACCESS_PROFILES,
   accessConfigurationToWorkspacePolicy,
-  formatBuiltinAccessProfileLabel,
+  describeAccessConfiguration,
   normalizeAllowedExecutables,
   normalizeCommandHistory,
 } from "./access-configuration.js";
@@ -16,14 +16,14 @@ describe("access configuration", () => {
     expect(BUILTIN_ACCESS_PROFILES[1]?.configuration.tools).not.toContain("shell");
   });
 
-  it("describes built-in profiles with their concrete tool sets", () => {
+  it("describes access configurations without embedding terminal styling in domain data", () => {
     const reader = BUILTIN_ACCESS_PROFILES[0]!;
     const editor = BUILTIN_ACCESS_PROFILES[1]!;
-    expect(formatBuiltinAccessProfileLabel(reader)).toContain("Reader");
-    expect(formatBuiltinAccessProfileLabel(reader)).toContain("read_file");
-    expect(formatBuiltinAccessProfileLabel(reader)).toContain("\x1b[2m");
-    expect(formatBuiltinAccessProfileLabel(editor)).toContain("write_file");
-    expect(formatBuiltinAccessProfileLabel(editor)).toContain("edit_file");
+    expect(describeAccessConfiguration(reader.configuration)).toContain("read_file");
+    expect(describeAccessConfiguration(reader.configuration)).not.toContain("\x1b");
+    expect(describeAccessConfiguration(editor.configuration)).toContain("write_file");
+    expect(describeAccessConfiguration(editor.configuration)).toContain("edit_file");
+    expect(describeAccessConfiguration({ tools: ["read_file", "run"], allowedExecutables: ["git", "npm"] })).toContain("Commands: git, npm");
   });
 
   it("normalizes comma-separated executables without duplicate entries", () => {

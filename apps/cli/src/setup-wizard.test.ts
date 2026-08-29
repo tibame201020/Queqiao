@@ -29,11 +29,11 @@ describe("role setup wizard", () => {
     const env = fixtureEnv(root);
     const workspaceRoot = path.join(root, "project");
     await mkdir(workspaceRoot);
-    const accessChoices: string[][] = [];
+    const accessChoices: Array<Array<{ label: string; description?: string }>> = [];
     const answers = ["__create__", "windows", "7576", workspaceRoot, "Project", "builtin:reader"];
     const testPrompts: RoleSetupPrompts = {
       choose: async (message, options) => {
-        if (message === "Access profile") accessChoices.push(options.map((option) => option.label));
+        if (message === "Access profile") accessChoices.push(options.map((option) => ({ label: option.label, ...(option.description ? { description: option.description } : {}) })));
         return answers.shift() || "";
       },
       multi: async () => { throw new Error("Reader must not prompt for tools"); },
@@ -50,11 +50,11 @@ describe("role setup wizard", () => {
     });
 
     expect(accessChoices).toHaveLength(1);
-    expect(accessChoices[0]?.[0]).toContain("Reader");
-    expect(accessChoices[0]?.[0]).toContain("read_file");
-    expect(accessChoices[0]?.[1]).toContain("Editor");
-    expect(accessChoices[0]?.[1]).toContain("write_file");
-    expect(accessChoices[0]?.[2]).toBe("Custom");
+    expect(accessChoices[0]?.[0]).toMatchObject({ label: "Reader" });
+    expect(accessChoices[0]?.[0]?.description).toContain("read_file");
+    expect(accessChoices[0]?.[1]).toMatchObject({ label: "Editor" });
+    expect(accessChoices[0]?.[1]?.description).toContain("write_file");
+    expect(accessChoices[0]?.[2]).toMatchObject({ label: "Custom" });
   });
 
   it("edits an existing Gateway selected by the first prompt", async () => {

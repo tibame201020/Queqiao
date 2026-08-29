@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it } from "vitest";
-import { multiChoicePresentation, renderMultiChoiceLines } from "./tui-choice-renderer.js";
+import { multiChoicePresentation, renderMultiChoiceLines, renderSingleChoiceLines } from "./tui-choice-renderer.js";
 
 const option = {
   label: "read_file",
@@ -46,5 +46,16 @@ describe("Queqiao multi-choice renderer", () => {
       "      Persistent: C:\\Queqiao\\gateway",
       "      Runtime: C:\\Temp\\gateway",
     ]);
+  });
+
+  it("uses the same focus grammar for single-choice rows without a fake selection marker", () => {
+    expect(plain(renderSingleChoiceLines({
+      label: "Reader",
+      description: "Tools: read_file, search_text",
+    }, { focused: true }))).toEqual([
+      "> Reader",
+      "    Tools: read_file, search_text",
+    ]);
+    expect(plain(renderSingleChoiceLines({ label: "Editor" }, { focused: false }))).toEqual(["  Editor"]);
   });
 });

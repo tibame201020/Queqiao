@@ -1,5 +1,6 @@
-import { cancel, isCancel, select, text } from "@clack/prompts";
+import { cancel, isCancel, text } from "@clack/prompts";
 import { accessToolMultiselect } from "./access-tool-prompt.js";
+import { queqiaoSelect } from "./tui-select.js";
 import type { AccessConfigurationPrompts } from "./access-configuration-flow.js";
 import {
   historyAwareTextInput,
@@ -23,7 +24,7 @@ export function createAccessConfigurationPrompts(options: {
 
   return {
     choose: async (message, choices) => {
-      const value = await select({ message, options: choices });
+      const value = await queqiaoSelect({ message, choices });
       if (isCancel(value)) abort();
       return String(value);
     },

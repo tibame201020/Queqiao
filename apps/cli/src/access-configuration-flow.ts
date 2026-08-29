@@ -3,7 +3,7 @@ import {
   ACCESS_TOOL_OPTIONS,
   BUILTIN_ACCESS_PROFILES,
   DEFAULT_ACCESS_TOOLS,
-  formatBuiltinAccessProfileLabel,
+  describeAccessConfiguration,
   normalizeAllowedExecutables,
   type AccessConfiguration,
   type AccessToolOption,
@@ -13,7 +13,7 @@ import type { AccessProfileStore } from "./access-profile-store.js";
 export const CUSTOM_ACCESS = "__custom_access__";
 
 export type AccessConfigurationPrompts = {
-  choose: (message: string, options: Array<{ value: string; label: string }>) => Promise<string>;
+  choose: (message: string, options: Array<{ value: string; label: string; description?: string }>) => Promise<string>;
   multi: (message: string, options: AccessToolOption[], initialValues: CorePublicToolName[]) => Promise<string[]>;
   commandText: (message: string) => Promise<string>;
   text: (
@@ -31,10 +31,15 @@ export async function collectAccessConfiguration(
   const selectedProfile = await prompts.choose("Access profile", [
     ...BUILTIN_ACCESS_PROFILES.map((profile) => ({
       value: `builtin:${profile.id}`,
-      label: formatBuiltinAccessProfileLabel(profile),
+      label: profile.name,
+      description: describeAccessConfiguration(profile.configuration),
     })),
-    ...profiles.map((profile, index) => ({ value: `profile:${index}`, label: profile.name })),
-    { value: CUSTOM_ACCESS, label: "Custom" },
+    ...profiles.map((profile, index) => ({
+      value: `profile:${index}`,
+      label: profile.name,
+      description: describeAccessConfiguration({ tools: profile.tools, allowedExecutables: profile.allowedExecutables }),
+    })),
+    { value: CUSTOM_ACCESS, label: "Custom", description: "Choose tools and command allowlists" },
   ]);
 
   const builtin = BUILTIN_ACCESS_PROFILES.find((profile) => selectedProfile === `builtin:${profile.id}`);

@@ -10,6 +10,10 @@ export type MultiChoiceContent = {
   description?: string;
 };
 
+export type SingleChoiceVisualState = {
+  focused: boolean;
+};
+
 export type MultiChoicePresentation = {
   focusMarker: ">" | " ";
   selectionMarker: "[x]" | "[ ]";
@@ -22,6 +26,22 @@ export function multiChoicePresentation(state: MultiChoiceVisualState): MultiCho
     selectionMarker: state.selected ? "[x]" : "[ ]",
     descriptionMuted: !state.focused && !state.selected,
   };
+}
+
+export function renderSingleChoiceLines(
+  option: MultiChoiceContent,
+  state: SingleChoiceVisualState,
+): string[] {
+  const focus = state.focused ? styleText("cyan", ">") : " ";
+  const label = state.focused ? styleText("cyan", option.label) : option.label;
+  const descriptionLines = option.description
+    ? option.description.split("\n").map((line) => state.focused ? line : styleText("dim", line))
+    : [];
+
+  return [
+    `${focus} ${label}`,
+    ...descriptionLines.map((line) => `    ${line}`),
+  ];
 }
 
 export function renderMultiChoiceLines(

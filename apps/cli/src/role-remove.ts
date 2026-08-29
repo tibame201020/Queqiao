@@ -1,7 +1,8 @@
 import { rm, rmdir } from "node:fs/promises";
-import { cancel, confirm, intro, isCancel, outro, select } from "@clack/prompts";
+import { cancel, confirm, intro, isCancel, outro } from "@clack/prompts";
 import { resolveRuntimeLayoutForNamedRole, type RuntimeLayout, type RuntimeRole } from "@queqiao/platform-paths";
 import { runtimeStatus } from "./service-lifecycle.js";
+import { queqiaoSelect } from "./tui-select.js";
 import { listNamedRoleInstances } from "./setup-wizard.js";
 
 export type RoleRemovePrompts = {
@@ -22,7 +23,7 @@ function defaultPrompts(role: RuntimeRole): RoleRemovePrompts {
   const label = role === "gateway" ? "Gateway" : "Worker";
   return {
     choose: async (message, options) => {
-      const value = await select({ message, options });
+      const value = await queqiaoSelect({ message, choices: options });
       if (isCancel(value)) {
         cancel(`${label} remove cancelled`);
         throw new Error(`${label} remove cancelled`);
