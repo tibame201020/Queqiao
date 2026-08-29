@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -9,8 +10,12 @@ export async function resolveWorkspaceAuthorityRoot(value: string): Promise<stri
 }
 
 export function workspaceRootsEqual(left: string, right: string): boolean {
-  const leftResolved = path.resolve(left);
-  const rightResolved = path.resolve(right);
+  const canonical = (value: string) => {
+    const resolved = path.resolve(value);
+    try { return realpathSync(resolved); } catch { return resolved; }
+  };
+  const leftResolved = canonical(left);
+  const rightResolved = canonical(right);
   if (process.platform === "win32") return leftResolved.toLowerCase() === rightResolved.toLowerCase();
   return leftResolved === rightResolved;
 }

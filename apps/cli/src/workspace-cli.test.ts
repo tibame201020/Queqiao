@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -42,6 +42,16 @@ describe("workspace CLI", () => {
     const configFile = path.join(root, "config.yaml");
     await writeFile(configFile, serializeRuntimeConfig(workerConfig(root, one)), "utf8");
     await expect(addWorkspace(configFile, ["workspace", "add", "--worker", "windows"], await promptAnswers([one, "same", "1"]))).rejects.toThrow(/path is already authorized/i);
+    expect((await readRuntimeConfig(configFile)).workspaces).toHaveLength(1);
+  });
+
+  it("rejects a canonical duplicate when an existing Workspace root is stored through a symlink or junction", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-canonical-duplicate-"));
+    const target = path.join(root, "target"); const alias = path.join(root, "alias"); await mkdir(target);
+    await symlink(target, alias, process.platform === "win32" ? "junction" : "dir");
+    const configFile = path.join(root, "config.yaml");
+    await writeFile(configFile, serializeRuntimeConfig(workerConfig(root, alias)), "utf8");
+    await expect(addWorkspace(configFile, ["workspace", "add", "--worker", "windows"], await promptAnswers([target, "same target", "1"]))).rejects.toThrow(/path is already authorized/i);
     expect((await readRuntimeConfig(configFile)).workspaces).toHaveLength(1);
   });
 
