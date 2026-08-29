@@ -150,6 +150,34 @@ describe("CLI presentation", () => {
     expect(colored).not.toBe(plain);
   });
 
+  it("renders Extension Hub inventory as a CLI hierarchy instead of a raw object dump", () => {
+    const output = formatCliOutput(["extension", "list"], {
+      hub: "C:/Users/test/AppData/Local/Queqiao/data/extensions",
+      extensions: [{
+        id: "dev.queqiao.mcp",
+        displayName: "Queqiao MCP Adapter",
+        version: "0.1.0",
+        package: "queqiao-mcp",
+        workers: [
+          { name: "windows", attached: false },
+          { name: "wins-worker", attached: true },
+        ],
+      }],
+    });
+    expect(output).toBe([
+      "Extensions",
+      "  Hub: C:/Users/test/AppData/Local/Queqiao/data/extensions",
+      "",
+      "  Queqiao MCP Adapter  0.1.0",
+      "    Id: dev.queqiao.mcp",
+      "    Package: queqiao-mcp",
+      "    Workers:",
+      "      windows  Detached",
+      "      wins-worker  Attached",
+    ].join("\n"));
+    expect(output).not.toContain("  -");
+  });
+
   it("preserves structured output behind --json", () => {
     const value = { name: "stable", role: "gateway", active: false };
     expect(formatCliOutput(["gateway", "status", "--gateway", "stable", "--json"], value)).toBe(JSON.stringify(value, null, 2));

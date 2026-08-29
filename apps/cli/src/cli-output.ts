@@ -19,7 +19,7 @@ function scalar(value: unknown): string {
 
 function structuralValue(theme: QueqiaoTheme, key: string, value: unknown): string {
   const text = scalar(value);
-  if (/url|endpoint|path|file|directory/i.test(key)) return theme.link(text);
+  if (/url|endpoint|path|file|directory|hub|root|module/i.test(key)) return theme.link(text);
   if (/(^|\s)id$/i.test(key) || /name$/i.test(key)) return theme.identifier(text);
   return theme.value(text);
 }
@@ -85,6 +85,47 @@ function renderRoleInventory(args: readonly string[], value: unknown, theme: Que
     } else {
       lines.push(field(theme, "Endpoint", instance.endpoint, 4));
       lines.push(field(theme, "Workspaces", instance.workspaceCount, 4));
+    }
+  }
+  return lines.join("\n");
+}
+
+function renderExtensionInventory(args: readonly string[], value: unknown, theme: QueqiaoTheme): string | undefined {
+  if (args[0] !== "extension" || args[1] !== "list") return undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const result = value as Record<string, unknown>;
+  if (!Array.isArray(result.extensions)) return undefined;
+
+  const lines = [theme.accentStrong("Extensions")];
+  if (typeof result.hub === "string") lines.push(field(theme, "Hub", result.hub, 2));
+  if (!result.extensions.length) {
+    lines.push(`  ${theme.muted("None")}`);
+    return lines.join("\n");
+  }
+
+  for (const item of result.extensions) {
+    if (!item || typeof item !== "object") continue;
+    const extension = item as Record<string, unknown>;
+    const displayName = typeof extension.displayName === "string" && extension.displayName
+      ? extension.displayName
+      : scalar(extension.id);
+    const version = scalar(extension.version);
+    lines.push("", `  ${theme.identifier(displayName)}  ${theme.muted(version)}`);
+    lines.push(field(theme, "Id", extension.id, 4));
+    lines.push(field(theme, "Package", extension.package, 4));
+    if (Array.isArray(extension.workers)) {
+      lines.push(`${theme.subtle("    Workers:")}`);
+      if (!extension.workers.length) {
+        lines.push(`      ${theme.muted("None")}`);
+      } else {
+        for (const workerItem of extension.workers) {
+          if (!workerItem || typeof workerItem !== "object") continue;
+          const worker = workerItem as Record<string, unknown>;
+          const workerName = scalar(worker.name);
+          const attachment = worker.attached === true ? theme.success("Attached") : theme.muted("Detached");
+          lines.push(`      ${theme.identifier(workerName)}  ${attachment}`);
+        }
+      }
     }
   }
   return lines.join("\n");
@@ -165,6 +206,8 @@ export function formatCliOutput(input: readonly string[], value: unknown, option
   const args = input.filter((arg) => arg !== "--json");
   const inventory = renderRoleInventory(args, value, theme);
   if (inventory) return inventory;
+  const extensionInventory = renderExtensionInventory(args, value, theme);
+  if (extensionInventory) return extensionInventory;
   const joinToken = renderJoinToken(args, value, theme);
   if (joinToken) return joinToken;
   const workerJoin = renderWorkerJoin(args, value, theme);
