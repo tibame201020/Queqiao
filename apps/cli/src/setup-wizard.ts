@@ -1,4 +1,5 @@
 import { access, readdir } from "node:fs/promises";
+import path from "node:path";
 import { createServer } from "node:net";
 import { cancel, intro, isCancel, outro, select, text } from "@clack/prompts";
 import { readRuntimeConfig, readRuntimeConfigForRepair } from "@queqiao/config";
@@ -68,15 +69,14 @@ async function collectInitialWorkspace(prompts: RoleSetupPrompts, injected: bool
     rootInput = String(selected || process.cwd());
   }
   const root = await resolveWorkspaceAuthorityRoot(rootInput);
-  const suggestedId = suggestedWorkspaceId(root);
-  const id = await prompts.text("Workspace id", suggestedId, (value) => /^[a-z][a-z0-9_-]*$/.test(value) ? undefined : "Use lowercase letters, numbers, _ or -; start with a letter");
-  const displayName = await prompts.text("Display name", id);
+  const suggestedName = path.basename(root) || suggestedWorkspaceId(root);
+  const displayName = await prompts.text("Display name", suggestedName);
   const profile = await prompts.choose("Access profile", [
     { value: "read-only", label: "Read only" },
     { value: "editor", label: "Editor" },
     { value: "coding", label: "Coding" },
   ]) as WorkspaceProfile;
-  return workspaceConfigFromAnswers({ root, id, displayName, profile });
+  return workspaceConfigFromAnswers({ root, displayName, profile });
 }
 
 async function defaultPortAvailable(port: number): Promise<boolean> {

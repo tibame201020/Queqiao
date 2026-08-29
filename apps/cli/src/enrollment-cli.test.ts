@@ -263,7 +263,10 @@ describe("role setup CLI", () => {
     expect(after.worker?.workerId).toBe(before.worker?.workerId);
     expect(after.worker?.tokenFile).toBe(before.worker?.tokenFile);
     expect(after.worker?.listen.port).toBe(8076);
-    expect(after.workspaces.map((workspace) => workspace.id)).toEqual(["repaired-workspace"]);
+    expect(after.workspaces).toHaveLength(1);
+    expect(after.workspaces[0]?.root).toBe(await realpath(root));
+    expect(after.workspaces[0]?.displayName).toBe("repaired-workspace");
+    expect(after.workspaces[0]?.id).not.toBe("repaired-workspace");
   });
 });
 describe("worker join CLI transaction", () => {

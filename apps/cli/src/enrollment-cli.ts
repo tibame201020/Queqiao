@@ -5,7 +5,8 @@ import path from "node:path";
 import { cancel, intro, isCancel, outro, password, text } from "@clack/prompts";
 import { runtimeConfigSchema, readRuntimeConfig, readRuntimeConfigForRepair, workspaceConfigSchema, type RuntimeConfig, type WorkspaceConfig } from "@queqiao/config";
 import { AtomicConfigStore } from "./atomic-config-store.js";
-import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
+import { resolveWorkspaceAuthorityRoot, workspaceRootsEqual } from "./workspace-authority.js";
+import { uniqueWorkspaceId } from "./workspace-cli.js";
 import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-paths.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
@@ -459,9 +460,20 @@ export async function setupWorker(configFile: string, args: string[], secretsDir
   if (portError) throw new Error(portError);
   const port = Number(portValue);
 
-  const parsedInitialWorkspace = options.initialWorkspace ? workspaceConfigSchema.parse(options.initialWorkspace) : undefined;
-  const initialWorkspace = parsedInitialWorkspace ? workspaceConfigSchema.parse({ ...parsedInitialWorkspace, root: await resolveWorkspaceAuthorityRoot(parsedInitialWorkspace.root) }) : undefined;
   const currentWorkspaces = Array.isArray(current.workspaces) ? current.workspaces : [];
+  const parsedInitialWorkspace = options.initialWorkspace ? workspaceConfigSchema.parse(options.initialWorkspace) : undefined;
+  let initialWorkspace: WorkspaceConfig | undefined;
+  if (parsedInitialWorkspace) {
+    const root = await resolveWorkspaceAuthorityRoot(parsedInitialWorkspace.root);
+    if (currentWorkspaces.some((entry: WorkspaceConfig) => workspaceRootsEqual(entry.root, root))) {
+      throw new Error(`Workspace path is already authorized: ${root}`);
+    }
+    initialWorkspace = workspaceConfigSchema.parse({
+      ...parsedInitialWorkspace,
+      id: uniqueWorkspaceId(root, currentWorkspaces.map((entry: WorkspaceConfig) => entry.id)),
+      root,
+    });
+  }
 
   if (existingWorker) {
     let workspaces = currentWorkspaces;

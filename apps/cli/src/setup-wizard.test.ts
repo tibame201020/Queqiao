@@ -45,11 +45,13 @@ describe("role setup wizard", () => {
     const env = fixtureEnv(root);
     const calls: string[] = [];
 
+    const workspaceRoot = path.join(root, "project");
+    await mkdir(workspaceRoot);
     let setupOptions: any;
     const result = await runRoleSetupWizard("worker", ["worker", "setup"], {
       env,
       platform: process.platform,
-      prompts: prompts(["__create__", "windows", "7576", root, "project", "Project", "read-only"]),
+      prompts: prompts(["__create__", "windows", "7576", workspaceRoot, "Project", "read-only"]),
       portAvailable: async () => true,
       setupWorker: async (_config, _args, _secrets, _prompt, options) => { calls.push("windows"); setupOptions = options; return { mode: "create" }; },
     });
@@ -65,11 +67,13 @@ describe("role setup wizard", () => {
     const layout = resolveRuntimeLayoutForNamedRole("worker", "wins-worker", env, process.platform);
     await mkdir(path.dirname(layout.configFile), { recursive: true });
     await writeFile(layout.configFile, `version: 1\nworker:\n  workerId: 11111111-1111-4111-8111-111111111111\n  environmentId: windows\n  listen:\n    host: 127.0.0.1\n    port: 8076\n  tokenFile: ${JSON.stringify(path.join(root, "worker.secret"))}\nworkspaces: []\n`, "utf8");
+    const workspaceRoot = path.join(root, "codes");
+    await mkdir(workspaceRoot);
     let setupOptions: any;
     const result = await runRoleSetupWizard("worker", ["worker", "setup"], {
       env,
       platform: process.platform,
-      prompts: prompts(["wins-worker", "8076", root, "codes", "Codes", "read-only"]),
+      prompts: prompts(["wins-worker", "8076", workspaceRoot, "Codes", "read-only"]),
       portAvailable: async () => true,
       setupWorker: async (_config, _args, _secrets, _prompt, options) => { setupOptions = options; return { mode: "edit", workerId: "11111111-1111-4111-8111-111111111111" }; },
     });
