@@ -16,6 +16,25 @@ npm install --global @tibame201020/queqiao
 queqiao --version
 ```
 
+## Shell tab completion
+
+Queqiao can generate native completion for PowerShell, Bash, and Zsh directly from the same
+canonical command contract used by the CLI parser:
+
+```powershell
+queqiao.cmd completion powershell | Out-String | Invoke-Expression
+```
+
+```bash
+eval "$(queqiao completion bash)"
+```
+
+```zsh
+eval "$(queqiao completion zsh)"
+```
+
+Put the matching line in your shell profile. v0.8.4 completes the command hierarchy and documented
+flags; runtime values such as named Gateways and Workers remain normal shell input.
 ## Mental model
 
 - **Gateway** is the public control plane. It owns the MCP endpoint, OAuth, routing, and Worker membership.

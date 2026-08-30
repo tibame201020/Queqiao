@@ -15,6 +15,33 @@ queqiao -v
 `--json` selects machine-readable output where a command supports it. `version --json` and
 `--version --json` return `{ "schemaVersion": "1.0", "version": "..." }`.
 
+## Shell completion
+
+```text
+queqiao completion bash
+queqiao completion zsh
+queqiao completion powershell
+```
+
+Each command prints a native shell adapter generated from `CLI_LEAF_CONTRACTS`, so the
+completion hierarchy and flags are validated against the same canonical parser contract as the
+CLI. Typical profile setup:
+
+```powershell
+queqiao.cmd completion powershell | Out-String | Invoke-Expression
+```
+
+```bash
+eval "$(queqiao completion bash)"
+```
+
+```zsh
+eval "$(queqiao completion zsh)"
+```
+
+v0.8.4 provides static command and flag completion. Value completion for runtime entities such
+as `--gateway`, `--worker`, Workspace ids, and Extension ids is intentionally not queried from
+the runtime by the completion adapter.
 ## Gateway
 
 ```text

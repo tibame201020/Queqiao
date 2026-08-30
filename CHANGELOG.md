@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.4 - 2026-08-30
+
+Shell completion usability release.
+
+### Highlights
+
+- Adds `queqiao completion bash`, `queqiao completion zsh`, and `queqiao completion powershell`.
+- Generates command hierarchy and flag completion directly from `CLI_LEAF_CONTRACTS`, avoiding a second hand-maintained CLI definition.
+- Supports native PowerShell, Bash, and Zsh adapters with profile-friendly setup commands.
+- Keeps completion side-effect free: v0.8.4 does not query Gateway, Worker, Workspace, or Extension runtime state while completing values.
+- Adds packaged acceptance plus canonical-contract coverage so every public CLI leaf remains represented in completion.
 ## 0.8.3 - 2026-08-30
 
 Gateway connector handoff and onboarding patch.

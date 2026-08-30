@@ -64,6 +64,7 @@ const terminal: CommandNode = { terminal: true };
 export const COMMAND_TREE: CommandNode = {
   children: {
     version: terminal,
+    completion: terminal,
     gateway: {
       children: {
         list: terminal,
@@ -129,7 +130,7 @@ export type CliHandlerKey =
   | "gateway-info" | "gateway-join-token" | "membership-list" | "membership-update" | "membership-remove" | "worker-port" | "worker-join"
   | "workspace-add" | "workspace-list" | "workspace-remove" | "workspace-profile-set" | "workspace-tool-policy" | "workspace-command-policy" | "workspace-permissions-show"
   | "extension-install" | "extension-attach" | "extension-detach" | "extension-uninstall" | "extension-list" | "extension-show" | "extension-doctor"
-  | "version" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
+  | "version" | "completion" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
 
 type CliLeafContract = {
   route: string;
@@ -137,11 +138,13 @@ type CliLeafContract = {
   options: readonly string[];
   valueOptions?: readonly string[];
   positionals?: number;
+  positionalValues?: readonly string[];
 };
 
 /** Public parser contract. Keep handler-only compatibility flags explicit here. */
 export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "version", handler: "version", options: [] },
+  { route: "completion", handler: "completion", options: [], positionals: 1, positionalValues: ["bash", "zsh", "powershell"] },
   { route: "gateway list", handler: "list-role-instances", options: [] },
   { route: "gateway setup", handler: "role-setup", options: [] },
   { route: "gateway remove", handler: "role-remove", options: ["gateway"], valueOptions: ["gateway"] },
@@ -357,6 +360,7 @@ const ROOT_HELP = `Usage: queqiao <command> [options]
 
 Commands:
   version      Print the installed Queqiao version
+  completion   Print shell tab-completion setup
   gateway      Manage a Queqiao Gateway
   worker       Manage a Queqiao Worker
   extension    Manage Queqiao extensions
@@ -383,6 +387,15 @@ Commands:
   workers list
   workers update
   workers remove`;
+
+const COMPLETION_HELP = `Usage: queqiao completion <bash|zsh|powershell>
+
+Prints a shell completion script generated from the canonical Queqiao CLI contract.
+
+Examples:
+  Bash:       eval "$(queqiao completion bash)"
+  Zsh:        eval "$(queqiao completion zsh)"
+  PowerShell: queqiao.cmd completion powershell | Out-String | Invoke-Expression`;
 
 const GATEWAY_INFO_HELP = `Usage: queqiao gateway info [--gateway <gateway>] [--detail] [--copy-url|--copy-secret] [--json]
 
@@ -520,6 +533,7 @@ export function renderCliHelp(input: readonly string[]): string {
   const args = input.filter((arg) => arg !== "--help" && arg !== "-h");
   const [domain, action] = args;
   if (!domain) return ROOT_HELP;
+  if (domain === "completion") return COMPLETION_HELP;
   if (domain === "gateway") {
     if (action === "info") return GATEWAY_INFO_HELP;
     if (action === "join-token") return GATEWAY_JOIN_TOKEN_HELP;
