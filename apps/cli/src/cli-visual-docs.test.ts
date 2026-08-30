@@ -44,6 +44,23 @@ describe("CLI visual documentation", () => {
     expect(readme).not.toContain("## Project status");
   });
 
+  it("keeps English and Traditional Chinese READMEs aligned on canonical CLI usage", async () => {
+    const english = await readFile(path.join(repoRoot, "README.md"), "utf8");
+    const traditionalChinese = await readFile(path.join(repoRoot, "README.zh-TW.md"), "utf8");
+    expect(english).toContain("README.zh-TW.md");
+    expect(traditionalChinese).toContain("README.md");
+    expect(traditionalChinese).toContain("繁體中文");
+    for (const readme of [english, traditionalChinese]) {
+      expect(readme).toContain("queqiao completion powershell | Out-String | Invoke-Expression");
+      expect(readme).toContain('eval "$(queqiao completion bash)"');
+      expect(readme).not.toContain("queqiao.cmd");
+      for (const command of onboardingCommands) expect(readme).toContain(command);
+      for (const asset of interactiveAssets) expect(readme).toContain(`${repoRawBase}${asset}`);
+    }
+    const packageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
+    expect(packageJson.files).toContain("README.zh-TW.md");
+  });
+
   it("keeps every onboarding step copyable and in the same interactive visual series", async () => {
     const readme = await readFile(path.join(repoRoot, "README.md"), "utf8");
     for (const asset of interactiveAssets) {

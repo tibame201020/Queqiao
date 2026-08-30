@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.5 - 2026-08-30
+
+README localization and cross-platform command documentation patch.
+
+### Highlights
+
+- Documents `queqiao` as the canonical executable across Windows, WSL, Linux, and macOS instead of exposing the Windows-only `.cmd` shim.
+- Adds a full Traditional Chinese README with an English / Traditional Chinese language switch while preserving the same onboarding commands and real PTY visuals.
+- Includes `README.zh-TW.md` in the published npm package and adds regression coverage that prevents the two README variants from drifting.
+
 ## 0.8.4 - 2026-08-30
 
 Shell completion usability release.

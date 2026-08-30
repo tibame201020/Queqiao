@@ -1,6 +1,6 @@
 {
   "name": "@tibame201020/queqiao",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "private": false,
   "type": "module",
   "exports": {
@@ -87,6 +87,7 @@
   "files": [
     "dist/",
     "README.md",
+    "README.zh-TW.md",
     "CHANGELOG.md",
     "LICENSE",
     "config.example.yaml",
