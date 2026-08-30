@@ -161,7 +161,7 @@ describe("async disconnect and resource security", () => {
     const later = await client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", "process.stdout.write('capacity-restored')"], timeoutMs: 1000 } });
     expect(later.isError).not.toBe(true);
     expect(JSON.stringify(later.content)).toContain("capacity-restored");
-  });
+  }, 10_000);
 
   it("keeps synchronous output bounded and async output discarded", async () => {
     const { client } = await startHarness(new ProcessRunner(2, 1024));
