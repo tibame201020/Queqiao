@@ -7,11 +7,6 @@ type LeafContract = (typeof CLI_LEAF_CONTRACTS)[number];
 const REQUIRED_SAMPLE_ARGS: Readonly<Record<string, readonly string[]>> = {
   "gateway workers update": ["--worker-id", "worker-1", "--endpoint", "http://127.0.0.1:7576/"],
   "gateway workers remove": ["--worker-id", "worker-1"],
-  "worker workspace remove": ["--id", "workspace-1"],
-  "worker workspace tool allow": ["--workspace", "workspace-1", "--tool", "read_file"],
-  "worker workspace tool deny": ["--workspace", "workspace-1", "--tool", "read_file"],
-  "worker workspace command allow": ["--workspace", "workspace-1", "--command", "git"],
-  "worker workspace command deny": ["--workspace", "workspace-1", "--command", "git"],
 };
 
 function positionalSamples(contract: LeafContract): string[] {
@@ -36,11 +31,7 @@ describe("CLI hierarchy consolidation", () => {
     [["gateway", "workers", "remove", "--worker-id", "w1"], ["membership", "remove", "--worker-id", "w1"]],
     [["worker", "workspace", "add", "--worker", "windows"], ["workspace", "add", "--worker", "windows"]],
     [["worker", "workspace", "list", "--worker", "windows"], ["workspace", "list", "--worker", "windows"]],
-    [["worker", "workspace", "remove", "--worker", "windows", "--id", "codes"], ["workspace", "remove", "--worker", "windows", "--id", "codes"]],
-    [["worker", "workspace", "profile", "set", "--worker", "windows", "--workspace", "codes", "--profile", "coding"], ["profile", "set", "--worker", "windows", "--workspace", "codes", "--profile", "coding"]],
-    [["worker", "workspace", "tool", "allow", "--worker", "windows", "--workspace", "codes", "--tool", "shell"], ["tool", "allow", "--worker", "windows", "--workspace", "codes", "--tool", "shell"]],
-    [["worker", "workspace", "command", "allow", "--worker", "windows", "--workspace", "codes", "--command", "git"], ["command", "allow", "--worker", "windows", "--workspace", "codes", "--command", "git"]],
-    [["worker", "workspace", "permissions", "show", "--worker", "windows"], ["permissions", "show", "--worker", "windows"]],
+    [["worker", "workspace", "remove", "--worker", "windows", "--workspace", "codes"], ["workspace", "remove", "--worker", "windows", "--workspace", "codes"]],
     [["doctor", "extension"], ["extension", "doctor"]],
     [["doctor", "manifest", "show"], ["manifest", "show"]],
     [["doctor", "tool", "explain", "shell"], ["tool", "explain", "shell"]],
@@ -54,12 +45,16 @@ describe("CLI hierarchy consolidation", () => {
     [["workspace", "add"], "queqiao worker workspace add"],
     [["workspace", "list"], "queqiao worker workspace list"],
     [["workspace", "remove"], "queqiao worker workspace remove"],
-    [["profile", "set"], "queqiao worker workspace profile set"],
-    [["tool", "allow"], "queqiao worker workspace tool allow"],
-    [["tool", "deny"], "queqiao worker workspace tool deny"],
-    [["command", "allow"], "queqiao worker workspace command allow"],
-    [["command", "deny"], "queqiao worker workspace command deny"],
-    [["permissions", "show"], "queqiao worker workspace permissions show"],
+    [["profile", "set"], "queqiao worker workspace"],
+    [["worker", "workspace", "profile", "set"], "queqiao worker workspace"],
+    [["tool", "allow"], "queqiao worker workspace"],
+    [["worker", "workspace", "tool", "allow"], "queqiao worker workspace"],
+    [["tool", "deny"], "queqiao worker workspace"],
+    [["command", "allow"], "queqiao worker workspace"],
+    [["worker", "workspace", "command", "allow"], "queqiao worker workspace"],
+    [["command", "deny"], "queqiao worker workspace"],
+    [["permissions", "show"], "queqiao worker workspace"],
+    [["worker", "workspace", "permissions", "show"], "queqiao worker workspace"],
     [["extension", "doctor"], "queqiao doctor extension"],
     [["manifest", "show"], "queqiao doctor manifest show --gateway <name>"],
     [["tool", "explain"], "queqiao doctor tool explain <tool> --gateway <name>"],
@@ -120,12 +115,12 @@ describe("CLI hierarchy consolidation", () => {
     expect(renderCliHelp(["gateway", "workers", "--help"])).toContain("\n  list\n");
     expect(renderCliHelp(["gateway", "workers", "--help"])).not.toContain("gateway workers list");
     expect(renderCliHelp(["worker", "--help"])).toContain("\n  remove\n");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("\n  add [--worker <worker>]");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("profile set [--worker <worker>] [--workspace <id>] [--profile read-only|editor|coding]");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("list [--worker <worker>]");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("tool allow|deny [--worker <worker>] --workspace <id> --tool <tool>");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("interactively applies an Access Profile");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).not.toContain("worker workspace add");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("opens Workspace Management");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("add [--worker <worker>]");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("info [--worker <worker>] [--workspace <id>]");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("profiles rename [--profile <name>] [--to <name>]");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("templates");
+    expect(renderCliHelp(["worker", "workspace", "--help"])).not.toContain("tool allow|deny");
     expect(renderCliHelp(["extension", "--help"])).toContain("\n  install <npm:package|local-path>");
     expect(renderCliHelp(["extension", "--help"])).not.toContain("extension install");
     expect(renderCliHelp(["doctor", "--help"])).toContain("\n  extension\n");
@@ -140,7 +135,7 @@ describe("CLI hierarchy consolidation", () => {
     [["gateway"], true],
     [["gateway", "workers"], true],
     [["worker"], true],
-    [["worker", "workspace"], true],
+    [["worker", "workspace"], false],
     [["extension"], true],
     [["gateway", "status"], false],
     [["doctor"], false],
@@ -149,7 +144,7 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it("freezes every public leaf in one parser contract", () => {
-    expect(CLI_LEAF_CONTRACTS).toHaveLength(44);
+    expect(CLI_LEAF_CONTRACTS).toHaveLength(47);
     expect(new Set(CLI_LEAF_CONTRACTS.map(({ route }) => route)).size).toBe(CLI_LEAF_CONTRACTS.length);
     expect(CLI_LEAF_CONTRACTS.map(({ route }) => route).sort()).toEqual(listCanonicalCliRoutes());
   });
@@ -205,6 +200,20 @@ describe("CLI hierarchy consolidation", () => {
 
   it("accepts global flags and documented leaf arguments", () => {
     expect(() => validateCliArgs(["--json", "gateway", "workers", "update", "--gateway", "stable", "--worker-id", "w1", "--endpoint", "http://127.0.0.1:7576/"])).not.toThrow();
+  });
+
+  it("renders Workspace manager help at the group and precise help for deep leaves", () => {
+    const managerHelp = renderCliHelp(["worker", "workspace", "--help"]);
+    expect(managerHelp).toContain("opens Workspace Management");
+    expect(managerHelp).toContain("profiles create");
+    const createHelp = renderCliHelp(["worker", "workspace", "profiles", "create", "--help"]);
+    expect(createHelp).toContain("Usage: queqiao worker workspace profiles create");
+    expect(createHelp).toContain("[--name <name>]");
+    expect(createHelp).toContain("[--tools <csv>]");
+    expect(createHelp).not.toContain("opens Workspace Management");
+  });
+  it("keeps --name available for Access Profile creation", () => {
+    expect(renderRemovedSelectorError(["worker", "workspace", "profiles", "create", "--name", "coding-safe"])).toBeUndefined();
   });
 
   it.each([

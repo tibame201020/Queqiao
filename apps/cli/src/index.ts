@@ -15,7 +15,8 @@ import { removeRoleInstance } from "./role-remove.js";
 import { uninstallQueqiao } from "./uninstall-cli.js";
 import { doctorPaths, doctorQueqiao } from "./doctor.js";
 import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
-import { addWorkspace, removeWorkspace, setWorkspaceAccess, updateWorkspaceCommandPolicy, updateWorkspaceToolPolicy } from "./workspace-cli.js";
+import { addWorkspace, removeWorkspace } from "./workspace-cli.js";
+import { createAccessProfile, deleteAccessProfile, editAccessProfile, editManagedWorkspace, getAccessProfileInfo, getManagedWorkspaceInfo, listAccessProfiles, listManagedWorkspaces, renameAccessProfile, runWorkspaceManager } from "./workspace-management.js";
 import { attachExtension, detachExtension, doctorExtensionHub, installExtension, listExtensions, resolveInstalledExtensionId, showExtension, uninstallExtension } from "./extension-cli.js";
 import { formatCliOutput } from "./cli-output.js";
 import { createQueqiaoTheme, shouldUseCliColor, styleCliHelpText } from "./tui-theme.js";
@@ -114,6 +115,14 @@ async function main() {
   if (dispatch?.handler === "doctor") return print(await doctorQueqiao());
   if (dispatch?.handler === "doctor-paths") return print(doctorPaths());
 
+  if (dispatch?.handler === "workspace-manager") return print(await runWorkspaceManager(args));
+  if (dispatch?.handler === "workspace-profiles-list") return print(await listAccessProfiles());
+  if (dispatch?.handler === "workspace-profiles-info") return print(await getAccessProfileInfo(args));
+  if (dispatch?.handler === "workspace-profiles-create") return print(await createAccessProfile(args));
+  if (dispatch?.handler === "workspace-profiles-edit") return print(await editAccessProfile(args));
+  if (dispatch?.handler === "workspace-profiles-rename") return print(await renameAccessProfile(args));
+  if (dispatch?.handler === "workspace-profiles-delete") return print(await deleteAccessProfile(args));
+
   const layout = resolveCommandLayout(args);
   const configFile = path.resolve(layout.configFile);
   const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
@@ -130,19 +139,13 @@ async function main() {
   if (dispatch?.handler === "membership-list") return print(await listJoinedWorkers(configFile));
   if (dispatch?.handler === "membership-update") return print(await updateJoinedWorkerTransport(configFile, requiredOption(args, "worker-id"), requiredOption(args, "endpoint")));
   if (dispatch?.handler === "membership-remove") return print(await removeJoinedWorker(configFile, requiredOption(args, "worker-id")));
-  if (dispatch?.handler === "workspace-list") { requiredOption(args, "worker"); return print({ ...(await configStore.metadata()), workspaces: (await configStore.read()).workspaces }); }
+  if (dispatch?.handler === "workspace-list") return print(await listManagedWorkspaces(configFile));
   if (dispatch?.handler === "workspace-add") { requiredOption(args, "worker"); return print(await addWorkspace(configFile, args)); }
+  if (dispatch?.handler === "workspace-info") return print(await getManagedWorkspaceInfo(configFile, args));
+  if (dispatch?.handler === "workspace-edit") return print(await editManagedWorkspace(configFile, args));
   if (dispatch?.handler === "workspace-remove") {
-    const id = requiredOption(args, "id"); const workerName = requiredOption(args, "worker");
-    return print(await removeWorkspace(configFile, workerName, id));
-  }
-  if (dispatch?.handler === "workspace-profile-set") return print(await setWorkspaceAccess(configFile, args));
-  if (dispatch?.handler === "workspace-tool-policy") return print(await updateWorkspaceToolPolicy(configFile, args));
-  if (dispatch?.handler === "workspace-command-policy") return print(await updateWorkspaceCommandPolicy(configFile, args));
-  if (dispatch?.handler === "workspace-permissions-show") {
-    const config = await configStore.read(); const id = option(args, "workspace"); const selected = id ? config.workspaces.filter((entry) => entry.id === id) : config.workspaces; if (id && !selected.length) throw new Error(`Workspace not found: ${id}`);
-    const state = operations(config);
-    return print({ version: "1.0", manifestRevision: state.coreManifestRevision, deploymentManifestFingerprint: state.deploymentManifestFingerprint, oauthScopes: ["queqiao:access"], publicTools: state.tools.filter((tool) => tool.visibility === "public").map((tool) => tool.name), workspaces: selected.map(({ root: _root, ...entry }) => entry), note: "OAuth authenticates the connector only. Workspace policy remains Worker-authoritative." });
+    const id = option(args, "workspace") || (await getManagedWorkspaceInfo(configFile, args) as any).workspace.id;
+    return print(await removeWorkspace(configFile, requiredOption(args, "worker"), id));
   }
   if (dispatch?.handler === "manifest-show") {
     const config = await configStore.read(); const state = operations(config);

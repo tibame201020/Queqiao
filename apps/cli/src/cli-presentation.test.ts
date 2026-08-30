@@ -233,6 +233,52 @@ describe("CLI presentation", () => {
     expect(output).not.toContain("owner-secret");
   });
 
+  it("renders Workspace inventory as a user-facing management view", () => {
+    const output = formatCliOutput(["worker", "workspace", "list", "--worker", "windows"], {
+      schemaVersion: "1.0",
+      workspaces: [{
+        id: "queqiao",
+        displayName: "Queqiao",
+        root: "C:/work/Queqiao",
+        access: { mode: "explicit", capabilityCeiling: "coding", tools: ["read_file", "edit_file"], explicitTools: [], deniedTools: [], allowedExecutables: [] },
+      }],
+    });
+    expect(output).toContain("Workspaces");
+    expect(output).toContain("Queqiao");
+    expect(output).toContain("Root: C:/work/Queqiao");
+    expect(output).toContain("Access: Explicit tools");
+    expect(output).not.toContain("schemaVersion");
+  });
+
+  it("renders Workspace info around root and access rather than raw policy JSON", () => {
+    const output = formatCliOutput(["worker", "workspace", "info", "--worker", "windows", "--workspace", "queqiao"], {
+      schemaVersion: "1.0",
+      workspace: {
+        id: "queqiao",
+        displayName: "Queqiao",
+        root: "C:/work/Queqiao",
+        access: { mode: "explicit", capabilityCeiling: "coding", tools: ["read_file", "edit_file", "run"], explicitTools: [], deniedTools: [], allowedExecutables: ["git", "npm"] },
+      },
+    });
+    expect(output).toContain("Workspace Queqiao");
+    expect(output).toContain("Access");
+    expect(output).toContain("Tools: read_file, edit_file, run");
+    expect(output).toContain("Allowed executables: git, npm");
+  });
+
+  it("renders Access Profiles with built-in/custom identity and detached-template semantics", () => {
+    const output = formatCliOutput(["worker", "workspace", "profiles", "list"], {
+      schemaVersion: "1.0",
+      profiles: [
+        { name: "Reader", builtin: true, tools: ["read_file"], allowedExecutables: [] },
+        { name: "coding-safe", builtin: false, tools: ["read_file", "run"], allowedExecutables: ["git"] },
+      ],
+    });
+    expect(output).toContain("Access Profiles");
+    expect(output).toContain("Reader  Built-in");
+    expect(output).toContain("coding-safe  Custom");
+    expect(output).toContain("not live-linked");
+  });
   it("preserves structured output behind --json", () => {
     const value = { name: "stable", role: "gateway", active: false };
     expect(formatCliOutput(["gateway", "status", "--gateway", "stable", "--json"], value)).toBe(JSON.stringify(value, null, 2));

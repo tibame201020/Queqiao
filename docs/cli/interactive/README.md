@@ -39,35 +39,47 @@ queqiao worker setup
 The recording enters `Custom` Access, navigates the Tools multiselect, enables `run`, and
 supplies an executable allowlist.
 
-## 4. Named-instance selector
+## 4. Workspace Management
 
-![Interactive named Gateway selector](../../assets/cli/interactive/04-instance-selector.gif)
+![Interactive Workspace Management](../../assets/cli/interactive/04-workspace-management.gif)
+
+```shell
+queqiao worker workspace
+```
+
+The recording exercises both top-level branches: Worker-owned Workspaces and reusable Access
+Profiles. It selects a named Worker only after choosing Workspaces, while Access Profiles remain
+global templates.
+
+## 5. Named-instance selector
+
+![Interactive named Gateway selector](../../assets/cli/interactive/05-instance-selector.gif)
 
 ```shell
 queqiao gateway status
 ```
 
-## 5. Extension attachment
+## 6. Extension attachment
 
-![Interactive Extension attachment](../../assets/cli/interactive/05-extension-attach.gif)
+![Interactive Extension attachment](../../assets/cli/interactive/06-extension-attach.gif)
 
 ```shell
 queqiao extension install <npm:package|local-path>
 queqiao extension attach
 ```
 
-## 6A. Start runtimes
+## 7A. Start runtimes
 
-![Interactive runtime startup](../../assets/cli/interactive/06-runtime-start.gif)
+![Interactive runtime startup](../../assets/cli/interactive/07-runtime-start.gif)
 
 ```shell
 queqiao worker serve --worker <worker> --bg
 queqiao gateway serve --gateway <gateway> --bg
 ```
 
-## 6B. Enroll the Worker
+## 7B. Enroll the Worker
 
-![Interactive Worker enrollment](../../assets/cli/interactive/07-worker-enrollment.gif)
+![Interactive Worker enrollment](../../assets/cli/interactive/08-worker-enrollment.gif)
 
 ```shell
 queqiao gateway join-token --gateway <gateway>

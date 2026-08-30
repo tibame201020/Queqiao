@@ -162,7 +162,7 @@ def help_error_frame(error: bool) -> Image.Image:
         text(draw, 36, 132, "Commands:", CYAN, strong=True)
         text(draw, 72, 180, "add [--worker <worker>] [--root <dir>] [--display-name <name>]", TEXT)
         text(draw, 72, 218, "list [--worker <worker>]", TEXT)
-        text(draw, 72, 256, "profile set [--worker <worker>] [--workspace <id>]", TEXT)
+        text(draw, 72, 256, "workspace edit [--worker <worker>] [--workspace <id>]", TEXT)
     else:
         text(draw, 36, 84, f"{GLYPHS['danger']} --worker is required outside an interactive terminal.", RED, strong=True)
         text(draw, 72, 140, 'Run "queqiao worker list".', MUTED)

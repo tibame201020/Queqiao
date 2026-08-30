@@ -20,11 +20,11 @@ queqiao worker workspace list --worker demo-worker
 
 ![Queqiao Workspace authority](../../assets/cli/flows/02-workspace-authority.gif)
 
-A scriptable Workspace can be added with an explicit authority ceiling, then inspected through the Worker-owned permission projection:
+A scriptable Workspace can apply an Access Profile, then be inspected through the Worker-owned Workspace detail view:
 
 ```text
-queqiao worker workspace add --worker demo-worker --root <path> --display-name "Demo App" --profile coding
-queqiao worker workspace permissions show --worker demo-worker --workspace workspace-two
+queqiao worker workspace add --worker demo-worker --root <path> --display-name "Demo App" --access-profile Editor
+queqiao worker workspace info --worker demo-worker --workspace workspace-two
 ```
 
 Interactive Workspace setup starts from the higher-level Access Profile UX (`Reader`, `Editor`, saved profiles, or `Custom`). See [CLI components](../components/README.md) for the select/multiselect/input interaction grammar.

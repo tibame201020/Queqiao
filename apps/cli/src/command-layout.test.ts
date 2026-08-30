@@ -3,27 +3,20 @@ import { resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
 import { assertCommandOwnership, resolveCommandLayout } from "./command-layout.js";
 
 describe("CLI ownership layout", () => {
-  it("routes Worker-owned Workspace and policy commands to the named Worker config", () => {
+  it("routes every Worker-owned Workspace CRUD command to the named Worker config", () => {
     const expected = resolveRuntimeLayoutForNamedRole("worker", "windows").configFile;
-    expect(resolveCommandLayout(["workspace", "list", "--worker", "windows"]).configFile).toBe(expected);
-    expect(resolveCommandLayout(["profile", "set", "--worker", "windows"]).configFile).toBe(expected);
-    expect(resolveCommandLayout(["tool", "allow", "--worker", "windows"]).configFile).toBe(expected);
-    expect(resolveCommandLayout(["command", "allow", "--worker", "windows"]).configFile).toBe(expected);
-    expect(resolveCommandLayout(["permissions", "show", "--worker", "windows"]).configFile).toBe(expected);
+    for (const action of ["add", "list", "info", "edit", "remove"]) {
+      expect(resolveCommandLayout(["workspace", action, "--worker", "windows"]).configFile).toBe(expected);
+    }
   });
 
-  it.each([
-    ["workspace", "add"],
-    ["workspace", "list"],
-    ["workspace", "remove"],
-    ["profile", "set"],
-    ["tool", "allow"],
-    ["tool", "deny"],
-    ["command", "allow"],
-    ["command", "deny"],
-    ["permissions", "show"],
-  ])("rejects Worker-owned route %s %s without a named Worker", (domain, action) => {
-    expect(() => assertCommandOwnership([domain, action])).toThrow(/--worker is required/);
+  it.each(["add", "list", "info", "edit", "remove"])("rejects Worker-owned Workspace %s without a named Worker", (action) => {
+    expect(() => assertCommandOwnership(["workspace", action])).toThrow(/--worker is required/);
+  });
+
+  it("keeps Access Profile storage global instead of pretending profiles belong to a Worker", () => {
+    expect(() => assertCommandOwnership(["profiles", "list"])).not.toThrow();
+    expect(() => assertCommandOwnership(["profiles", "edit", "--profile", "safe"])).not.toThrow();
   });
 
   it("requires an explicit named role for enrollment commands", () => {

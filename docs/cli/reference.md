@@ -28,7 +28,7 @@ completion hierarchy and flags are validated against the same canonical parser c
 CLI. Typical profile setup:
 
 ```powershell
-queqiao.cmd completion powershell | Out-String | Invoke-Expression
+queqiao completion powershell | Out-String | Invoke-Expression
 ```
 
 ```bash
@@ -39,8 +39,8 @@ eval "$(queqiao completion bash)"
 eval "$(queqiao completion zsh)"
 ```
 
-v0.8.4 provides static command and flag completion. Value completion for runtime entities such
-as `--gateway`, `--worker`, Workspace ids, and Extension ids is intentionally not queried from
+Completion provides the canonical command and flag hierarchy. Value completion for runtime entities
+such as `--gateway`, `--worker`, Workspace ids, and Extension ids is intentionally not queried from
 the runtime by the completion adapter.
 ## Gateway
 
@@ -72,17 +72,34 @@ queqiao worker status [--worker <worker>]
 queqiao worker remove [--worker <worker>]
 queqiao worker join [--worker <worker>] [--join-code <code>]
 
-queqiao worker workspace add [--worker <worker>] [--root <path>] [--display-name <name>] [--profile <profile>]
+queqiao worker workspace
+queqiao worker workspace add [--worker <worker>] [--root <path>] [--display-name <name>] [--access-profile <name>]
 queqiao worker workspace list [--worker <worker>]
-queqiao worker workspace remove [--worker <worker>] --id <id>
-queqiao worker workspace profile set [--worker <worker>] [--workspace <id>] [--profile read-only|editor|coding]
-queqiao worker workspace tool allow|deny [--worker <worker>] --workspace <id> --tool <tool>
-queqiao worker workspace command allow|deny [--worker <worker>] --workspace <id> --command <executable>
-queqiao worker workspace permissions show [--worker <worker>] [--workspace <id>]
+queqiao worker workspace info [--worker <worker>] [--workspace <id>]
+queqiao worker workspace edit [--worker <worker>] [--workspace <id>] [--root <path>] [--display-name <name>] [--access-profile <name>]
+queqiao worker workspace remove [--worker <worker>] [--workspace <id>]
+
+queqiao worker workspace profiles list
+queqiao worker workspace profiles info [--profile <name>]
+queqiao worker workspace profiles create [--name <name>] [--tools <csv>] [--commands <csv>]
+queqiao worker workspace profiles edit [--profile <name>] [--tools <csv>] [--commands <csv>]
+queqiao worker workspace profiles rename [--profile <name>] [--to <name>]
+queqiao worker workspace profiles delete [--profile <name>] [--force]
 ```
 
-Interactive `worker setup`, `worker workspace add`, and interactive Workspace access updates
-share the same Access Profile flow. See [Workspace authority](../workspace-authority.md).
+Running `queqiao worker workspace` in a TTY opens Workspace Management. Choose **Workspaces** to
+select a Worker and manage its authorized roots, or choose **Access profiles** to manage reusable
+Tools ? executable-allowlist templates. `Reader` and `Editor` are built-in immutable profiles.
+
+Access Profiles are templates, not live links. Applying one copies its policy into a Workspace.
+Subsequent profile edit, rename, or delete operations report zero affected Workspaces and do not
+mutate existing Workspace authority. `workspace edit --access-profile <name>` explicitly reapplies
+a profile when that is desired.
+
+Workspace ids remain implementation-managed. Interactive management identifies Workspaces by
+display name and root; automation may pass the id returned by `workspace list` or `workspace info`.
+Exact canonical duplicate roots are rejected while nested roots remain valid for narrower policies.
+A configured Worker must retain at least one Workspace. See [Workspace authority](../workspace-authority.md).
 
 ## Extensions
 

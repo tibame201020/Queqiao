@@ -2,12 +2,11 @@ import path from "node:path";
 import { intro, isCancel, outro, cancel } from "@clack/prompts";
 import { workspacePath } from "./workspace-path-prompt.js";
 import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig, type WorkspaceConfig } from "@queqiao/config";
-import { toolNameSchema } from "@queqiao/contracts";
 import { AtomicConfigStore } from "./atomic-config-store.js";
-import { accessConfigurationToWorkspacePolicy } from "./access-configuration.js";
-import { collectAccessConfiguration, type AccessConfigurationPrompts } from "./access-configuration-flow.js";
+import { collectAccessConfiguration, resolveNamedAccessConfiguration, type AccessConfigurationPrompts } from "./access-configuration-flow.js";
 import { createAccessConfigurationPrompts } from "./access-configuration-prompts.js";
 import { AccessProfileStore, resolveAccessProfileFile } from "./access-profile-store.js";
+import { accessConfigurationToWorkspacePolicy } from "./access-configuration.js";
 import { resolveWorkspaceAuthorityRoot, workspaceRootsEqual } from "./workspace-authority.js";
 import { secureRuntimeFile } from "./secure-runtime-paths.js";
 
@@ -116,7 +115,8 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
   if (!current.worker) throw new Error("Worker setup is required before adding a Workspace");
 
   if (option(args, "id")) throw new Error("--id is no longer supported; Workspace IDs are generated automatically");
-  const scripted = option(args, "root") || option(args, "display-name") || option(args, "profile");
+  if (option(args, "profile")) throw new Error('--profile was removed from Workspace add; use --access-profile <name>.');
+  const scripted = option(args, "root") || option(args, "display-name") || option(args, "access-profile");
   let answers: WorkspaceAnswers;
   let interactivePolicy: Pick<WorkspaceConfig, "tools" | "commands"> | undefined;
 
@@ -125,7 +125,13 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
     if (!rootInput) throw new Error("--root is required when using non-interactive workspace options");
     const root = await resolveWorkspaceAuthorityRoot(rootInput);
     const displayName = option(args, "display-name") || path.basename(root) || suggestedWorkspaceId(root);
-    answers = { root, displayName, profile: parseWorkspaceProfile(option(args, "profile")) };
+    const configuration = await resolveNamedAccessConfiguration(
+      option(args, "access-profile") || "Reader",
+      new AccessProfileStore(resolveAccessProfileFile()),
+    );
+    const policy = accessConfigurationToWorkspacePolicy(configuration);
+    answers = { root, displayName, profile: policy.profile as WorkspaceProfile };
+    interactivePolicy = { tools: policy.tools, commands: policy.commands };
   } else if (prompt) {
     answers = await testPromptAnswers(prompt);
   } else {
@@ -162,146 +168,6 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
   if (!addedWorkspace) throw new Error("Workspace add did not produce a Workspace");
   if (!prompt && !scripted) outro(`Workspace added: ${addedWorkspace.displayName}`);
   return { added: true, workspace: next.workspaces.find((entry) => entry.id === addedWorkspace?.id) };
-}
-
-export type WorkspaceAccessDependencies = {
-  interactive?: boolean;
-  prompts?: AccessConfigurationPrompts;
-  profileStore?: Pick<AccessProfileStore, "list" | "save">;
-};
-
-export async function setWorkspaceAccess(
-  configFile: string,
-  args: string[],
-  dependencies: WorkspaceAccessDependencies = {},
-): Promise<unknown> {
-  const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
-  const requestedWorkspaceId = option(args, "workspace");
-  const requestedLegacyProfile = option(args, "profile");
-  const current = await store.read();
-
-  if (requestedLegacyProfile) {
-    if (!requestedWorkspaceId) throw new Error("--workspace is required when using --profile");
-    if (!current.workspaces.some((entry) => entry.id === requestedWorkspaceId)) throw new Error(`Workspace not found: ${requestedWorkspaceId}`);
-    const profile = parseWorkspaceProfile(requestedLegacyProfile);
-    await store.update((config) => runtimeConfigSchema.parse({
-      ...config,
-      workspaces: config.workspaces.map((entry) => entry.id === requestedWorkspaceId ? { ...entry, profile } : entry),
-    }));
-    await secureRuntimeFile(configFile);
-    return { changed: true, workspaceId: requestedWorkspaceId, profile, mode: "legacy-profile" };
-  }
-
-  const injected = Boolean(dependencies.prompts);
-  const interactive = dependencies.interactive ?? (injected || Boolean(process.stdin.isTTY && process.stdout.isTTY));
-  if (!interactive) {
-    throw new Error("Interactive Workspace access setup requires a terminal. Use --profile read-only|editor|coding for scripted capability-ceiling changes.");
-  }
-
-  if (!current.worker) throw new Error("Worker setup is required before changing Workspace access");
-  if (!injected) intro("Workspace Access");
-  const prompts = dependencies.prompts ?? createAccessConfigurationPrompts({ cancelMessage: "Workspace access setup cancelled" });
-  let workspaceId = requestedWorkspaceId;
-  if (workspaceId) {
-    if (!current.workspaces.some((entry) => entry.id === workspaceId)) throw new Error(`Workspace not found: ${workspaceId}`);
-  } else {
-    workspaceId = await prompts.choose("Workspace", current.workspaces.map((entry) => ({
-      value: entry.id,
-      label: entry.displayName,
-      description: entry.root,
-    })));
-  }
-
-  const profileStore = dependencies.profileStore ?? new AccessProfileStore(resolveAccessProfileFile());
-  const configuration = await collectAccessConfiguration(prompts, profileStore);
-  const policy = accessConfigurationToWorkspacePolicy(configuration);
-  let updated: WorkspaceConfig | undefined;
-  await store.update((config) => runtimeConfigSchema.parse({
-    ...config,
-    workspaces: config.workspaces.map((entry) => {
-      if (entry.id !== workspaceId) return entry;
-      updated = workspaceConfigSchema.parse({ ...entry, ...policy });
-      return updated;
-    }),
-  }));
-  if (!updated) throw new Error(`Workspace not found: ${workspaceId}`);
-  await secureRuntimeFile(configFile);
-  if (!injected) outro(`Workspace access updated: ${updated.displayName}`);
-  return {
-    changed: true,
-    workspaceId,
-    mode: "access-profile",
-    policy: { profile: updated.profile, tools: updated.tools, commands: updated.commands },
-  };
-}
-
-export async function updateWorkspaceToolPolicy(configFile: string, args: string[]): Promise<unknown> {
-  const workspaceId = requiredOption(args, "workspace");
-  const tool = toolNameSchema.parse(requiredOption(args, "tool"));
-  const decision = args[1];
-  if (decision !== "allow" && decision !== "deny") throw new Error("Tool policy decision must be allow or deny");
-  const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
-  const current = await store.read();
-  const selected = current.workspaces.find((entry) => entry.id === workspaceId);
-  if (!selected) throw new Error(`Workspace not found: ${workspaceId}`);
-
-  if (decision === "deny" && selected.tools.allow.length === 1 && selected.tools.allow[0] === tool) {
-    throw new Error("Cannot deny the last explicitly allowed tool because an empty tool allowlist means wildcard access. Apply an Access Profile or Custom matrix instead.");
-  }
-
-  let updated: WorkspaceConfig | undefined;
-  await store.update((config) => runtimeConfigSchema.parse({
-    ...config,
-    workspaces: config.workspaces.map((entry) => {
-      if (entry.id !== workspaceId) return entry;
-      const hadExplicitAllowlist = entry.tools.allow.length > 0;
-      const allow = entry.tools.allow.filter((item) => item !== tool);
-      const deny = entry.tools.deny.filter((item) => item !== tool);
-      const explicit = entry.tools.explicit.filter((item) => item !== tool);
-      const nextTools = decision === "allow"
-        ? {
-            allow: hadExplicitAllowlist ? unique([...allow, tool]) : [],
-            deny,
-            explicit: tool === "shell" ? unique([...explicit, tool]) : explicit,
-          }
-        : {
-            allow,
-            deny: unique([...deny, tool]),
-            explicit,
-          };
-      updated = workspaceConfigSchema.parse({ ...entry, tools: nextTools });
-      return updated;
-    }),
-  }));
-  await secureRuntimeFile(configFile);
-  return { changed: true, workspaceId, tool, decision, policy: updated!.tools };
-}
-
-export async function updateWorkspaceCommandPolicy(configFile: string, args: string[]): Promise<unknown> {
-  const workspaceId = requiredOption(args, "workspace");
-  const decision = args[1];
-  if (decision !== "allow" && decision !== "deny") throw new Error("Command policy decision must be allow or deny");
-  const command = requiredOption(args, "command").trim().toLowerCase();
-  if (!/^[a-z0-9._+-]+$/.test(command)) throw new Error("Command must be an executable name without path or shell syntax");
-  const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
-  const current = await store.read();
-  if (!current.workspaces.some((entry) => entry.id === workspaceId)) throw new Error(`Workspace not found: ${workspaceId}`);
-
-  let updated: WorkspaceConfig | undefined;
-  await store.update((config) => runtimeConfigSchema.parse({
-    ...config,
-    workspaces: config.workspaces.map((entry) => {
-      if (entry.id !== workspaceId) return entry;
-      const allow = entry.commands.allow.filter((item) => item.toLowerCase() !== command);
-      updated = workspaceConfigSchema.parse({
-        ...entry,
-        commands: { allow: decision === "allow" ? unique([...allow, command]) : allow },
-      });
-      return updated;
-    }),
-  }));
-  await secureRuntimeFile(configFile);
-  return { changed: true, workspaceId, command, decision, policy: updated!.commands };
 }
 
 export async function removeWorkspace(configFile: string, workerName: string, workspaceId: string): Promise<unknown> {

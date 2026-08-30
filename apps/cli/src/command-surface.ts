@@ -24,10 +24,10 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
   if (domain === "workspace" && ["add", "list", "remove"].includes(action || "")) {
     return removedRoute(`queqiao worker workspace ${action}`);
   }
-  if (domain === "profile" && action === "set") return removedRoute("queqiao worker workspace profile set");
-  if (domain === "tool" && ["allow", "deny"].includes(action || "")) return removedRoute(`queqiao worker workspace tool ${action}`);
-  if (domain === "command" && ["allow", "deny"].includes(action || "")) return removedRoute(`queqiao worker workspace command ${action}`);
-  if (domain === "permissions" && action === "show") return removedRoute("queqiao worker workspace permissions show");
+  if (domain === "profile" && action === "set") return removedRoute("queqiao worker workspace");
+  if (domain === "tool" && ["allow", "deny"].includes(action || "")) return removedRoute("queqiao worker workspace");
+  if (domain === "command" && ["allow", "deny"].includes(action || "")) return removedRoute("queqiao worker workspace");
+  if (domain === "permissions" && action === "show") return removedRoute("queqiao worker workspace");
   if (domain === "extension" && action === "doctor") return removedRoute("queqiao doctor extension");
   if (domain === "manifest" && action === "show") return removedRoute("queqiao doctor manifest show --gateway <name>");
   if (domain === "tool" && action === "explain") return removedRoute("queqiao doctor tool explain <tool> --gateway <name>");
@@ -38,11 +38,10 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
   }
 
   if (domain === "worker" && action === "workspace") {
-    if (["add", "list", "remove"].includes(resource || "")) return replacePrefix(args, 3, ["workspace", resource!]);
-    if (resource === "profile" && subaction === "set") return replacePrefix(args, 4, ["profile", "set"]);
-    if (resource === "tool" && ["allow", "deny"].includes(subaction || "")) return replacePrefix(args, 4, ["tool", subaction!]);
-    if (resource === "command" && ["allow", "deny"].includes(subaction || "")) return replacePrefix(args, 4, ["command", subaction!]);
-    if (resource === "permissions" && subaction === "show") return replacePrefix(args, 4, ["permissions", "show"]);
+    if (["add", "list", "info", "edit", "remove"].includes(resource || "")) return replacePrefix(args, 3, ["workspace", resource!]);
+    if (resource === "profile" || resource === "tool" || resource === "command" || resource === "permissions") {
+      return removedRoute("queqiao worker workspace");
+    }
   }
 
   if (domain === "doctor") {
@@ -89,14 +88,14 @@ export const COMMAND_TREE: CommandNode = {
         status: terminal,
         join: terminal,
         workspace: {
+          terminal: true,
           children: {
             add: terminal,
             list: terminal,
+            info: terminal,
+            edit: terminal,
             remove: terminal,
-            profile: { children: { set: terminal } },
-            tool: { children: { allow: terminal, deny: terminal } },
-            command: { children: { allow: terminal, deny: terminal } },
-            permissions: { children: { show: terminal } },
+            profiles: { children: { list: terminal, info: terminal, create: terminal, edit: terminal, rename: terminal, delete: terminal } },
           },
         },
       },
@@ -128,7 +127,7 @@ export const COMMAND_TREE: CommandNode = {
 export type CliHandlerKey =
   | "list-role-instances" | "role-setup" | "role-remove" | "runtime-serve" | "runtime-stop" | "runtime-status"
   | "gateway-info" | "gateway-join-token" | "membership-list" | "membership-update" | "membership-remove" | "worker-port" | "worker-join"
-  | "workspace-add" | "workspace-list" | "workspace-remove" | "workspace-profile-set" | "workspace-tool-policy" | "workspace-command-policy" | "workspace-permissions-show"
+  | "workspace-manager" | "workspace-add" | "workspace-list" | "workspace-info" | "workspace-edit" | "workspace-remove" | "workspace-profiles-list" | "workspace-profiles-info" | "workspace-profiles-create" | "workspace-profiles-edit" | "workspace-profiles-rename" | "workspace-profiles-delete"
   | "extension-install" | "extension-attach" | "extension-detach" | "extension-uninstall" | "extension-list" | "extension-show" | "extension-doctor"
   | "version" | "completion" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
 
@@ -164,15 +163,18 @@ export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "worker stop", handler: "runtime-stop", options: ["worker"], valueOptions: ["worker"] },
   { route: "worker status", handler: "runtime-status", options: ["worker"], valueOptions: ["worker"] },
   { route: "worker join", handler: "worker-join", options: ["worker", "join-code"], valueOptions: ["worker", "join-code"] },
-  { route: "worker workspace add", handler: "workspace-add", options: ["worker", "root", "display-name", "profile"], valueOptions: ["worker", "root", "display-name", "profile"] },
+  { route: "worker workspace", handler: "workspace-manager", options: ["worker"], valueOptions: ["worker"] },
+  { route: "worker workspace add", handler: "workspace-add", options: ["worker", "root", "display-name", "access-profile"], valueOptions: ["worker", "root", "display-name", "access-profile"] },
   { route: "worker workspace list", handler: "workspace-list", options: ["worker"], valueOptions: ["worker"] },
-  { route: "worker workspace remove", handler: "workspace-remove", options: ["worker", "id"], valueOptions: ["worker", "id"] },
-  { route: "worker workspace profile set", handler: "workspace-profile-set", options: ["worker", "workspace", "profile"], valueOptions: ["worker", "workspace", "profile"] },
-  { route: "worker workspace tool allow", handler: "workspace-tool-policy", options: ["worker", "workspace", "tool"], valueOptions: ["worker", "workspace", "tool"] },
-  { route: "worker workspace tool deny", handler: "workspace-tool-policy", options: ["worker", "workspace", "tool"], valueOptions: ["worker", "workspace", "tool"] },
-  { route: "worker workspace command allow", handler: "workspace-command-policy", options: ["worker", "workspace", "command"], valueOptions: ["worker", "workspace", "command"] },
-  { route: "worker workspace command deny", handler: "workspace-command-policy", options: ["worker", "workspace", "command"], valueOptions: ["worker", "workspace", "command"] },
-  { route: "worker workspace permissions show", handler: "workspace-permissions-show", options: ["worker", "workspace"], valueOptions: ["worker", "workspace"] },
+  { route: "worker workspace info", handler: "workspace-info", options: ["worker", "workspace"], valueOptions: ["worker", "workspace"] },
+  { route: "worker workspace edit", handler: "workspace-edit", options: ["worker", "workspace", "root", "display-name", "access-profile"], valueOptions: ["worker", "workspace", "root", "display-name", "access-profile"] },
+  { route: "worker workspace remove", handler: "workspace-remove", options: ["worker", "workspace"], valueOptions: ["worker", "workspace"] },
+  { route: "worker workspace profiles list", handler: "workspace-profiles-list", options: [] },
+  { route: "worker workspace profiles info", handler: "workspace-profiles-info", options: ["profile"], valueOptions: ["profile"] },
+  { route: "worker workspace profiles create", handler: "workspace-profiles-create", options: ["name", "tools", "commands"], valueOptions: ["name", "tools", "commands"] },
+  { route: "worker workspace profiles edit", handler: "workspace-profiles-edit", options: ["profile", "tools", "commands"], valueOptions: ["profile", "tools", "commands"] },
+  { route: "worker workspace profiles rename", handler: "workspace-profiles-rename", options: ["profile", "to"], valueOptions: ["profile", "to"] },
+  { route: "worker workspace profiles delete", handler: "workspace-profiles-delete", options: ["profile", "force"], valueOptions: ["profile"] },
   { route: "extension install", handler: "extension-install", options: ["source", "worker", "attach-all"], valueOptions: ["source", "worker"], positionals: 1 },
   { route: "extension attach", handler: "extension-attach", options: ["id", "worker"], valueOptions: ["id", "worker"], positionals: 1 },
   { route: "extension detach", handler: "extension-detach", options: ["id", "worker"], valueOptions: ["id", "worker"], positionals: 1 },
@@ -280,6 +282,7 @@ export function renderRemovedSelectorError(input: readonly string[]): string | u
   if (domain === "worker" && action === "workspace" && resource === "add") {
     return 'Workspace option "--name" was removed; use "--display-name <name>".';
   }
+  if (domain === "worker" && action === "workspace" && resource === "profiles") return undefined;
   if (domain === "worker" && !["setup", "list"].includes(action || "")) {
     return 'Option "--name" was removed; use "--worker <name>".';
   }
@@ -341,7 +344,7 @@ export function renderCliRouteError(input: readonly string[]): string | undefine
       context.push(token);
       continue;
     }
-    if (node.terminal) return undefined;
+    if (node.terminal && Object.keys(children).length === 0) return undefined;
     const commandContext = context.length ? `queqiao ${context.join(" ")}` : "queqiao";
     const nearby = suggestions(token, Object.keys(children));
     const lines = [`Unknown command \"${token}\" for \"${commandContext}\".`, ""];
@@ -395,7 +398,7 @@ Prints a shell completion script generated from the canonical Queqiao CLI contra
 Examples:
   Bash:       eval "$(queqiao completion bash)"
   Zsh:        eval "$(queqiao completion zsh)"
-  PowerShell: queqiao.cmd completion powershell | Out-String | Invoke-Expression`;
+  PowerShell: queqiao completion powershell | Out-String | Invoke-Expression`;
 
 const GATEWAY_INFO_HELP = `Usage: queqiao gateway info [--gateway <gateway>] [--detail] [--copy-url|--copy-secret] [--json]
 
@@ -433,19 +436,26 @@ Commands:
   join
   workspace ...`;
 
-const WORKER_WORKSPACE_HELP = `Usage: queqiao worker workspace <command> [options]
+const WORKER_WORKSPACE_HELP = `Usage: queqiao worker workspace [command] [options]
 
-Commands:
-  add [--worker <worker>] [--root <dir>] [--display-name <name>] [--profile <profile>]
+Without a command in an interactive terminal, opens Workspace Management.
+
+Workspace commands:
   list [--worker <worker>]
-  remove [--worker <worker>] --id <id>
-  profile set [--worker <worker>] [--workspace <id>] [--profile read-only|editor|coding]
-  tool allow|deny [--worker <worker>] --workspace <id> --tool <tool>
-  command allow|deny [--worker <worker>] --workspace <id> --command <executable>
-  permissions show [--worker <worker>] [--workspace <id>]
+  info [--worker <worker>] [--workspace <id>]
+  add [--worker <worker>] [--root <dir>] [--display-name <name>] [--access-profile <name>]
+  edit [--worker <worker>] [--workspace <id>] [--root <dir>] [--display-name <name>] [--access-profile <name>]
+  remove [--worker <worker>] [--workspace <id>]
 
-Without --profile, profile set interactively applies an Access Profile or Custom tools/commands matrix.
-With --profile, --workspace is required and only the legacy capability ceiling is changed.`;
+Access Profile commands:
+  profiles list
+  profiles info [--profile <name>]
+  profiles create [--name <name>] [--tools <csv>] [--commands <csv>]
+  profiles edit [--profile <name>] [--tools <csv>] [--commands <csv>]
+  profiles rename [--profile <name>] [--to <name>]
+  profiles delete [--profile <name>] [--force]
+
+Access Profiles are reusable templates. Applying one copies its policy to a Workspace; later profile edits, renames, or deletion do not change existing Workspaces.`;
 
 const EXTENSION_HELP = `Usage: queqiao extension <command> [options]
 
@@ -478,11 +488,6 @@ Advanced compatibility commands:
 const REQUIRED_OPTIONS: Readonly<Record<string, readonly string[]>> = {
   "gateway workers update": ["worker-id", "endpoint"],
   "gateway workers remove": ["worker-id"],
-  "worker workspace remove": ["id"],
-  "worker workspace tool allow": ["workspace", "tool"],
-  "worker workspace tool deny": ["workspace", "tool"],
-  "worker workspace command allow": ["workspace", "command"],
-  "worker workspace command deny": ["workspace", "command"],
 };
 
 const POSITIONAL_USAGE: Readonly<Record<string, string>> = {
@@ -498,8 +503,8 @@ function optionUsage(name: string, takesValue: boolean): string {
   if (!takesValue) return `--${name}`;
   const placeholders: Record<string, string> = {
     gateway: "gateway", worker: "worker", expires: "seconds", port: "port", root: "dir",
-    "display-name": "name", profile: "profile", id: "id", workspace: "id", tool: "tool",
-    command: "executable", "worker-id": "id", endpoint: "url", repo: "directory", source: "npm:package",
+    "display-name": "name", "access-profile": "name", profile: "name", id: "id", workspace: "id", tool: "tool",
+    command: "executable", commands: "csv", tools: "csv", name: "name", to: "name", "worker-id": "id", endpoint: "url", repo: "directory", source: "npm:package",
     "join-code": "code",
   };
   return `--${name} <${placeholders[name] || "value"}>`;
@@ -507,7 +512,9 @@ function optionUsage(name: string, takesValue: boolean): string {
 
 function renderLeafContractHelp(input: readonly string[]): string | undefined {
   const commandTokens = input.filter((token) => token !== "--help" && token !== "-h" && token !== "--json" && !token.startsWith("--"));
-  const contract = CLI_LEAF_CONTRACTS.find(({ route }) => route === commandTokens.slice(0, route.split(" ").length).join(" "));
+  const contract = [...CLI_LEAF_CONTRACTS]
+    .sort((a, b) => b.route.split(" ").length - a.route.split(" ").length)
+    .find(({ route }) => route === commandTokens.slice(0, route.split(" ").length).join(" "));
   if (!contract || contract.route === "doctor") return undefined;
   const required = REQUIRED_OPTIONS[contract.route] || [];
   const options = contract.options.map((name) => {
@@ -525,7 +532,7 @@ export function isCliHelpContext(input: readonly string[]): boolean {
   return (
     (args.length === 1 && ["gateway", "worker", "extension"].includes(args[0] || "")) ||
     (args.length === 2 && args[0] === "gateway" && args[1] === "workers") ||
-    (args.length === 2 && args[0] === "worker" && args[1] === "workspace")
+    false
   );
 }
 
@@ -543,6 +550,8 @@ export function renderCliHelp(input: readonly string[]): string {
   }
   if (domain === "worker") {
     if (action === "join") return WORKER_JOIN_HELP;
+    const workspaceCommandTokens = input.filter((token) => token !== "--help" && token !== "-h" && token !== "--json" && !token.startsWith("--"));
+    if (action === "workspace" && workspaceCommandTokens.length === 2) return WORKER_WORKSPACE_HELP;
     const leaf = renderLeafContractHelp(input);
     if (leaf) return leaf;
     if (action === "workspace") return WORKER_WORKSPACE_HELP;

@@ -52,7 +52,39 @@ export class AccessProfileStore {
     const next = [
       ...current.filter((entry) => entry.name.toLowerCase() !== normalized.name.toLowerCase()),
       normalized,
-    ].sort((left, right) => left.name.localeCompare(right.name));
+    ];
+    await this.write(next);
+  }
+
+  async get(name: string): Promise<AccessProfile | undefined> {
+    const key = name.trim().toLowerCase();
+    return (await this.list()).find((entry) => entry.name.toLowerCase() === key);
+  }
+
+  async rename(name: string, nextName: string): Promise<AccessProfile> {
+    const current = await this.list();
+    const key = name.trim().toLowerCase();
+    const selected = current.find((entry) => entry.name.toLowerCase() === key);
+    if (!selected) throw new Error(`Access profile not found: ${name}`);
+    const normalized = normalizeProfile({ ...selected, name: nextName });
+    if (current.some((entry) => entry.name.toLowerCase() === normalized.name.toLowerCase() && entry.name.toLowerCase() !== key)) {
+      throw new Error(`Access profile already exists: ${normalized.name}`);
+    }
+    await this.write(current.map((entry) => entry.name.toLowerCase() === key ? normalized : entry));
+    return normalized;
+  }
+
+  async delete(name: string): Promise<AccessProfile> {
+    const current = await this.list();
+    const key = name.trim().toLowerCase();
+    const selected = current.find((entry) => entry.name.toLowerCase() === key);
+    if (!selected) throw new Error(`Access profile not found: ${name}`);
+    await this.write(current.filter((entry) => entry.name.toLowerCase() !== key));
+    return selected;
+  }
+
+  private async write(profiles: AccessProfile[]): Promise<void> {
+    const next = profiles.map((profile) => normalizeProfile(profile)).sort((left, right) => left.name.localeCompare(right.name));
     await mkdir(path.dirname(this.file), { recursive: true });
     await secureRuntimeDirectory(path.dirname(this.file));
     const temporary = `${this.file}.${process.pid}.${Date.now()}.tmp`;

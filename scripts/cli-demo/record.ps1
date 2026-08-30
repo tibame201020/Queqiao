@@ -201,12 +201,12 @@ try {
       New-Item -ItemType Directory -Force -Path $secondRoot | Out-Null
       $steps = @()
       $steps += New-Step -DisplayCommand 'queqiao worker workspace add --worker demo-worker --root C:\QueqiaoDemo\workspace-two --display-name "Demo App" --profile coding' -Root $root -Action {
-        queqiao worker workspace add --worker demo-worker --root $secondRoot --display-name 'Demo App' --profile coding
+        queqiao worker workspace add --worker demo-worker --root $secondRoot --display-name 'Demo App' --access-profile Editor
       } -TypingSeconds 1.6 -HoldSeconds 1.1
       $second = Invoke-RawNative -FailureLabel 'workspace list after add' -Action { queqiao worker workspace list --worker demo-worker --json }
       $secondId = (($second.raw | ConvertFrom-Json).workspaces | Where-Object { $_.displayName -eq 'Demo App' } | Select-Object -First 1).id
-      $steps += New-Step -DisplayCommand "queqiao worker workspace permissions show --worker demo-worker --workspace $secondId" -Root $root -Action {
-        queqiao worker workspace permissions show --worker demo-worker --workspace $secondId
+      $steps += New-Step -DisplayCommand "queqiao worker workspace info --worker demo-worker --workspace $secondId" -Root $root -Action {
+        queqiao worker workspace info --worker demo-worker --workspace $secondId
       } -HoldSeconds 1.7
       $results += Save-Demo -Title 'Queqiao CLI - Workspace Authority' -Stem '02-workspace-authority' -Steps $steps -PackageVersion $packageVersion -Root $root
     }
