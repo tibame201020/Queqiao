@@ -1,5 +1,6 @@
 # Queqiao
 
+**English** | [繁體中文](https://github.com/tibame201020/Queqiao/blob/main/README.zh-TW.md)
 [![Resource Safety Baseline](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml/badge.svg)](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/tibame201020/Queqiao/blob/main/LICENSE)
 [![npm](https://img.shields.io/npm/v/@tibame201020/queqiao.svg)](https://www.npmjs.com/package/@tibame201020/queqiao)
@@ -10,7 +11,6 @@ Windows, WSL, Linux, or future remote environment runs its own Worker, so filesy
 process execution stays inside the native environment that owns it.
 
 ## Install
-
 ```shell
 npm install --global @tibame201020/queqiao
 queqiao --version
@@ -22,7 +22,7 @@ Queqiao can generate native completion for PowerShell, Bash, and Zsh directly fr
 canonical command contract used by the CLI parser:
 
 ```powershell
-queqiao.cmd completion powershell | Out-String | Invoke-Expression
+queqiao completion powershell | Out-String | Invoke-Expression
 ```
 
 ```bash
