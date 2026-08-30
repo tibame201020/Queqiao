@@ -62,7 +62,7 @@ async function main() {
   if (selectorRole) {
     selectedRoleName = await resolveRoleInstance(selectorRole, rawArgs);
     outputArgs = withRoleSelector(rawArgs, selectorRole, selectedRoleName);
-    if (!commandArgs.includes(`--${selectorRole}`) && !rawArgs.includes("--json")) {
+    if (!commandArgs.includes(`--${selectorRole}`) && !rawArgs.includes("--json") && dispatch?.handler !== "gateway-info") {
       const theme = createQueqiaoTheme(shouldUseCliColor());
       process.stderr.write(`${theme.subtle(`${selectorRole === "gateway" ? "Gateway" : "Worker"}:`)} ${theme.identifier(selectedRoleName)}\n`);
     }
