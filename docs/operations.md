@@ -92,10 +92,12 @@ Within one Gateway membership registry, each Gateway-visible Worker endpoint mus
 
 ## Workspace and Extension hot reload
 
-A configured Worker always owns at least one Workspace. Additional Workspaces can be added or
-removed while the Worker is running. Workspace and Extension attachment configuration is
-validated before generation replacement; a rejected update leaves the last-known-good
-runtime generation active.
+A configured Worker always owns at least one Workspace. `queqiao worker workspace` provides the
+interactive management surface; automation uses `workspace add/list/info/edit/remove`. Workspace
+access changes remain Worker-owned and are atomically validated. Access Profiles are reusable
+templates: applying one copies policy into a Workspace, while later profile edit/rename/delete does
+not mutate existing Workspaces. Workspace and Extension attachment configuration is validated before
+generation replacement; a rejected update leaves the last-known-good runtime generation active.
 
 See [Workspace authority](workspace-authority.md) and [Extensions](extensions.md).
 

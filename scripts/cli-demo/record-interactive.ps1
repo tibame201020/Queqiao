@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('all','gateway','info','worker','selector','extension','start','enroll')]
+  [ValidateSet('all','gateway','info','worker','workspace','selector','extension','start','enroll')]
   [string]$Demo = 'all',
   [string]$PackageTarball = ''
 )
@@ -27,7 +27,7 @@ if (-not $PackageTarball) {
     if ($null -eq $previousOutdir) { Remove-Item Env:QUEQIAO_BUILD_OUTDIR -ErrorAction SilentlyContinue }
     else { $env:QUEQIAO_BUILD_OUTDIR = $previousOutdir }
   }
-  foreach ($file in @('package.json','README.md','CHANGELOG.md','LICENSE','config.example.yaml','extension.d.ts')) {
+  foreach ($file in @('package.json','README.md','README.zh-TW.md','CHANGELOG.md','LICENSE','config.example.yaml','extension.d.ts')) {
     Copy-Item (Join-Path $repo $file) (Join-Path $stage $file)
   }
   Push-Location $stage

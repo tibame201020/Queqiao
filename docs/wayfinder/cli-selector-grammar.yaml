@@ -72,13 +72,18 @@ production_grammar:
     - queqiao worker stop [--worker <name>]
     - queqiao worker status [--worker <name>]
     - queqiao worker join [--worker <name>] [--join-code <code>]
-    - queqiao worker workspace add [--worker <name>] [--root <dir>] [--display-name <name>] [--profile <profile>]
+    - queqiao worker workspace
+    - queqiao worker workspace add [--worker <name>] [--root <dir>] [--display-name <name>] [--access-profile <name>]
     - queqiao worker workspace list [--worker <name>]
-    - queqiao worker workspace remove [--worker <name>] --id <id>
-    - queqiao worker workspace profile set [--worker <name>] [--workspace <id>] [--profile <profile>]
-    - queqiao worker workspace tool allow|deny [--worker <name>] --workspace <id> --tool <tool>
-    - queqiao worker workspace command allow|deny [--worker <name>] --workspace <id> --command <executable>
-    - queqiao worker workspace permissions show [--worker <name>] [--workspace <id>]
+    - queqiao worker workspace info [--worker <name>] [--workspace <id>]
+    - queqiao worker workspace edit [--worker <name>] [--workspace <id>] [--root <dir>] [--display-name <name>] [--access-profile <name>]
+    - queqiao worker workspace remove [--worker <name>] [--workspace <id>]
+    - queqiao worker workspace profiles list
+    - queqiao worker workspace profiles info [--profile <name>]
+    - queqiao worker workspace profiles create [--name <name>] [--tools <csv>] [--commands <csv>]
+    - queqiao worker workspace profiles edit [--profile <name>] [--tools <csv>] [--commands <csv>]
+    - queqiao worker workspace profiles rename [--profile <name>] [--to <name>]
+    - queqiao worker workspace profiles delete [--profile <name>] [--force]
   extension:
     - queqiao extension install <npm:package|local-path> [--worker <name>|--attach-all]
     - queqiao extension attach [<id>] [--worker <name>]

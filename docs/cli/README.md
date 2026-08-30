@@ -19,7 +19,7 @@ independently. TUI presentation composes these primitives but does not change th
 ## User guides
 
 - [CLI reference](reference.md) - complete public command surface and selector/JSON rules.
-- [Interactive flows](interactive/README.md) - real PTY recordings of setup, selection, runtime startup, enrollment, and verification.
+- [Interactive flows](interactive/README.md) - real PTY recordings of setup, Workspace Management, selection, runtime startup, enrollment, and verification.
 - [Components](components/README.md) - reusable selector, multiselect, input, result, help, and error grammar.
 - [Operational flows](flows/README.md) - longer packaged CLI lifecycle and diagnostic recordings.
 - [Workspace authority](../workspace-authority.md) - filesystem, Tool, and command authority.

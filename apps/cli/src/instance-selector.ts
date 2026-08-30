@@ -131,7 +131,11 @@ export function withRoleSelector(args: readonly string[], role: RuntimeRole, nam
 export function selectorRoleForCliArgs(args: readonly string[]): RuntimeRole | undefined {
   const [domain, action, resource] = args.filter((token) => token !== "--json");
   if (domain === "gateway" && !["list", "setup", "remove"].includes(action || "")) return "gateway";
-  if (domain === "worker" && !["list", "setup", "remove"].includes(action || "")) return "worker";
+if (domain === "worker") {
+    if (["list", "setup", "remove"].includes(action || "")) return undefined;
+    if (action === "workspace" && (!resource || resource === "profiles")) return undefined;
+    return "worker";
+  }
   if (domain === "extension" && ["attach", "detach"].includes(action || "")) return "worker";
   if (domain === "doctor" && (action === "manifest" || (action === "tool" && resource === "explain"))) return "gateway";
   return undefined;

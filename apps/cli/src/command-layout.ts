@@ -8,13 +8,7 @@ function option(args: readonly string[], name: string): string | undefined {
 function isWorkerOwnedRoute(args: readonly string[]): boolean {
   const domain = args[0];
   const action = args[1];
-  return (
-    (domain === "workspace" && ["add", "list", "remove"].includes(action || "")) ||
-    (domain === "profile" && action === "set") ||
-    (domain === "tool" && ["allow", "deny"].includes(action || "")) ||
-    (domain === "command" && ["allow", "deny"].includes(action || "")) ||
-    (domain === "permissions" && action === "show")
-  );
+  return domain === "workspace" && ["add", "list", "info", "edit", "remove"].includes(action || "");
 }
 
 function isGatewayDiagnosticRoute(args: readonly string[]): boolean {

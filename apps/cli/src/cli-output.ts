@@ -208,6 +208,81 @@ function renderGatewayInfo(args: readonly string[], value: unknown, theme: Queqi
   }
   return lines.join("\n");
 }
+function renderWorkspaceManagement(args: readonly string[], value: unknown, theme: QueqiaoTheme): string | undefined {
+  if (args[0] !== "worker" || args[1] !== "workspace" || !value || typeof value !== "object") return undefined;
+  const result = value as Record<string, unknown>;
+
+  if (Array.isArray(result.workspaces)) {
+    const lines = [theme.accentStrong("Workspaces")];
+    if (!result.workspaces.length) return `${lines[0]}\n  ${theme.muted("None")}`;
+    for (const item of result.workspaces) {
+      if (!item || typeof item !== "object") continue;
+      const workspace = item as Record<string, unknown>;
+      const access = workspace.access && typeof workspace.access === "object" ? workspace.access as Record<string, unknown> : {};
+      lines.push("", `  ${theme.identifier(scalar(workspace.displayName))}`);
+      lines.push(field(theme, "Root", workspace.root, 4));
+      lines.push(field(theme, "Id", workspace.id, 4));
+      lines.push(field(theme, "Access", access.mode === "legacy-wildcard" ? "Legacy policy" : "Explicit tools", 4));
+    }
+    return lines.join("\n");
+  }
+
+  if (Array.isArray(result.profiles)) {
+    const lines = [theme.accentStrong("Access Profiles")];
+    for (const item of result.profiles) {
+      if (!item || typeof item !== "object") continue;
+      const profile = item as Record<string, unknown>;
+      const kind = profile.builtin === true ? theme.muted("Built-in") : theme.success("Custom");
+      lines.push("", `  ${theme.identifier(scalar(profile.name))}  ${kind}`);
+      const tools = Array.isArray(profile.tools) ? profile.tools : [];
+      const commands = Array.isArray(profile.allowedExecutables) ? profile.allowedExecutables : [];
+      lines.push(field(theme, "Tools", tools.length ? tools.join(", ") : "None", 4));
+      if (commands.length) lines.push(field(theme, "Commands", commands.join(", "), 4));
+    }
+    lines.push("", theme.muted("Profiles are reusable templates; existing Workspaces are not live-linked."));
+    return lines.join("\n");
+  }
+
+  if (result.workspace && typeof result.workspace === "object") {
+    const workspace = result.workspace as Record<string, unknown>;
+    const access = workspace.access && typeof workspace.access === "object" ? workspace.access as Record<string, unknown> : {};
+    const lines = [
+      `${theme.strong("Workspace")} ${theme.identifier(scalar(workspace.displayName))}`,
+      field(theme, "Root", workspace.root, 2),
+      field(theme, "Id", workspace.id, 2),
+      "",
+      theme.accentStrong("Access"),
+      field(theme, "Mode", access.mode === "legacy-wildcard" ? "Legacy wildcard within capability ceiling" : "Explicit tools", 2),
+      field(theme, "Capability ceiling", access.capabilityCeiling, 2),
+    ];
+    const tools = Array.isArray(access.tools) ? access.tools.join(", ") : scalar(access.tools);
+    lines.push(field(theme, "Tools", tools || "None", 2));
+    const explicit = Array.isArray(access.explicitTools) ? access.explicitTools : [];
+    const denied = Array.isArray(access.deniedTools) ? access.deniedTools : [];
+    const commands = Array.isArray(access.allowedExecutables) ? access.allowedExecutables : [];
+    if (explicit.length) lines.push(field(theme, "Explicit tools", explicit.join(", "), 2));
+    if (denied.length) lines.push(field(theme, "Denied tools", denied.join(", "), 2));
+    lines.push(field(theme, "Allowed executables", commands.length ? commands.join(", ") : "None", 2));
+    return lines.join("\n");
+  }
+
+  if (result.profile && typeof result.profile === "object") {
+    const profile = result.profile as Record<string, unknown>;
+    const tools = Array.isArray(profile.tools) ? profile.tools : [];
+    const commands = Array.isArray(profile.allowedExecutables) ? profile.allowedExecutables : [];
+    const lines = [
+      `${theme.strong("Access Profile")} ${theme.identifier(scalar(profile.name))}`,
+      field(theme, "Type", profile.builtin === true ? "Built-in" : "Custom", 2),
+      field(theme, "Tools", tools.length ? tools.join(", ") : "None", 2),
+      field(theme, "Allowed executables", commands.length ? commands.join(", ") : "None", 2),
+      "",
+      theme.muted("Applying this profile copies its policy to a Workspace; later profile changes do not modify existing Workspaces."),
+    ];
+    return lines.join("\n");
+  }
+
+  return undefined;
+}
 function renderStatus(args: readonly string[], value: unknown, theme: QueqiaoTheme): string | undefined {
   const [role, action] = args;
   if ((role !== "gateway" && role !== "worker") || action !== "status") return undefined;
@@ -257,6 +332,8 @@ export function formatCliOutput(input: readonly string[], value: unknown, option
   if (workerJoin) return workerJoin;
   const gatewayInfo = renderGatewayInfo(args, value, theme);
   if (gatewayInfo) return gatewayInfo;
+  const workspaceManagement = renderWorkspaceManagement(args, value, theme);
+  if (workspaceManagement) return workspaceManagement;
   const status = renderStatus(args, value, theme);
   if (status) return status;
   return renderStructured(value, theme).join("\n");

@@ -210,7 +210,7 @@ queqiao gateway status --gateway demo-gateway
 queqiao worker status --worker demo-worker
 queqiao gateway workers list --gateway demo-gateway
 queqiao worker workspace list --worker demo-worker
-queqiao worker workspace permissions show --worker demo-worker
+queqiao worker workspace info --worker demo-worker --workspace <id>
 queqiao doctor manifest show --gateway demo-gateway
 ```
 
@@ -225,7 +225,7 @@ Optional final payoff, only if it can be recorded cleanly without turning the GI
 2. `worker status` -> running.
 3. `gateway workers list` -> enrolled/reachable.
 4. `worker workspace list` -> demo Workspace present.
-5. `worker workspace permissions show` -> scoped policy visible.
+5. `worker workspace info` -> scoped policy visible.
 6. `doctor manifest show --gateway demo-gateway` -> stable deployment manifest visible.
 7. Optional final 1-2 second MCP action/result as the payoff.
 

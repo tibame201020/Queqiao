@@ -12,6 +12,18 @@ import type { AccessProfileStore } from "./access-profile-store.js";
 
 export const CUSTOM_ACCESS = "__custom_access__";
 
+export async function resolveNamedAccessConfiguration(
+  name: string,
+  profileStore: Pick<AccessProfileStore, "list">,
+): Promise<AccessConfiguration> {
+  const key = name.trim().toLowerCase();
+  const builtin = BUILTIN_ACCESS_PROFILES.find((profile) => profile.id === key || profile.name.toLowerCase() === key);
+  if (builtin) return { tools: [...builtin.configuration.tools], allowedExecutables: [...builtin.configuration.allowedExecutables] };
+  const saved = (await profileStore.list()).find((profile) => profile.name.toLowerCase() === key);
+  if (!saved) throw new Error(`Access profile not found: ${name}`);
+  return { tools: [...saved.tools], allowedExecutables: [...saved.allowedExecutables] };
+}
+
 export type AccessConfigurationPrompts = {
   choose: (message: string, options: Array<{ value: string; label: string; description?: string }>) => Promise<string>;
   multi: (message: string, options: AccessToolOption[], initialValues: CorePublicToolName[]) => Promise<string[]>;
@@ -63,7 +75,7 @@ export async function collectAccessConfiguration(
   return configuration;
 }
 
-async function collectCustomAccessConfiguration(prompts: AccessConfigurationPrompts): Promise<AccessConfiguration> {
+export async function collectCustomAccessConfiguration(prompts: AccessConfigurationPrompts): Promise<AccessConfiguration> {
   const selectedTools = await prompts.multi(
     "Tools",
     ACCESS_TOOL_OPTIONS.map((option) => ({ ...option })),

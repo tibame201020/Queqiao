@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.0 - 2026-08-30
+
+Workspace Management convergence release.
+
+### Highlights
+
+- Adds `queqiao worker workspace` as the interactive management entry point, separating Worker-owned Workspaces from reusable Access Profiles.
+- Adds scriptable Workspace `list/info/add/edit/remove` and Access Profile `list/info/create/edit/rename/delete` surfaces.
+- Makes `Reader` and `Editor` immutable built-ins and formalizes saved Access Profiles as detached templates: applying a profile copies policy; later profile edit/rename/delete changes zero existing Workspaces.
+- Removes the old public `workspace profile set`, `workspace tool allow|deny`, `workspace command allow|deny`, and `workspace permissions show` management forms in favor of the converged CRUD/TUI model.
+- Uses `--access-profile <name>` for Workspace add/edit automation, keeping internal compatibility fields out of the public management model.
+- Preserves generated Workspace ids, canonical duplicate-root rejection, nested-root support, and the invariant that a configured Worker always retains at least one Workspace.
+- Adds dedicated human renderers for Workspace/Profile inventory and detail views, plus real packaged-CLI and PTY acceptance coverage.
+- Repairs Traditional Chinese README encoding and extends the one-shot interactive onboarding series with a real Workspace Management recording.
+
+### Runtime and security
+
+- Public MCP Rev 4 is unchanged. Workspace policy remains Worker-authoritative and atomically validated.
+- Profile lifecycle operations do not broaden or silently mutate Workspace authority.
+- Existing Gateway OAuth, enrollment, Extension attachment, and fail-closed runtime boundaries are unchanged.
+
 ## 0.8.5 - 2026-08-30
 
 README localization and cross-platform command documentation patch.

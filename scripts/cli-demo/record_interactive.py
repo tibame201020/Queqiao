@@ -230,11 +230,11 @@ def gateway_info_demo(rec: Recorder, cast: Path):
         s.close(final_hold=3.5)
 
 
-def worker_setup(rec: Recorder, cast: Path | None, name="demo-worker", port="45776", custom=False):
+def worker_setup(rec: Recorder, cast: Path | None, name="demo-worker", port="45776", custom=False, create_down=0):
     s = Session(rec, cast).start()
     try:
         s.command("queqiao worker setup", "New Worker")
-        m=s.mark(); s.enter(); s.wait_for("Worker name", after=m)
+        m=s.mark(); s.down(create_down); s.enter(); s.wait_for("Worker name", after=m)
         m=s.mark(); s.type(name); s.enter(); s.wait_for("Worker port", after=m)
         m=s.mark(); s.type(port); s.enter(); s.wait_for("Workspace path", after=m)
         m=s.mark(); s.enter(); s.wait_for("Display name", after=m)
@@ -248,6 +248,33 @@ def worker_setup(rec: Recorder, cast: Path | None, name="demo-worker", port="457
         m=s.mark(); s.enter(); s.wait_for("Worker created", after=m)
     finally:
         s.close()
+
+
+def workspace_management_demo(rec: Recorder, cast: Path):
+    worker_setup(rec, None, "alpha-worker", "46176", custom=False)
+    worker_setup(rec, None, "beta-worker", "46276", custom=False, create_down=1)
+    rec.run_noninteractive(
+        "worker", "workspace", "profiles", "create",
+        "--name", "Coding Safe",
+        "--tools", "read_file,write_file,edit_file,run",
+        "--commands", "git,npm",
+        "--json",
+    )
+    s = Session(rec, cast).start()
+    try:
+        s.command("queqiao worker workspace", "Manage")
+        m=s.mark(); s.enter(); s.wait_for("Worker", after=m)
+        m=s.mark(); s.down(); s.enter(); s.wait_for("Workspace", after=m)
+        m=s.mark(); s.enter(); s.wait_for("Action", after=m)
+        m=s.mark(); s.enter(); s.wait_for("Workspace ", after=m)
+        s.wait_for("$ ", timeout=6, after=m)
+
+        s.command("queqiao worker workspace", "Manage")
+        m=s.mark(); s.down(); s.enter(); s.wait_for("Access profile", after=m)
+        m=s.mark(); s.down(2); s.enter(); s.wait_for("Action", after=m)
+        m=s.mark(); s.enter(); s.wait_for("Access Profile Coding Safe", after=m)
+    finally:
+        s.close(final_hold=3.5)
 
 
 def selector_demo(rec: Recorder, cast: Path):
@@ -350,11 +377,11 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--work", required=True)
     parser.add_argument("--agg", required=True)
-    parser.add_argument("--demo", choices=["all","gateway","info","worker","selector","extension","start","enroll"], default="all")
+    parser.add_argument("--demo", choices=["all","gateway","info","worker","workspace","selector","extension","start","enroll"], default="all")
     args=parser.parse_args()
     out=Path(args.out); work=Path(args.work); agg=Path(args.agg)
     work.mkdir(parents=True, exist_ok=True); out.mkdir(parents=True, exist_ok=True)
-    selected=["gateway","info","worker","selector","extension","start","enroll"] if args.demo=="all" else [args.demo]
+    selected=["gateway","info","worker","workspace","selector","extension","start","enroll"] if args.demo=="all" else [args.demo]
     files=[]
     for index, name in enumerate(selected, start=1):
         root=work / name
@@ -364,6 +391,7 @@ def main():
         if name=="gateway": gateway_setup(rec, cast)
         elif name=="info": gateway_info_demo(rec, cast)
         elif name=="worker": worker_setup(rec, cast, custom=True)
+        elif name=="workspace": workspace_management_demo(rec, cast)
         elif name=="selector": selector_demo(rec, cast)
         elif name=="extension": extension_demo(rec, cast)
         elif name=="start": start_runtime_demo(rec, cast)
@@ -372,10 +400,11 @@ def main():
             "gateway":"01-gateway-setup",
             "info":"02-gateway-info",
             "worker":"03-worker-access-setup",
-            "selector":"04-instance-selector",
-            "extension":"05-extension-attach",
-            "start":"06-runtime-start",
-            "enroll":"07-worker-enrollment",
+            "workspace":"04-workspace-management",
+            "selector":"05-instance-selector",
+            "extension":"06-extension-attach",
+            "start":"07-runtime-start",
+            "enroll":"08-worker-enrollment",
         }
         gif=out / f"{stems[name]}.gif"
         render(agg, cast, gif)

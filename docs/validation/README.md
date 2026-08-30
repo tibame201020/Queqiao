@@ -6,6 +6,7 @@ current user documentation.
 
 ## Current release-line evidence
 
+- [v0.9.0 Workspace Management convergence](workspace-management-v0.9.0-2026-08-30.md)
 - [v0.8.5 README i18n and canonical command documentation](readme-i18n-v0.8.5-2026-08-30.md)
 - [v0.8.4 shell completion](shell-completion-v0.8.4-2026-08-30.md)
 - [v0.8.3 Gateway connector info](gateway-info-v0.8.3-2026-08-30.md)
