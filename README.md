@@ -41,11 +41,27 @@ queqiao gateway setup
 This creates or edits a named Gateway and configures its public URL, Gateway port, and local
 management port.
 
-### 2. Configure the Worker and first Workspace
+### 2. Get the connector URL and approval secret
+
+Before creating an AI-client connector, inspect the named Gateway locally:
+
+![Interactive Queqiao Gateway connector info](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/02-gateway-info.gif)
+
+```shell
+queqiao gateway info
+queqiao gateway info --detail
+queqiao gateway info --copy-url
+queqiao gateway info --copy-secret
+```
+
+`gateway info` keeps the approval secret hidden by default. `--detail` explicitly reveals it
+for local manual copy, while the copy flags place exactly one value on the clipboard without
+echoing that value again.
+### 3. Configure the Worker and first Workspace
 
 The Worker wizard creates the Worker and its first authorized Workspace in one flow:
 
-![Interactive Queqiao Worker and Access setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/02-worker-access-setup.gif)
+![Interactive Queqiao Worker and Access setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/03-worker-access-setup.gif)
 
 ```shell
 queqiao worker setup
@@ -55,11 +71,11 @@ Workspace setup chooses the root, display name, Access Profile, allowed Tools, a
 `run` is allowed - the executable allowlist. A configured Worker always retains at least one
 Workspace.
 
-### 3. Select named instances when the deployment grows
+### 4. Select named instances when the deployment grows
 
 When multiple Gateways or Workers exist, TTY commands open the shared instance selector:
 
-![Interactive Queqiao named-instance selector](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/03-instance-selector.gif)
+![Interactive Queqiao named-instance selector](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/04-instance-selector.gif)
 
 ```shell
 queqiao gateway status
@@ -68,11 +84,11 @@ queqiao gateway status
 Automation and `--json` calls stay deterministic: provide `--gateway <name>` or
 `--worker <name>` explicitly instead of relying on interactive selection.
 
-### 4. Install and attach Extensions
+### 5. Install and attach Extensions
 
 Extension installation and Worker attachment are separate operations:
 
-![Interactive Queqiao Extension attachment](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/04-extension-attach.gif)
+![Interactive Queqiao Extension attachment](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/05-extension-attach.gif)
 
 ```shell
 queqiao extension install <npm:package|local-path>
@@ -82,25 +98,25 @@ queqiao extension attach
 Installing a package does not silently attach it to every Worker and does not expand a
 Workspace's authority.
 
-### 5. Start, enroll, and verify
+### 6. Start, enroll, and verify
 
-#### 5A. Start the runtimes
+#### 6A. Start the runtimes
 
 Both roles use the same explicit lifecycle model:
 
-![Interactive Queqiao runtime startup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/05-runtime-start.gif)
+![Interactive Queqiao runtime startup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/06-runtime-start.gif)
 
 ```shell
 queqiao worker serve --worker <worker> --bg
 queqiao gateway serve --gateway <gateway> --bg
 ```
 
-#### 5B. Enroll the Worker
+#### 6B. Enroll the Worker
 
 Generate a short-lived join code on the Gateway host. Human mode copies it to the clipboard;
 `worker join` prompts for it without echoing the secret:
 
-![Interactive Queqiao Worker enrollment](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/06-worker-enrollment.gif)
+![Interactive Queqiao Worker enrollment](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/07-worker-enrollment.gif)
 
 ```shell
 queqiao gateway join-token --gateway <gateway>

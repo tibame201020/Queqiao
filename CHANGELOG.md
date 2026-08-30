@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.3 - 2026-08-30
+
+Gateway connector handoff and onboarding patch.
+
+### Highlights
+
+- Adds `queqiao gateway info` with the existing named-Gateway selector semantics.
+- Adds `--detail`, `--copy-url`, and `--copy-secret` for local MCP connector setup. The default view does not reveal the approval secret; copy actions never echo copied secret material.
+- Adds packaged acceptance and human-presentation coverage for MCP URL derivation, explicit secret reveal, and clipboard actions.
+- Adds a real PTY Gateway-info onboarding recording and updates the README/CLI/operator docs to show the connector handoff immediately after Gateway setup.
+
+### Security
+
+- The approval secret remains stored only in the Gateway private runtime secret file.
+- `--detail` is an explicit local reveal and should not be pasted into logs or issue reports.
+- `--copy-secret` copies the secret without returning it in the command result.
 ## 0.8.2 - 2026-08-30
 
 Production README and CLI onboarding documentation patch.
@@ -44,7 +60,7 @@ CLI hierarchy and management UX release.
 - Consolidates the public CLI around `gateway`, `worker`, Worker-owned `workspace`, `extension`, and `doctor` domains with one canonical dispatch contract for every public leaf command.
 - Adds consistent Gateway/Worker instance selectors: one configured instance auto-selects in TTY mode, multiple instances open a selector, and automation/JSON calls require explicit selectors.
 - Removes stale default-Workspace semantics. A Worker owns one or more peer Workspaces; calls may omit `workspaceId` only when exactly one Workspace is available.
-- Introduces the Access Profile UX (`Reader`, `Editor`, saved profiles, or `Custom`) and the explicit Tools × Commands model for Workspace authority while preserving the internal legacy capability ceiling.
+- Introduces the Access Profile UX (`Reader`, `Editor`, saved profiles, or `Custom`) and the explicit Tools ? Commands model for Workspace authority while preserving the internal legacy capability ceiling.
 - Establishes a shared TUI design system with independent focus/selection state, semantic status styling, bounded multiselect viewport behavior, width-aware wrapping, command history input, path completion, and consistent human help/error/result presentation.
 - Externalizes the first-party Git runtime from the Worker and completes the environment-local Extension Hub model: install/uninstall package ownership is separate from per-Worker attach/detach intent.
 - Adds prepared local-path Extension packages alongside npm packages without copying source trees or executing package lifecycle scripts.

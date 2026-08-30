@@ -165,6 +165,49 @@ function renderWorkerJoin(args: readonly string[], value: unknown, theme: Queqia
   return lines.join("\n");
 }
 
+function renderGatewayInfo(args: readonly string[], value: unknown, theme: QueqiaoTheme): string | undefined {
+  if (args[0] !== "gateway" || args[1] !== "info") return undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const result = value as Record<string, unknown>;
+  const gateway = scalar(result.gateway);
+  const copied = result.copied;
+  if (copied === "mcp-url" || copied === "approval-secret") {
+    const label = copied === "mcp-url" ? "MCP URL" : "Approval secret";
+    return `${theme.success(TUI_GLYPHS.success)} ${theme.strong(`${label} copied to clipboard`)}\n${field(theme, "Gateway", gateway, 2)}`;
+  }
+
+  const detail = args.includes("--detail");
+  const lines = [
+    `${theme.strong("Gateway")} ${theme.identifier(gateway)}`,
+    "",
+    theme.accentStrong("Connector"),
+    theme.subtle("  MCP URL"),
+    `  ${theme.link(scalar(result.mcpUrl))}`,
+    "",
+    theme.subtle("  Approval secret"),
+  ];
+  if (detail && typeof result.approvalSecret === "string") lines.push(`  ${theme.code(result.approvalSecret)}`);
+  else if (result.approvalSecretAvailable === true) lines.push(`  ${theme.muted("Hidden - use --detail to reveal or --copy-secret to copy")}`);
+  else lines.push(`  ${theme.warning("Unavailable")}`);
+
+  lines.push("", theme.accentStrong("Authentication"), `  ${theme.value(scalar(result.authentication))}`);
+  if (detail) {
+    lines.push(
+      "",
+      theme.accentStrong("Gateway details"),
+      field(theme, "Public URL", result.publicBaseUrl, 2),
+      field(theme, "Status", result.running === true ? "Running" : "Stopped", 2),
+      field(theme, "Managed", result.managed === true ? "Yes" : "No", 2),
+      field(theme, "Service Port", result.servicePort, 2),
+      field(theme, "Management Port", result.managementPort, 2),
+    );
+    if (Array.isArray(result.allowedRedirectOrigins)) {
+      lines.push(`${theme.subtle("  Redirect origins:")}`);
+      for (const origin of result.allowedRedirectOrigins) lines.push(`    ${theme.link(scalar(origin))}`);
+    }
+  }
+  return lines.join("\n");
+}
 function renderStatus(args: readonly string[], value: unknown, theme: QueqiaoTheme): string | undefined {
   const [role, action] = args;
   if ((role !== "gateway" && role !== "worker") || action !== "status") return undefined;
@@ -212,6 +255,8 @@ export function formatCliOutput(input: readonly string[], value: unknown, option
   if (joinToken) return joinToken;
   const workerJoin = renderWorkerJoin(args, value, theme);
   if (workerJoin) return workerJoin;
+  const gatewayInfo = renderGatewayInfo(args, value, theme);
+  if (gatewayInfo) return gatewayInfo;
   const status = renderStatus(args, value, theme);
   if (status) return status;
   return renderStructured(value, theme).join("\n");

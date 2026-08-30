@@ -25,6 +25,7 @@ const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "gateway serve": "packaged-managed-runtime",
   "gateway stop": "packaged-managed-runtime",
   "gateway status": "packaged-process-state",
+  "gateway info": "packaged-process-connector-info",
   "gateway join-token": "packaged-live-enrollment",
   "gateway workers list": "packaged-live-enrollment",
   "gateway workers update": "packaged-live-enrollment",
@@ -259,6 +260,10 @@ describe.sequential("isolated packaged CLI acceptance", () => {
     expect(gateways.instances).toEqual([expect.objectContaining({ name: GATEWAY, running: false })]);
     expect(workers.instances).toEqual([expect.objectContaining({ name: WORKER, running: false, workspaceCount: 1 })]);
     expect(parseJson<any>(await runCli(["gateway", "status", "--gateway", GATEWAY, "--json"]))).toMatchObject({ active: false, managed: false });
+    const gatewayInfo = parseJson<any>(await runCli(["gateway", "info", "--gateway", GATEWAY, "--json"]));
+    expect(gatewayInfo).toMatchObject({ gateway: GATEWAY, mcpUrl: `http://127.0.0.1:${gatewayPort}/mcp`, approvalSecretAvailable: true });
+    expect(gatewayInfo).not.toHaveProperty("approvalSecret");
+    expect(parseJson<any>(await runCli(["gateway", "info", "--gateway", GATEWAY, "--detail", "--json"]))).toEqual(expect.objectContaining({ gateway: GATEWAY, approvalSecret: expect.any(String), servicePort: gatewayPort, managementPort }));
     expect(parseJson<any>(await runCli(["worker", "status", "--worker", WORKER, "--json"]))).toMatchObject({ active: false, managed: false });
 
     const replacementPort = await freePort();

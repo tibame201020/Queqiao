@@ -22,6 +22,7 @@ import { createQueqiaoTheme, shouldUseCliColor, styleCliHelpText } from "./tui-t
 import { isCliHelpContext, isRemovedCliRoute, normalizeCliArgs, resolveCliDispatch, renderCliHelp, renderCliRouteError, renderRemovedSelectorError, validateCliArgs } from "./command-surface.js";
 import { listRoleInstances, resolveRoleInstance, selectorRoleForCliArgs, withRoleSelector } from "./instance-selector.js";
 import { QUEQIAO_CLI_VERSION } from "./version.js";
+import { getGatewayInfo } from "./gateway-info.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
@@ -109,6 +110,8 @@ async function main() {
   const layout = resolveCommandLayout(args);
   const configFile = path.resolve(layout.configFile);
   const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
+
+  if (dispatch?.handler === "gateway-info") return print(await getGatewayInfo(configFile, layout, selectedRoleName!, outputArgs));
 
   if (dispatch?.handler === "worker-port") {
     const status = await runtimeStatus(configFile, layout, "worker", selectedRoleName!);

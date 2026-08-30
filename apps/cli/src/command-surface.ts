@@ -72,6 +72,7 @@ export const COMMAND_TREE: CommandNode = {
         serve: terminal,
         stop: terminal,
         status: terminal,
+        info: terminal,
         "join-token": terminal,
         workers: { children: { list: terminal, update: terminal, remove: terminal } },
       },
@@ -125,7 +126,7 @@ export const COMMAND_TREE: CommandNode = {
 
 export type CliHandlerKey =
   | "list-role-instances" | "role-setup" | "role-remove" | "runtime-serve" | "runtime-stop" | "runtime-status"
-  | "gateway-join-token" | "membership-list" | "membership-update" | "membership-remove" | "worker-port" | "worker-join"
+  | "gateway-info" | "gateway-join-token" | "membership-list" | "membership-update" | "membership-remove" | "worker-port" | "worker-join"
   | "workspace-add" | "workspace-list" | "workspace-remove" | "workspace-profile-set" | "workspace-tool-policy" | "workspace-command-policy" | "workspace-permissions-show"
   | "extension-install" | "extension-attach" | "extension-detach" | "extension-uninstall" | "extension-list" | "extension-show" | "extension-doctor"
   | "version" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
@@ -147,6 +148,7 @@ export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "gateway serve", handler: "runtime-serve", options: ["bg", "gateway"], valueOptions: ["gateway"] },
   { route: "gateway stop", handler: "runtime-stop", options: ["gateway"], valueOptions: ["gateway"] },
   { route: "gateway status", handler: "runtime-status", options: ["gateway"], valueOptions: ["gateway"] },
+  { route: "gateway info", handler: "gateway-info", options: ["gateway", "detail", "copy-url", "copy-secret"], valueOptions: ["gateway"] },
   { route: "gateway join-token", handler: "gateway-join-token", options: ["gateway", "expires"], valueOptions: ["gateway", "expires"] },
   { route: "gateway workers list", handler: "membership-list", options: ["gateway"], valueOptions: ["gateway"] },
   { route: "gateway workers update", handler: "membership-update", options: ["gateway", "worker-id", "endpoint"], valueOptions: ["gateway", "worker-id", "endpoint"] },
@@ -376,10 +378,17 @@ Commands:
   serve [--bg]
   stop
   status
+  info
   join-token
   workers list
   workers update
   workers remove`;
+
+const GATEWAY_INFO_HELP = `Usage: queqiao gateway info [--gateway <gateway>] [--detail] [--copy-url|--copy-secret] [--json]
+
+Shows the MCP connector URL and local approval-secret availability.
+Use --detail to reveal the approval secret locally. Use copy options to copy one value without printing it.
+Instance selectors are required outside an interactive terminal.`;
 
 const GATEWAY_JOIN_TOKEN_HELP = `Usage: queqiao gateway join-token [--gateway <gateway>] [--expires <seconds>] [--json]
 
@@ -512,6 +521,7 @@ export function renderCliHelp(input: readonly string[]): string {
   const [domain, action] = args;
   if (!domain) return ROOT_HELP;
   if (domain === "gateway") {
+    if (action === "info") return GATEWAY_INFO_HELP;
     if (action === "join-token") return GATEWAY_JOIN_TOKEN_HELP;
     const leaf = renderLeafContractHelp(input);
     if (leaf) return leaf;

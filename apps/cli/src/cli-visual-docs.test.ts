@@ -7,15 +7,20 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const repoRawBase = "https://raw.githubusercontent.com/tibame201020/Queqiao/main/";
 const interactiveAssets = [
   "docs/assets/cli/interactive/01-gateway-setup.gif",
-  "docs/assets/cli/interactive/02-worker-access-setup.gif",
-  "docs/assets/cli/interactive/03-instance-selector.gif",
-  "docs/assets/cli/interactive/04-extension-attach.gif",
-  "docs/assets/cli/interactive/05-runtime-start.gif",
-  "docs/assets/cli/interactive/06-worker-enrollment.gif",
+  "docs/assets/cli/interactive/02-gateway-info.gif",
+  "docs/assets/cli/interactive/03-worker-access-setup.gif",
+  "docs/assets/cli/interactive/04-instance-selector.gif",
+  "docs/assets/cli/interactive/05-extension-attach.gif",
+  "docs/assets/cli/interactive/06-runtime-start.gif",
+  "docs/assets/cli/interactive/07-worker-enrollment.gif",
 ] as const;
 
 const onboardingCommands = [
   "queqiao gateway setup",
+  "queqiao gateway info",
+  "queqiao gateway info --detail",
+  "queqiao gateway info --copy-url",
+  "queqiao gateway info --copy-secret",
   "queqiao worker setup",
   "queqiao gateway status",
   "queqiao extension install <npm:package|local-path>",
