@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1 - 2026-08-30
+
+- Promotes Workspace Management to the root-level `queqiao workspace` domain.
+- `queqiao workspace` now opens the interactive **Workers / Access profiles** management entry point.
+- Workspace automation is `queqiao workspace add|list|info|edit|remove`; Access Profile CRUD is under `queqiao workspace profiles ...`.
+- Removes the 0.9.0 `queqiao worker workspace ...` hierarchy instead of retaining a compatibility alias.
+- Updates shell completion, packaged acceptance, documentation, and real PTY demos to the root Workspace hierarchy.
 ## 0.9.0 - 2026-08-30
 
 Workspace Management convergence release.

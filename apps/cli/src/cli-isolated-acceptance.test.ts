@@ -39,18 +39,18 @@ const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "worker stop": "packaged-managed-runtime",
   "worker status": "packaged-process-state",
   "worker join": "packaged-live-enrollment",
-  "worker workspace": "packaged-workspace-manager-contract",
-  "worker workspace add": "packaged-process-workspace",
-  "worker workspace list": "packaged-process-workspace",
-  "worker workspace info": "packaged-process-workspace",
-  "worker workspace edit": "packaged-process-workspace",
-  "worker workspace remove": "packaged-process-workspace",
-  "worker workspace profiles list": "packaged-process-workspace-profile",
-  "worker workspace profiles info": "packaged-process-workspace-profile",
-  "worker workspace profiles create": "packaged-process-workspace-profile",
-  "worker workspace profiles edit": "packaged-process-workspace-profile",
-  "worker workspace profiles rename": "packaged-process-workspace-profile",
-  "worker workspace profiles delete": "packaged-process-workspace-profile",
+  "workspace": "packaged-workspace-manager-contract",
+  "workspace add": "packaged-process-workspace",
+  "workspace list": "packaged-process-workspace",
+  "workspace info": "packaged-process-workspace",
+  "workspace edit": "packaged-process-workspace",
+  "workspace remove": "packaged-process-workspace",
+  "workspace profiles list": "packaged-process-workspace-profile",
+  "workspace profiles info": "packaged-process-workspace-profile",
+  "workspace profiles create": "packaged-process-workspace-profile",
+  "workspace profiles edit": "packaged-process-workspace-profile",
+  "workspace profiles rename": "packaged-process-workspace-profile",
+  "workspace profiles delete": "packaged-process-workspace-profile",
   "extension install": "packaged-process-extension",
   "extension attach": "packaged-process-extension",
   "extension detach": "packaged-process-extension",
@@ -291,25 +291,25 @@ describe.sequential("isolated packaged CLI acceptance", () => {
     const secondRoot = path.join(root, "workspace-two");
     await mkdir(secondRoot, { recursive: true });
 
-    const added = parseJson<any>(await runCli(["worker", "workspace", "add", "--worker", WORKER, "--root", secondRoot, "--display-name", "Second Workspace", "--access-profile", "Reader", "--json"]));
+    const added = parseJson<any>(await runCli(["workspace", "add", "--worker", WORKER, "--root", secondRoot, "--display-name", "Second Workspace", "--access-profile", "Reader", "--json"]));
     const secondWorkspace = added.workspace.id as string;
     expect(secondWorkspace).not.toBe(firstWorkspace);
-    expect(parseJson<any>(await runCli(["worker", "workspace", "list", "--worker", WORKER, "--json"])).workspaces).toHaveLength(2);
-    expect(parseJson<any>(await runCli(["worker", "workspace", "info", "--worker", WORKER, "--workspace", secondWorkspace, "--json"]))).toMatchObject({ workspace: { id: secondWorkspace, displayName: "Second Workspace" } });
+    expect(parseJson<any>(await runCli(["workspace", "list", "--worker", WORKER, "--json"])).workspaces).toHaveLength(2);
+    expect(parseJson<any>(await runCli(["workspace", "info", "--worker", WORKER, "--workspace", secondWorkspace, "--json"]))).toMatchObject({ workspace: { id: secondWorkspace, displayName: "Second Workspace" } });
 
-    expect(parseJson<any>(await runCli(["worker", "workspace", "profiles", "create", "--name", "accept-coding", "--tools", "read_file,write_file,edit_file,run", "--commands", "git,npm", "--json"]))).toMatchObject({ created: true, profile: { name: "accept-coding" } });
-    expect(parseJson<any>(await runCli(["worker", "workspace", "profiles", "list", "--json"])).profiles.map((profile: any) => profile.name)).toEqual(expect.arrayContaining(["Reader", "Editor", "accept-coding"]));
-    expect(parseJson<any>(await runCli(["worker", "workspace", "profiles", "info", "--profile", "accept-coding", "--json"]))).toMatchObject({ profile: { name: "accept-coding", builtin: false } });
-    expect(parseJson<any>(await runCli(["worker", "workspace", "profiles", "edit", "--profile", "accept-coding", "--tools", "read_file,write_file,edit_file,run,shell", "--commands", "git,npm", "--json"]))).toMatchObject({ changed: true, affectedWorkspaces: 0 });
-    expect(parseJson<any>(await runCli(["worker", "workspace", "profiles", "rename", "--profile", "accept-coding", "--to", "accept-full", "--json"]))).toMatchObject({ changed: true, from: "accept-coding", affectedWorkspaces: 0, profile: { name: "accept-full" } });
+    expect(parseJson<any>(await runCli(["workspace", "profiles", "create", "--name", "accept-coding", "--tools", "read_file,write_file,edit_file,run", "--commands", "git,npm", "--json"]))).toMatchObject({ created: true, profile: { name: "accept-coding" } });
+    expect(parseJson<any>(await runCli(["workspace", "profiles", "list", "--json"])).profiles.map((profile: any) => profile.name)).toEqual(expect.arrayContaining(["Reader", "Editor", "accept-coding"]));
+    expect(parseJson<any>(await runCli(["workspace", "profiles", "info", "--profile", "accept-coding", "--json"]))).toMatchObject({ profile: { name: "accept-coding", builtin: false } });
+    expect(parseJson<any>(await runCli(["workspace", "profiles", "edit", "--profile", "accept-coding", "--tools", "read_file,write_file,edit_file,run,shell", "--commands", "git,npm", "--json"]))).toMatchObject({ changed: true, affectedWorkspaces: 0 });
+    expect(parseJson<any>(await runCli(["workspace", "profiles", "rename", "--profile", "accept-coding", "--to", "accept-full", "--json"]))).toMatchObject({ changed: true, from: "accept-coding", affectedWorkspaces: 0, profile: { name: "accept-full" } });
 
-    expect(parseJson<any>(await runCli(["worker", "workspace", "edit", "--worker", WORKER, "--workspace", firstWorkspace, "--display-name", "Acceptance Workspace Updated", "--access-profile", "accept-full", "--json"]))).toMatchObject({ changed: true, workspace: { id: firstWorkspace, displayName: "Acceptance Workspace Updated" } });
-    const applied = parseJson<any>(await runCli(["worker", "workspace", "info", "--worker", WORKER, "--workspace", firstWorkspace, "--json"]));
+    expect(parseJson<any>(await runCli(["workspace", "edit", "--worker", WORKER, "--workspace", firstWorkspace, "--display-name", "Acceptance Workspace Updated", "--access-profile", "accept-full", "--json"]))).toMatchObject({ changed: true, workspace: { id: firstWorkspace, displayName: "Acceptance Workspace Updated" } });
+    const applied = parseJson<any>(await runCli(["workspace", "info", "--worker", WORKER, "--workspace", firstWorkspace, "--json"]));
     expect(applied.workspace.access).toMatchObject({ mode: "explicit", allowedExecutables: ["git", "npm"] });
     expect(applied.workspace.access.tools).toEqual(expect.arrayContaining(["run", "shell"]));
 
-    expect(parseJson<any>(await runCli(["worker", "workspace", "profiles", "delete", "--profile", "accept-full", "--force", "--json"]))).toMatchObject({ deleted: true, affectedWorkspaces: 0 });
-    const afterProfileDelete = parseJson<any>(await runCli(["worker", "workspace", "info", "--worker", WORKER, "--workspace", firstWorkspace, "--json"]));
+    expect(parseJson<any>(await runCli(["workspace", "profiles", "delete", "--profile", "accept-full", "--force", "--json"]))).toMatchObject({ deleted: true, affectedWorkspaces: 0 });
+    const afterProfileDelete = parseJson<any>(await runCli(["workspace", "info", "--worker", WORKER, "--workspace", firstWorkspace, "--json"]));
     expect(afterProfileDelete.workspace.access).toMatchObject({ allowedExecutables: ["git", "npm"] });
     extensionRoot = await fakeLocalExtension(root);
     expect(parseJson<any>(await runCli(["extension", "install", extensionRoot, "--json"]))).toMatchObject({ changed: true, id: EXTENSION_ID, source: "local", connectorManifestImpact: "none" });
@@ -321,9 +321,18 @@ describe.sequential("isolated packaged CLI acceptance", () => {
     expect(parseJson<any>(await runCli(["doctor", "manifest", "show", "--gateway", GATEWAY, "--json"]))).toMatchObject({ ok: true });
     expect(parseJson<any>(await runCli(["doctor", "tool", "explain", "read_file", "--gateway", GATEWAY, "--json"]))).toMatchObject({ name: "read_file", registeredBy: "core" });
     expect(parseJson<any>(await runCli(["doctor", "paths", "--json"]))).toMatchObject({ mode: "named-roles" });
-    expect(parseJson<any>(await runCli(["worker", "workspace", "remove", "--worker", WORKER, "--workspace", secondWorkspace, "--json"]))).toMatchObject({ changed: true, removed: secondWorkspace });
+    expect(parseJson<any>(await runCli(["workspace", "remove", "--worker", WORKER, "--workspace", secondWorkspace, "--json"]))).toMatchObject({ changed: true, removed: secondWorkspace });
   }, 60_000);
 
+  it("rejects the removed worker workspace hierarchy instead of forwarding it", async () => {
+    await expect(execFileAsync(process.execPath, [cliEntry, "worker", "workspace", "list", "--worker", WORKER, "--json"], {
+      cwd: repositoryRoot,
+      env,
+      encoding: "utf8",
+      windowsHide: true,
+      maxBuffer: 8 * 1024 * 1024,
+    })).rejects.toMatchObject({ stderr: expect.stringContaining('queqiao workspace') });
+  });
   it("starts packaged managed runtimes, joins them over HTTP, exercises membership, then stops them", async () => {
     const gatewayLayout = resolveRuntimeLayoutForNamedRole("gateway", GATEWAY, env, process.platform);
     const workerLayout = resolveRuntimeLayoutForNamedRole("worker", WORKER, env, process.platform);

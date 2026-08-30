@@ -44,11 +44,11 @@ supplies an executable allowlist.
 ![Interactive Workspace Management](../../assets/cli/interactive/04-workspace-management.gif)
 
 ```shell
-queqiao worker workspace
+queqiao workspace
 ```
 
 The recording exercises both top-level branches: Worker-owned Workspaces and reusable Access
-Profiles. It selects a named Worker only after choosing Workspaces, while Access Profiles remain
+Profiles. It selects a named Worker only after choosing Workers, while Access Profiles remain
 global templates.
 
 ## 5. Named-instance selector

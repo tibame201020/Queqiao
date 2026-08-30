@@ -82,7 +82,7 @@ async function resolveWorkspaceId(configFile: string, args: readonly string[]): 
     if (!config.workspaces.some((entry) => entry.id === requested)) throw new Error(`Workspace not found: ${requested}`);
     return requested;
   }
-  if (!isInteractive(args)) throw new Error('--workspace is required outside an interactive terminal. Run "queqiao worker workspace list --worker <worker>".');
+  if (!isInteractive(args)) throw new Error('--workspace is required outside an interactive terminal. Run "queqiao workspace list --worker <worker>".');
   return choose("Workspace", config.workspaces.map((entry) => ({ value: entry.id, label: entry.displayName, description: entry.root })));
 }
 
@@ -287,13 +287,13 @@ export async function deleteAccessProfile(args: readonly string[]): Promise<unkn
 }
 
 export async function runWorkspaceManager(args: string[]): Promise<unknown> {
-  if (!isInteractive(args)) throw new Error('"queqiao worker workspace" requires an interactive terminal. Use a workspace or profiles subcommand for automation.');
+  if (!isInteractive(args)) throw new Error('"queqiao workspace" requires an interactive terminal. Use a workspace or profiles subcommand for automation.');
   intro("Workspace Management");
   const area = await choose("Manage", [
-    { value: "workspaces", label: "Workspaces", description: "Authorized roots and access policy" },
+    { value: "workers", label: "Workers", description: "Manage a Worker and its Workspaces" },
     { value: "profiles", label: "Access profiles", description: "Reusable access templates" },
   ]);
-  if (area === "workspaces") {
+  if (area === "workers") {
     const workerName = await resolveRoleInstance("worker", args);
     const layout = resolveRuntimeLayoutForNamedRole("worker", workerName);
     const configFile = path.resolve(layout.configFile);

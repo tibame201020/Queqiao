@@ -80,7 +80,7 @@ Workspace setup 會設定 root、display name、Access Profile、Tools，以及�
 ![Interactive Queqiao Workspace Management](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/04-workspace-management.gif)
 
 ```shell
-queqiao worker workspace
+queqiao workspace
 ```
 
 TUI 把 Worker-owned Workspaces 與 reusable Access Profiles 分開。套用 profile 時會把 Tools 與 executable allowlist 複製到 Workspace；之後 edit、rename 或 delete profile 不會暗中修改已套用的 Workspace。Automation 可使用 CLI reference 中明確的 `workspace ...` 與 `workspace profiles ...` 子命令。

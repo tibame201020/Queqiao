@@ -18,3 +18,4 @@ current user documentation.
 For current behavior, start with the root README and the production documents under
 `docs/cli/`, `docs/operations.md`, `docs/workspace-authority.md`, `docs/extensions.md`, and
 `docs/architecture.md`.
+- [Workspace root CLI v0.9.1](workspace-root-v0.9.1-2026-08-30.md) - promotes Workspace Management to the root CLI domain and validates the breaking hierarchy change.

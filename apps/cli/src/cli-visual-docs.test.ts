@@ -23,7 +23,7 @@ const onboardingCommands = [
   "queqiao gateway info --copy-url",
   "queqiao gateway info --copy-secret",
   "queqiao worker setup",
-  "queqiao worker workspace",
+  "queqiao workspace",
   "queqiao gateway status",
   "queqiao extension install <npm:package|local-path>",
   "queqiao extension attach",

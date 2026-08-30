@@ -21,13 +21,10 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
   if (domain === "worker" && action === "update") {
     return removedRoute(`queqiao gateway workers ${action}`);
   }
-  if (domain === "workspace" && ["add", "list", "remove"].includes(action || "")) {
-    return removedRoute(`queqiao worker workspace ${action}`);
-  }
-  if (domain === "profile" && action === "set") return removedRoute("queqiao worker workspace");
-  if (domain === "tool" && ["allow", "deny"].includes(action || "")) return removedRoute("queqiao worker workspace");
-  if (domain === "command" && ["allow", "deny"].includes(action || "")) return removedRoute("queqiao worker workspace");
-  if (domain === "permissions" && action === "show") return removedRoute("queqiao worker workspace");
+  if (domain === "profile" && action === "set") return removedRoute("queqiao workspace");
+  if (domain === "tool" && ["allow", "deny"].includes(action || "")) return removedRoute("queqiao workspace");
+  if (domain === "command" && ["allow", "deny"].includes(action || "")) return removedRoute("queqiao workspace");
+  if (domain === "permissions" && action === "show") return removedRoute("queqiao workspace");
   if (domain === "extension" && action === "doctor") return removedRoute("queqiao doctor extension");
   if (domain === "manifest" && action === "show") return removedRoute("queqiao doctor manifest show --gateway <name>");
   if (domain === "tool" && action === "explain") return removedRoute("queqiao doctor tool explain <tool> --gateway <name>");
@@ -37,12 +34,7 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
     return replacePrefix(args, 3, ["membership", resource!]);
   }
 
-  if (domain === "worker" && action === "workspace") {
-    if (["add", "list", "info", "edit", "remove"].includes(resource || "")) return replacePrefix(args, 3, ["workspace", resource!]);
-    if (resource === "profile" || resource === "tool" || resource === "command" || resource === "permissions") {
-      return removedRoute("queqiao worker workspace");
-    }
-  }
+  if (domain === "worker" && action === "workspace") return removedRoute("queqiao workspace");
 
   if (domain === "doctor") {
     if (action === "extension") return replacePrefix(args, 2, ["extension", "doctor"]);
@@ -87,17 +79,17 @@ export const COMMAND_TREE: CommandNode = {
         stop: terminal,
         status: terminal,
         join: terminal,
-        workspace: {
-          terminal: true,
-          children: {
-            add: terminal,
-            list: terminal,
-            info: terminal,
-            edit: terminal,
-            remove: terminal,
-            profiles: { children: { list: terminal, info: terminal, create: terminal, edit: terminal, rename: terminal, delete: terminal } },
-          },
-        },
+      },
+    },
+    workspace: {
+      terminal: true,
+      children: {
+        add: terminal,
+        list: terminal,
+        info: terminal,
+        edit: terminal,
+        remove: terminal,
+        profiles: { children: { list: terminal, info: terminal, create: terminal, edit: terminal, rename: terminal, delete: terminal } },
       },
     },
     extension: {
@@ -163,18 +155,18 @@ export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "worker stop", handler: "runtime-stop", options: ["worker"], valueOptions: ["worker"] },
   { route: "worker status", handler: "runtime-status", options: ["worker"], valueOptions: ["worker"] },
   { route: "worker join", handler: "worker-join", options: ["worker", "join-code"], valueOptions: ["worker", "join-code"] },
-  { route: "worker workspace", handler: "workspace-manager", options: ["worker"], valueOptions: ["worker"] },
-  { route: "worker workspace add", handler: "workspace-add", options: ["worker", "root", "display-name", "access-profile"], valueOptions: ["worker", "root", "display-name", "access-profile"] },
-  { route: "worker workspace list", handler: "workspace-list", options: ["worker"], valueOptions: ["worker"] },
-  { route: "worker workspace info", handler: "workspace-info", options: ["worker", "workspace"], valueOptions: ["worker", "workspace"] },
-  { route: "worker workspace edit", handler: "workspace-edit", options: ["worker", "workspace", "root", "display-name", "access-profile"], valueOptions: ["worker", "workspace", "root", "display-name", "access-profile"] },
-  { route: "worker workspace remove", handler: "workspace-remove", options: ["worker", "workspace"], valueOptions: ["worker", "workspace"] },
-  { route: "worker workspace profiles list", handler: "workspace-profiles-list", options: [] },
-  { route: "worker workspace profiles info", handler: "workspace-profiles-info", options: ["profile"], valueOptions: ["profile"] },
-  { route: "worker workspace profiles create", handler: "workspace-profiles-create", options: ["name", "tools", "commands"], valueOptions: ["name", "tools", "commands"] },
-  { route: "worker workspace profiles edit", handler: "workspace-profiles-edit", options: ["profile", "tools", "commands"], valueOptions: ["profile", "tools", "commands"] },
-  { route: "worker workspace profiles rename", handler: "workspace-profiles-rename", options: ["profile", "to"], valueOptions: ["profile", "to"] },
-  { route: "worker workspace profiles delete", handler: "workspace-profiles-delete", options: ["profile", "force"], valueOptions: ["profile"] },
+  { route: "workspace", handler: "workspace-manager", options: [] },
+  { route: "workspace add", handler: "workspace-add", options: ["worker", "root", "display-name", "access-profile"], valueOptions: ["worker", "root", "display-name", "access-profile"] },
+  { route: "workspace list", handler: "workspace-list", options: ["worker"], valueOptions: ["worker"] },
+  { route: "workspace info", handler: "workspace-info", options: ["worker", "workspace"], valueOptions: ["worker", "workspace"] },
+  { route: "workspace edit", handler: "workspace-edit", options: ["worker", "workspace", "root", "display-name", "access-profile"], valueOptions: ["worker", "workspace", "root", "display-name", "access-profile"] },
+  { route: "workspace remove", handler: "workspace-remove", options: ["worker", "workspace"], valueOptions: ["worker", "workspace"] },
+  { route: "workspace profiles list", handler: "workspace-profiles-list", options: [] },
+  { route: "workspace profiles info", handler: "workspace-profiles-info", options: ["profile"], valueOptions: ["profile"] },
+  { route: "workspace profiles create", handler: "workspace-profiles-create", options: ["name", "tools", "commands"], valueOptions: ["name", "tools", "commands"] },
+  { route: "workspace profiles edit", handler: "workspace-profiles-edit", options: ["profile", "tools", "commands"], valueOptions: ["profile", "tools", "commands"] },
+  { route: "workspace profiles rename", handler: "workspace-profiles-rename", options: ["profile", "to"], valueOptions: ["profile", "to"] },
+  { route: "workspace profiles delete", handler: "workspace-profiles-delete", options: ["profile", "force"], valueOptions: ["profile"] },
   { route: "extension install", handler: "extension-install", options: ["source", "worker", "attach-all"], valueOptions: ["source", "worker"], positionals: 1 },
   { route: "extension attach", handler: "extension-attach", options: ["id", "worker"], valueOptions: ["id", "worker"], positionals: 1 },
   { route: "extension detach", handler: "extension-detach", options: ["id", "worker"], valueOptions: ["id", "worker"], positionals: 1 },
@@ -279,10 +271,10 @@ export function renderRemovedSelectorError(input: readonly string[]): string | u
   if (domain === "gateway" && !["setup", "list"].includes(action || "")) {
     return 'Option "--name" was removed; use "--gateway <name>".';
   }
-  if (domain === "worker" && action === "workspace" && resource === "add") {
+  if (domain === "workspace" && action === "add") {
     return 'Workspace option "--name" was removed; use "--display-name <name>".';
   }
-  if (domain === "worker" && action === "workspace" && resource === "profiles") return undefined;
+  if (domain === "workspace" && action === "profiles") return undefined;
   if (domain === "worker" && !["setup", "list"].includes(action || "")) {
     return 'Option "--name" was removed; use "--worker <name>".';
   }
@@ -366,6 +358,7 @@ Commands:
   completion   Print shell tab-completion setup
   gateway      Manage a Queqiao Gateway
   worker       Manage a Queqiao Worker
+  workspace    Manage Workspaces and Access Profiles
   extension    Manage Queqiao extensions
   doctor       Diagnose Queqiao
   uninstall    Remove Queqiao and Queqiao-owned local state
@@ -434,9 +427,9 @@ Commands:
   stop
   status
   join
-  workspace ...`;
+`;
 
-const WORKER_WORKSPACE_HELP = `Usage: queqiao worker workspace [command] [options]
+const WORKSPACE_HELP = `Usage: queqiao workspace [command] [options]
 
 Without a command in an interactive terminal, opens Workspace Management.
 
@@ -550,12 +543,12 @@ export function renderCliHelp(input: readonly string[]): string {
   }
   if (domain === "worker") {
     if (action === "join") return WORKER_JOIN_HELP;
+    return renderLeafContractHelp(input) || WORKER_HELP;
+  }
+  if (domain === "workspace") {
     const workspaceCommandTokens = input.filter((token) => token !== "--help" && token !== "-h" && token !== "--json" && !token.startsWith("--"));
-    if (action === "workspace" && workspaceCommandTokens.length === 2) return WORKER_WORKSPACE_HELP;
-    const leaf = renderLeafContractHelp(input);
-    if (leaf) return leaf;
-    if (action === "workspace") return WORKER_WORKSPACE_HELP;
-    return WORKER_HELP;
+    if (workspaceCommandTokens.length === 1) return WORKSPACE_HELP;
+    return renderLeafContractHelp(input) || WORKSPACE_HELP;
   }
   if (domain === "extension") return renderLeafContractHelp(input) || EXTENSION_HELP;
   if (domain === "doctor") return renderLeafContractHelp(input) || DOCTOR_HELP;
