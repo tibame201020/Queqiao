@@ -19,6 +19,7 @@ const EXTENSION_ID = "dev.queqiao.acceptance";
 
 const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "version": "packaged-version",
+  "completion": "packaged-shell-completion",
   "gateway list": "packaged-process-state",
   "gateway setup": "interactive-setup",
   "gateway remove": "interactive-destructive",
@@ -229,6 +230,15 @@ describe.sequential("isolated packaged CLI acceptance", () => {
     expect(parseJson<any>(await runCli(["--version", "--json"]))).toEqual({ schemaVersion: "1.0", version: packageVersion });
   });
 
+  it("prints shell completion scripts from the packaged CLI", async () => {
+    const bash = (await runCli(["completion", "bash"])).stdout;
+    const zsh = (await runCli(["completion", "zsh"])).stdout;
+    const powershell = (await runCli(["completion", "powershell"])).stdout;
+    expect(bash).toContain("complete -o default -F _queqiao_completion queqiao");
+    expect(bash).toContain("gateway info");
+    expect(zsh).toContain("compdef _queqiao_completion queqiao");
+    expect(powershell).toContain("Register-ArgumentCompleter -Native -CommandName queqiao,queqiao.cmd");
+  });
   it("creates isolated Gateway and Worker instances through the real setup wizards and packaged read paths", async () => {
     const workspaceRoot = path.join(root, "workspace-one");
     await mkdir(workspaceRoot, { recursive: true });
