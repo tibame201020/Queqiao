@@ -23,12 +23,15 @@ queqiao gateway list
 queqiao gateway serve [--gateway <gateway>] [--bg]
 queqiao gateway stop [--gateway <gateway>]
 queqiao gateway status [--gateway <gateway>]
+queqiao gateway info [--gateway <gateway>] [--detail] [--copy-url|--copy-secret]
 queqiao gateway remove [--gateway <gateway>]
 queqiao gateway join-token [--gateway <gateway>] [--expires <seconds>] [--json]
 queqiao gateway workers list [--gateway <gateway>]
 queqiao gateway workers update [--gateway <gateway>] --worker-id <id> --endpoint <loopback-worker-url>
 queqiao gateway workers remove [--gateway <gateway>] --worker-id <id>
 ```
+
+`gateway info` is the connector handoff command. The default view shows the MCP URL and approval-secret availability without revealing the secret. `--detail` explicitly reveals the local approval secret and Gateway metadata; do not paste that output into logs or issues. `--copy-url` and `--copy-secret` copy exactly one value without echoing it.
 
 ## Worker and Workspace authority
 

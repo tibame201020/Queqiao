@@ -178,6 +178,61 @@ describe("CLI presentation", () => {
     expect(output).not.toContain("  -");
   });
 
+  it("renders Gateway connector info as copy-friendly blocks without revealing the secret by default", () => {
+    const output = formatCliOutput(["gateway", "info", "--gateway", "stable"], {
+      schemaVersion: "1.0",
+      gateway: "stable",
+      mcpUrl: "https://gateway.example/stable/mcp",
+      publicBaseUrl: "https://gateway.example/stable/",
+      authentication: "OAuth 2.0 Authorization Code + PKCE",
+      approvalSecretAvailable: true,
+    });
+    expect(output).toBe([
+      "Gateway stable",
+      "",
+      "Connector",
+      "  MCP URL",
+      "  https://gateway.example/stable/mcp",
+      "",
+      "  Approval secret",
+      "  Hidden - use --detail to reveal or --copy-secret to copy",
+      "",
+      "Authentication",
+      "  OAuth 2.0 Authorization Code + PKCE",
+    ].join("\n"));
+    expect(output).not.toContain("owner-secret");
+  });
+
+  it("renders detail mode with an independently selectable approval secret", () => {
+    const output = formatCliOutput(["gateway", "info", "--gateway", "stable", "--detail"], {
+      schemaVersion: "1.0",
+      gateway: "stable",
+      mcpUrl: "https://gateway.example/stable/mcp",
+      publicBaseUrl: "https://gateway.example/stable/",
+      authentication: "OAuth 2.0 Authorization Code + PKCE",
+      approvalSecretAvailable: true,
+      approvalSecret: "owner-secret",
+      running: true,
+      managed: true,
+      servicePort: 8075,
+      managementPort: 8074,
+      allowedRedirectOrigins: ["https://chatgpt.com"],
+    });
+    expect(output).toContain("  https://gateway.example/stable/mcp\n");
+    expect(output).toContain("  owner-secret\n");
+    expect(output).toContain("Status: Running");
+    expect(output).toContain("Redirect origins:");
+  });
+
+  it("renders Gateway info clipboard actions without echoing copied values", () => {
+    const output = formatCliOutput(["gateway", "info", "--gateway", "stable", "--copy-secret"], {
+      gateway: "stable",
+      copied: "approval-secret",
+    });
+    expect(output).toBe("✓ Approval secret copied to clipboard\n  Gateway: stable");
+    expect(output).not.toContain("owner-secret");
+  });
+
   it("preserves structured output behind --json", () => {
     const value = { name: "stable", role: "gateway", active: false };
     expect(formatCliOutput(["gateway", "status", "--gateway", "stable", "--json"], value)).toBe(JSON.stringify(value, null, 2));

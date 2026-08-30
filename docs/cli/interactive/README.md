@@ -15,9 +15,22 @@ and they do not rely on documentation-only CLI flags.
 queqiao gateway setup
 ```
 
-## 2. Worker, first Workspace, and Access
+## 2. Gateway connector info
 
-![Interactive Worker and Access setup](../../assets/cli/interactive/02-worker-access-setup.gif)
+![Interactive Gateway connector info](../../assets/cli/interactive/02-gateway-info.gif)
+
+```shell
+queqiao gateway info
+queqiao gateway info --detail
+queqiao gateway info --copy-url
+queqiao gateway info --copy-secret
+```
+
+The default view keeps the approval secret hidden. `--detail` explicitly reveals the synthetic
+recording secret so the URL and secret remain independently selectable in the final frame.
+## 3. Worker, first Workspace, and Access
+
+![Interactive Worker and Access setup](../../assets/cli/interactive/03-worker-access-setup.gif)
 
 ```shell
 queqiao worker setup
@@ -26,35 +39,35 @@ queqiao worker setup
 The recording enters `Custom` Access, navigates the Tools multiselect, enables `run`, and
 supplies an executable allowlist.
 
-## 3. Named-instance selector
+## 4. Named-instance selector
 
-![Interactive named Gateway selector](../../assets/cli/interactive/03-instance-selector.gif)
+![Interactive named Gateway selector](../../assets/cli/interactive/04-instance-selector.gif)
 
 ```shell
 queqiao gateway status
 ```
 
-## 4. Extension attachment
+## 5. Extension attachment
 
-![Interactive Extension attachment](../../assets/cli/interactive/04-extension-attach.gif)
+![Interactive Extension attachment](../../assets/cli/interactive/05-extension-attach.gif)
 
 ```shell
 queqiao extension install <npm:package|local-path>
 queqiao extension attach
 ```
 
-## 5A. Start runtimes
+## 6A. Start runtimes
 
-![Interactive runtime startup](../../assets/cli/interactive/05-runtime-start.gif)
+![Interactive runtime startup](../../assets/cli/interactive/06-runtime-start.gif)
 
 ```shell
 queqiao worker serve --worker <worker> --bg
 queqiao gateway serve --gateway <gateway> --bg
 ```
 
-## 5B. Enroll the Worker
+## 6B. Enroll the Worker
 
-![Interactive Worker enrollment](../../assets/cli/interactive/06-worker-enrollment.gif)
+![Interactive Worker enrollment](../../assets/cli/interactive/07-worker-enrollment.gif)
 
 ```shell
 queqiao gateway join-token --gateway <gateway>

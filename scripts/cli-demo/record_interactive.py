@@ -221,6 +221,15 @@ def gateway_setup(rec: Recorder, cast: Path | None, name="demo-gateway", port="4
         s.close()
 
 
+def gateway_info_demo(rec: Recorder, cast: Path):
+    gateway_setup(rec, None, "demo-gateway", "45775", "45774")
+    s = Session(rec, cast).start()
+    try:
+        s.command("queqiao gateway info --gateway demo-gateway --detail", "Gateway details")
+    finally:
+        s.close(final_hold=3.5)
+
+
 def worker_setup(rec: Recorder, cast: Path | None, name="demo-worker", port="45776", custom=False):
     s = Session(rec, cast).start()
     try:
@@ -341,11 +350,11 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--work", required=True)
     parser.add_argument("--agg", required=True)
-    parser.add_argument("--demo", choices=["all","gateway","worker","selector","extension","start","enroll"], default="all")
+    parser.add_argument("--demo", choices=["all","gateway","info","worker","selector","extension","start","enroll"], default="all")
     args=parser.parse_args()
     out=Path(args.out); work=Path(args.work); agg=Path(args.agg)
     work.mkdir(parents=True, exist_ok=True); out.mkdir(parents=True, exist_ok=True)
-    selected=["gateway","worker","selector","extension","start","enroll"] if args.demo=="all" else [args.demo]
+    selected=["gateway","info","worker","selector","extension","start","enroll"] if args.demo=="all" else [args.demo]
     files=[]
     for index, name in enumerate(selected, start=1):
         root=work / name
@@ -353,6 +362,7 @@ def main():
         cast=work / f"{name}.cast"
         rec=Recorder(root, args.package)
         if name=="gateway": gateway_setup(rec, cast)
+        elif name=="info": gateway_info_demo(rec, cast)
         elif name=="worker": worker_setup(rec, cast, custom=True)
         elif name=="selector": selector_demo(rec, cast)
         elif name=="extension": extension_demo(rec, cast)
@@ -360,11 +370,12 @@ def main():
         elif name=="enroll": enroll_verify_demo(rec, cast)
         stems={
             "gateway":"01-gateway-setup",
-            "worker":"02-worker-access-setup",
-            "selector":"03-instance-selector",
-            "extension":"04-extension-attach",
-            "start":"05-runtime-start",
-            "enroll":"06-worker-enrollment",
+            "info":"02-gateway-info",
+            "worker":"03-worker-access-setup",
+            "selector":"04-instance-selector",
+            "extension":"05-extension-attach",
+            "start":"06-runtime-start",
+            "enroll":"07-worker-enrollment",
         }
         gif=out / f"{stems[name]}.gif"
         render(agg, cast, gif)

@@ -20,6 +20,20 @@ queqiao gateway stop --gateway <gateway>
 
 `--bg` means a Queqiao-managed background process, not an installed service.
 
+## Connector handoff
+
+After Gateway setup, retrieve the values needed to create an MCP client connector:
+
+```shell
+queqiao gateway info --gateway <gateway>
+queqiao gateway info --gateway <gateway> --detail
+queqiao gateway info --gateway <gateway> --copy-url
+queqiao gateway info --gateway <gateway> --copy-secret
+```
+
+The MCP URL is derived from the configured public Gateway URL. The approval secret stays in the
+Gateway's private runtime secret file. The default command reports availability without revealing
+the secret; `--detail` is an explicit local reveal and the copy flags avoid printing copied values.
 ## Enrollment and membership
 
 Startup and enrollment are separate. Start both roles, create a short-lived self-contained

@@ -6,6 +6,7 @@ current user documentation.
 
 ## Current release-line evidence
 
+- [v0.8.3 Gateway connector info](gateway-info-v0.8.3-2026-08-30.md)
 - [v0.8.2 README and CLI onboarding](readme-cli-onboarding-v0.8.2-2026-08-30.md)
 - [CLI interactive demos and version validation](cli-interactive-demos-2026-08-30.md)
 - [v0.8.0 CLI release acceptance](release-v0.8.0-cli-acceptance-2026-08-29.md)
