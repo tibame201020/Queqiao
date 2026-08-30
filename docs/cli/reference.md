@@ -72,22 +72,22 @@ queqiao worker status [--worker <worker>]
 queqiao worker remove [--worker <worker>]
 queqiao worker join [--worker <worker>] [--join-code <code>]
 
-queqiao worker workspace
-queqiao worker workspace add [--worker <worker>] [--root <path>] [--display-name <name>] [--access-profile <name>]
-queqiao worker workspace list [--worker <worker>]
-queqiao worker workspace info [--worker <worker>] [--workspace <id>]
-queqiao worker workspace edit [--worker <worker>] [--workspace <id>] [--root <path>] [--display-name <name>] [--access-profile <name>]
-queqiao worker workspace remove [--worker <worker>] [--workspace <id>]
+queqiao workspace
+queqiao workspace add [--worker <worker>] [--root <path>] [--display-name <name>] [--access-profile <name>]
+queqiao workspace list [--worker <worker>]
+queqiao workspace info [--worker <worker>] [--workspace <id>]
+queqiao workspace edit [--worker <worker>] [--workspace <id>] [--root <path>] [--display-name <name>] [--access-profile <name>]
+queqiao workspace remove [--worker <worker>] [--workspace <id>]
 
-queqiao worker workspace profiles list
-queqiao worker workspace profiles info [--profile <name>]
-queqiao worker workspace profiles create [--name <name>] [--tools <csv>] [--commands <csv>]
-queqiao worker workspace profiles edit [--profile <name>] [--tools <csv>] [--commands <csv>]
-queqiao worker workspace profiles rename [--profile <name>] [--to <name>]
-queqiao worker workspace profiles delete [--profile <name>] [--force]
+queqiao workspace profiles list
+queqiao workspace profiles info [--profile <name>]
+queqiao workspace profiles create [--name <name>] [--tools <csv>] [--commands <csv>]
+queqiao workspace profiles edit [--profile <name>] [--tools <csv>] [--commands <csv>]
+queqiao workspace profiles rename [--profile <name>] [--to <name>]
+queqiao workspace profiles delete [--profile <name>] [--force]
 ```
 
-Running `queqiao worker workspace` in a TTY opens Workspace Management. Choose **Workspaces** to
+Running `queqiao workspace` in a TTY opens Workspace Management. Choose **Workers** to
 select a Worker and manage its authorized roots, or choose **Access profiles** to manage reusable
 Tools ? executable-allowlist templates. `Reader` and `Editor` are built-in immutable profiles.
 
@@ -165,7 +165,7 @@ Every command group supports contextual help:
 ```shell
 queqiao --help
 queqiao gateway --help
-queqiao worker workspace --help
+queqiao workspace --help
 queqiao extension --help
 queqiao doctor --help
 ```

@@ -13,7 +13,7 @@ The first flow verifies configured Gateway/Worker instances and the Workspaces o
 ```text
 queqiao gateway list
 queqiao worker list
-queqiao worker workspace list --worker demo-worker
+queqiao workspace list --worker demo-worker
 ```
 
 ## Workspace authority
@@ -23,8 +23,8 @@ queqiao worker workspace list --worker demo-worker
 A scriptable Workspace can apply an Access Profile, then be inspected through the Worker-owned Workspace detail view:
 
 ```text
-queqiao worker workspace add --worker demo-worker --root <path> --display-name "Demo App" --access-profile Editor
-queqiao worker workspace info --worker demo-worker --workspace workspace-two
+queqiao workspace add --worker demo-worker --root <path> --display-name "Demo App" --access-profile Editor
+queqiao workspace info --worker demo-worker --workspace workspace-two
 ```
 
 Interactive Workspace setup starts from the higher-level Access Profile UX (`Reader`, `Editor`, saved profiles, or `Custom`). See [CLI components](../components/README.md) for the select/multiselect/input interaction grammar.

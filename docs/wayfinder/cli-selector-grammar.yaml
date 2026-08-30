@@ -72,18 +72,18 @@ production_grammar:
     - queqiao worker stop [--worker <name>]
     - queqiao worker status [--worker <name>]
     - queqiao worker join [--worker <name>] [--join-code <code>]
-    - queqiao worker workspace
-    - queqiao worker workspace add [--worker <name>] [--root <dir>] [--display-name <name>] [--access-profile <name>]
-    - queqiao worker workspace list [--worker <name>]
-    - queqiao worker workspace info [--worker <name>] [--workspace <id>]
-    - queqiao worker workspace edit [--worker <name>] [--workspace <id>] [--root <dir>] [--display-name <name>] [--access-profile <name>]
-    - queqiao worker workspace remove [--worker <name>] [--workspace <id>]
-    - queqiao worker workspace profiles list
-    - queqiao worker workspace profiles info [--profile <name>]
-    - queqiao worker workspace profiles create [--name <name>] [--tools <csv>] [--commands <csv>]
-    - queqiao worker workspace profiles edit [--profile <name>] [--tools <csv>] [--commands <csv>]
-    - queqiao worker workspace profiles rename [--profile <name>] [--to <name>]
-    - queqiao worker workspace profiles delete [--profile <name>] [--force]
+    - queqiao workspace
+    - queqiao workspace add [--worker <name>] [--root <dir>] [--display-name <name>] [--access-profile <name>]
+    - queqiao workspace list [--worker <name>]
+    - queqiao workspace info [--worker <name>] [--workspace <id>]
+    - queqiao workspace edit [--worker <name>] [--workspace <id>] [--root <dir>] [--display-name <name>] [--access-profile <name>]
+    - queqiao workspace remove [--worker <name>] [--workspace <id>]
+    - queqiao workspace profiles list
+    - queqiao workspace profiles info [--profile <name>]
+    - queqiao workspace profiles create [--name <name>] [--tools <csv>] [--commands <csv>]
+    - queqiao workspace profiles edit [--profile <name>] [--tools <csv>] [--commands <csv>]
+    - queqiao workspace profiles rename [--profile <name>] [--to <name>]
+    - queqiao workspace profiles delete [--profile <name>] [--force]
   extension:
     - queqiao extension install <npm:package|local-path> [--worker <name>|--attach-all]
     - queqiao extension attach [<id>] [--worker <name>]
@@ -109,8 +109,8 @@ compatibility:
       replacement: queqiao gateway <command> --gateway <name>
     - old: queqiao worker <command> --name <name>
       replacement: queqiao worker <command> --worker <name>
-    - old: queqiao worker workspace add --name <display-name>
-      replacement: queqiao worker workspace add --display-name <display-name>
+    - old: queqiao workspace add --name <display-name>
+      replacement: queqiao workspace add --display-name <display-name>
   aliases: none
   error_policy: removed selectors fail with replacement guidance
 

@@ -35,7 +35,7 @@ queqiao worker join --worker <worker>
 ```
 
 The setup commands are interactive instance choosers; `worker setup` also creates the first
-Workspace authority. Use `worker workspace add` for additional Workspaces. `worker join` separately creates Gateway membership through
+Workspace authority. Use `workspace add` for additional Workspaces. `worker join` separately creates Gateway membership through
 the one-time enrollment transaction defined by ADR-0011.
 
 There is no generic `queqiao setup` and Worker startup does not auto-register. A future

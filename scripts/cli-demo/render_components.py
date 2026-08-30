@@ -158,7 +158,7 @@ def results_frame(stage: int) -> Image.Image:
 def help_error_frame(error: bool) -> Image.Image:
     image, draw = base("Queqiao CLI · Help / Error")
     if not error:
-        text(draw, 36, 76, "Usage: queqiao worker workspace <command> [options]", CYAN, strong=True)
+        text(draw, 36, 76, "Usage: queqiao workspace <command> [options]", CYAN, strong=True)
         text(draw, 36, 132, "Commands:", CYAN, strong=True)
         text(draw, 72, 180, "add [--worker <worker>] [--root <dir>] [--display-name <name>]", TEXT)
         text(draw, 72, 218, "list [--worker <worker>]", TEXT)

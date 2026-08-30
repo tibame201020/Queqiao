@@ -29,9 +29,9 @@ describe("CLI hierarchy consolidation", () => {
     [["gateway", "workers", "list", "--gateway", "stable"], ["membership", "list", "--gateway", "stable"]],
     [["gateway", "workers", "update", "--worker-id", "w1", "--endpoint", "http://127.0.0.1:7576/"], ["membership", "update", "--worker-id", "w1", "--endpoint", "http://127.0.0.1:7576/"]],
     [["gateway", "workers", "remove", "--worker-id", "w1"], ["membership", "remove", "--worker-id", "w1"]],
-    [["worker", "workspace", "add", "--worker", "windows"], ["workspace", "add", "--worker", "windows"]],
-    [["worker", "workspace", "list", "--worker", "windows"], ["workspace", "list", "--worker", "windows"]],
-    [["worker", "workspace", "remove", "--worker", "windows", "--workspace", "codes"], ["workspace", "remove", "--worker", "windows", "--workspace", "codes"]],
+    [["workspace", "add", "--worker", "windows"], ["workspace", "add", "--worker", "windows"]],
+    [["workspace", "list", "--worker", "windows"], ["workspace", "list", "--worker", "windows"]],
+    [["workspace", "remove", "--worker", "windows", "--workspace", "codes"], ["workspace", "remove", "--worker", "windows", "--workspace", "codes"]],
     [["doctor", "extension"], ["extension", "doctor"]],
     [["doctor", "manifest", "show"], ["manifest", "show"]],
     [["doctor", "tool", "explain", "shell"], ["tool", "explain", "shell"]],
@@ -42,19 +42,17 @@ describe("CLI hierarchy consolidation", () => {
 
   it.each([
     [["worker", "update"], "queqiao gateway workers update"],
-    [["workspace", "add"], "queqiao worker workspace add"],
-    [["workspace", "list"], "queqiao worker workspace list"],
-    [["workspace", "remove"], "queqiao worker workspace remove"],
-    [["profile", "set"], "queqiao worker workspace"],
-    [["worker", "workspace", "profile", "set"], "queqiao worker workspace"],
-    [["tool", "allow"], "queqiao worker workspace"],
-    [["worker", "workspace", "tool", "allow"], "queqiao worker workspace"],
-    [["tool", "deny"], "queqiao worker workspace"],
-    [["command", "allow"], "queqiao worker workspace"],
-    [["worker", "workspace", "command", "allow"], "queqiao worker workspace"],
-    [["command", "deny"], "queqiao worker workspace"],
-    [["permissions", "show"], "queqiao worker workspace"],
-    [["worker", "workspace", "permissions", "show"], "queqiao worker workspace"],
+    [["profile", "set"], "queqiao workspace"],
+    [["worker", "workspace"], "queqiao workspace"],
+    [["worker", "workspace", "profile", "set"], "queqiao workspace"],
+    [["tool", "allow"], "queqiao workspace"],
+    [["worker", "workspace", "tool", "allow"], "queqiao workspace"],
+    [["tool", "deny"], "queqiao workspace"],
+    [["command", "allow"], "queqiao workspace"],
+    [["worker", "workspace", "command", "allow"], "queqiao workspace"],
+    [["command", "deny"], "queqiao workspace"],
+    [["permissions", "show"], "queqiao workspace"],
+    [["worker", "workspace", "permissions", "show"], "queqiao workspace"],
     [["extension", "doctor"], "queqiao doctor extension"],
     [["manifest", "show"], "queqiao doctor manifest show --gateway <name>"],
     [["tool", "explain"], "queqiao doctor tool explain <tool> --gateway <name>"],
@@ -84,7 +82,8 @@ describe("CLI hierarchy consolidation", () => {
     expect(help).toContain("extension");
     expect(help).toContain("doctor");
     expect(help).toContain("uninstall");
-    expect(help).not.toMatch(/^\s{2}(workspace|profile|tool|command|permissions|discovery|manifest|config|migrate)\b/m);
+    expect(help).toContain("workspace");
+    expect(help).not.toMatch(/^\s{2}(profile|tool|command|permissions|discovery|manifest|config|migrate)\b/m);
   });
 
   it("documents only the converged enrollment surface", () => {
@@ -105,7 +104,7 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it("rejects the removed default Workspace route instead of recognizing a handlerless command", () => {
-    expect(renderCliRouteError(["worker", "workspace", "default", "set"])).toContain('Unknown command "default"');
+    expect(renderCliRouteError(["workspace", "default", "set"])).toContain('Unknown command "default"');
   });
 
   it("renders scoped help using commands relative to the current context", () => {
@@ -115,12 +114,12 @@ describe("CLI hierarchy consolidation", () => {
     expect(renderCliHelp(["gateway", "workers", "--help"])).toContain("\n  list\n");
     expect(renderCliHelp(["gateway", "workers", "--help"])).not.toContain("gateway workers list");
     expect(renderCliHelp(["worker", "--help"])).toContain("\n  remove\n");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("opens Workspace Management");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("add [--worker <worker>]");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("info [--worker <worker>] [--workspace <id>]");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("profiles rename [--profile <name>] [--to <name>]");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).toContain("templates");
-    expect(renderCliHelp(["worker", "workspace", "--help"])).not.toContain("tool allow|deny");
+    expect(renderCliHelp(["workspace", "--help"])).toContain("opens Workspace Management");
+    expect(renderCliHelp(["workspace", "--help"])).toContain("add [--worker <worker>]");
+    expect(renderCliHelp(["workspace", "--help"])).toContain("info [--worker <worker>] [--workspace <id>]");
+    expect(renderCliHelp(["workspace", "--help"])).toContain("profiles rename [--profile <name>] [--to <name>]");
+    expect(renderCliHelp(["workspace", "--help"])).toContain("templates");
+    expect(renderCliHelp(["workspace", "--help"])).not.toContain("tool allow|deny");
     expect(renderCliHelp(["extension", "--help"])).toContain("\n  install <npm:package|local-path>");
     expect(renderCliHelp(["extension", "--help"])).not.toContain("extension install");
     expect(renderCliHelp(["doctor", "--help"])).toContain("\n  extension\n");
@@ -128,13 +127,14 @@ describe("CLI hierarchy consolidation", () => {
     expect(renderCliHelp(["doctor", "--help"])).toContain("tool explain <tool> [--gateway <name>]");
     expect(renderCliHelp(["uninstall", "--help"])).toContain("Usage: queqiao uninstall");
     expect(renderCliHelp(["uninstall", "--help"])).not.toContain("--yes");
-    expect(renderCliHelp(["workspace", "--help"])).toBe(renderCliHelp([]));
+    expect(renderCliHelp(["workspace", "--help"])).toContain("opens Workspace Management");
   });
 
   it.each([
     [["gateway"], true],
     [["gateway", "workers"], true],
     [["worker"], true],
+    [["workspace"], false],
     [["worker", "workspace"], false],
     [["extension"], true],
     [["gateway", "status"], false],
@@ -203,23 +203,23 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it("renders Workspace manager help at the group and precise help for deep leaves", () => {
-    const managerHelp = renderCliHelp(["worker", "workspace", "--help"]);
+    const managerHelp = renderCliHelp(["workspace", "--help"]);
     expect(managerHelp).toContain("opens Workspace Management");
     expect(managerHelp).toContain("profiles create");
-    const createHelp = renderCliHelp(["worker", "workspace", "profiles", "create", "--help"]);
-    expect(createHelp).toContain("Usage: queqiao worker workspace profiles create");
+    const createHelp = renderCliHelp(["workspace", "profiles", "create", "--help"]);
+    expect(createHelp).toContain("Usage: queqiao workspace profiles create");
     expect(createHelp).toContain("[--name <name>]");
     expect(createHelp).toContain("[--tools <csv>]");
     expect(createHelp).not.toContain("opens Workspace Management");
   });
   it("keeps --name available for Access Profile creation", () => {
-    expect(renderRemovedSelectorError(["worker", "workspace", "profiles", "create", "--name", "coding-safe"])).toBeUndefined();
+    expect(renderRemovedSelectorError(["workspace", "profiles", "create", "--name", "coding-safe"])).toBeUndefined();
   });
 
   it.each([
     [["gateway", "status", "--name", "stable"], "--gateway <name>"],
     [["worker", "status", "--name", "windows"], "--worker <name>"],
-    [["worker", "workspace", "add", "--name", "Codes"], "--display-name <name>"],
+    [["workspace", "add", "--name", "Codes"], "--display-name <name>"],
   ])("provides one canonical replacement for removed selectors %j", (input, replacement) => {
     expect(renderRemovedSelectorError(input)).toContain(replacement);
   });

@@ -254,7 +254,7 @@ def workspace_management_demo(rec: Recorder, cast: Path):
     worker_setup(rec, None, "alpha-worker", "46176", custom=False)
     worker_setup(rec, None, "beta-worker", "46276", custom=False, create_down=1)
     rec.run_noninteractive(
-        "worker", "workspace", "profiles", "create",
+        "workspace", "profiles", "create",
         "--name", "Coding Safe",
         "--tools", "read_file,write_file,edit_file,run",
         "--commands", "git,npm",
@@ -262,17 +262,17 @@ def workspace_management_demo(rec: Recorder, cast: Path):
     )
     s = Session(rec, cast).start()
     try:
-        s.command("queqiao worker workspace", "Manage")
+        s.command("queqiao workspace", "Manage")
         m=s.mark(); s.enter(); s.wait_for("Worker", after=m)
         m=s.mark(); s.down(); s.enter(); s.wait_for("Workspace", after=m)
         m=s.mark(); s.enter(); s.wait_for("Action", after=m)
-        m=s.mark(); s.enter(); s.wait_for("Workspace ", after=m)
+        m=s.mark(); s.enter(); s.wait_for("Schema Version", after=m)
         s.wait_for("$ ", timeout=6, after=m)
 
-        s.command("queqiao worker workspace", "Manage")
+        s.command("queqiao workspace", "Manage")
         m=s.mark(); s.down(); s.enter(); s.wait_for("Access profile", after=m)
         m=s.mark(); s.down(2); s.enter(); s.wait_for("Action", after=m)
-        m=s.mark(); s.enter(); s.wait_for("Access Profile Coding Safe", after=m)
+        m=s.mark(); s.enter(); s.wait_for("Name: Coding Safe", after=m)
     finally:
         s.close(final_hold=3.5)
 

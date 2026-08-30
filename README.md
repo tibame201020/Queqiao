@@ -97,7 +97,7 @@ Use the Workspace Management entry point for ongoing changes after initial setup
 ![Interactive Queqiao Workspace Management](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/04-workspace-management.gif)
 
 ```shell
-queqiao worker workspace
+queqiao workspace
 ```
 
 The TUI separates Worker-owned Workspaces from reusable Access Profiles. Applying a profile copies

@@ -92,7 +92,7 @@ Within one Gateway membership registry, each Gateway-visible Worker endpoint mus
 
 ## Workspace and Extension hot reload
 
-A configured Worker always owns at least one Workspace. `queqiao worker workspace` provides the
+A configured Worker always owns at least one Workspace. `queqiao workspace` provides the
 interactive management surface; automation uses `workspace add/list/info/edit/remove`. Workspace
 access changes remain Worker-owned and are atomically validated. Access Profiles are reusable
 templates: applying one copies policy into a Workspace, while later profile edit/rename/delete does
