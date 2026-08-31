@@ -10,11 +10,12 @@ import { ClientRequestBudget } from "./request-budget.js";
 import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
 import { GatewayLivenessMonitor } from "./liveness-monitor.js";
+import type { WorkerSessionRegistry } from "./worker-session-registry.js";
 
-export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService): Promise<Express> {
+export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService, sessions?: WorkerSessionRegistry): Promise<Express> {
   const oauth = new OAuthService(config); await oauth.initialize();
   const memberships = enrollment?.memberships ?? new WorkerMembershipStore(config.stateDir);
-  const workerSource = new MembershipWorkerRegistry(memberships);
+  const workerSource = new MembershipWorkerRegistry(memberships, sessions);
   await workerSource.initialize();
   const allowedOriginHostnames = [...new Set([config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]", ...[...config.allowedRedirectOrigins].map((origin) => new URL(origin).hostname)])];
   const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts: [config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]"], jsonLimit: "6mb" });

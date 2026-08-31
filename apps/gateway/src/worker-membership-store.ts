@@ -16,10 +16,14 @@ export const workerTransportDescriptorSchema = z.discriminatedUnion("type", [
       if (url.username || url.password) ctx.addIssue({ code: "custom", message: "Worker transport endpoint must not contain credentials" });
     }),
   }),
+  z.object({
+    type: z.literal("grpc"),
+    mode: z.literal("reverse"),
+  }),
 ]);
 
-export function gatewayVisibleTransportKey(transport: WorkerTransportDescriptor): string {
-  if (transport.type !== "http") return `${transport.type}:unsupported`;
+export function gatewayVisibleTransportKey(transport: WorkerTransportDescriptor): string | undefined {
+  if (transport.type !== "http") return undefined;
   const url = new URL(transport.endpoint);
   const host = url.hostname === "localhost" ? "127.0.0.1" : url.hostname;
   const port = url.port || "80";
@@ -49,10 +53,10 @@ export const workerMembershipRegistrySchema = z.object({
     if (workerIds.has(worker.workerId)) ctx.addIssue({ code: "custom", path: ["workers", index, "workerId"], message: "workerId must be unique" });
     if (environmentIds.has(worker.environmentId)) ctx.addIssue({ code: "custom", path: ["workers", index, "environmentId"], message: "environmentId must be unique within a Gateway" });
     const transportKey = gatewayVisibleTransportKey(worker.transport);
-    if (transportKeys.has(transportKey)) ctx.addIssue({ code: "custom", path: ["workers", index, "transport"], message: "Gateway-visible Worker transport endpoint must be unique within a Gateway" });
+    if (transportKey && transportKeys.has(transportKey)) ctx.addIssue({ code: "custom", path: ["workers", index, "transport"], message: "Gateway-visible Worker transport endpoint must be unique within a Gateway" });
     workerIds.add(worker.workerId);
     environmentIds.add(worker.environmentId);
-    transportKeys.add(transportKey);
+    if (transportKey) transportKeys.add(transportKey);
   }
 });
 

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkerApp } from "../../worker/src/app.js";
 import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
+import { WorkerSessionRegistry } from "./worker-session-registry.js";
 
 const servers: Server[] = [];
 afterEach(async () => {
@@ -168,4 +169,60 @@ describe("Worker enrollment transaction", () => {
     const wrongEndpoint = await workerServer(crypto.randomUUID(), "windows", credential);
     await expect(service.updateTransport(workerId, { type: "http", endpoint: wrongEndpoint })).rejects.toMatchObject({ code: "worker_identity_mismatch" });
     expect((await store.read()).workers[0]?.transport).toEqual({ type: "http", endpoint: firstEndpoint });
-  });});
+  });
+});
+
+describe("reverse gRPC Worker enrollment", () => {
+  it("commits only when the exact provisional transaction owns an authenticated live session", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "queqiao-grpc-enrollment-"));
+    const store = new WorkerMembershipStore(directory);
+    const sessions = new WorkerSessionRegistry();
+    const service = new EnrollmentService(store, directory, sessions);
+    const workerId = crypto.randomUUID();
+    const hello = { protocolVersion: "3.0" as const, workerId, environmentId: "linux", instanceId: crypto.randomUUID(), platform: "linux" as const, capabilities: [] };
+    const transport = {
+      execute: vi.fn(async (request: { operation: string }) => {
+        if (request.operation === "health") return { ok: true, service: "queqiao-worker", environmentId: "linux" };
+        if (request.operation === "hello") return hello;
+        throw new Error(`unexpected operation: ${request.operation}`);
+      }),
+      close: vi.fn(),
+    };
+
+    const started = await service.startJoin({ token: service.createJoinToken().token, workerId, environmentId: "linux", transport: { type: "grpc", mode: "reverse" } });
+    const authentication = await service.authenticateWorkerSession(hello, started.credential);
+    expect(authentication).toEqual({ kind: "provisional", transactionId: started.transactionId });
+    sessions.attach(hello, transport, authentication);
+
+    const membership = await service.confirmJoin(started.transactionId, started.credential);
+    expect(membership.transport).toEqual({ type: "grpc", mode: "reverse" });
+    expect(sessions.require(workerId).authentication).toEqual({ kind: "membership" });
+    expect((await store.read()).workers).toHaveLength(1);
+    await expect(service.authenticateWorkerSession(hello, started.credential)).resolves.toEqual({ kind: "membership" });
+  });
+
+  it("rejects confirmation without the matching live provisional session and revokes a failed session", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "queqiao-grpc-enrollment-"));
+    const store = new WorkerMembershipStore(directory);
+    const sessions = new WorkerSessionRegistry();
+    const service = new EnrollmentService(store, directory, sessions);
+    const workerId = crypto.randomUUID();
+    const started = await service.startJoin({ token: service.createJoinToken().token, workerId, environmentId: "linux", transport: { type: "grpc", mode: "reverse" } });
+
+    await expect(service.confirmJoin(started.transactionId, started.credential)).rejects.toMatchObject({ code: "worker_session_unavailable" });
+    expect((await store.read()).workers).toEqual([]);
+    await expect(service.authenticateWorkerSession({ protocolVersion: "3.0", workerId, environmentId: "linux", instanceId: crypto.randomUUID(), platform: "linux", capabilities: [] }, started.credential)).rejects.toMatchObject({ code: "worker_session_unauthorized" });
+  });
+
+  it("allows only one provisional join per workerId or environmentId", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "queqiao-grpc-enrollment-"));
+    const store = new WorkerMembershipStore(directory);
+    const sessions = new WorkerSessionRegistry();
+    const service = new EnrollmentService(store, directory, sessions);
+    const workerId = crypto.randomUUID();
+    await service.startJoin({ token: service.createJoinToken().token, workerId, environmentId: "linux", transport: { type: "grpc", mode: "reverse" } });
+
+    await expect(service.startJoin({ token: service.createJoinToken().token, workerId, environmentId: "windows", transport: { type: "grpc", mode: "reverse" } })).rejects.toMatchObject({ status: 409, code: "worker_join_in_progress" });
+    await expect(service.startJoin({ token: service.createJoinToken().token, workerId: crypto.randomUUID(), environmentId: "linux", transport: { type: "grpc", mode: "reverse" } })).rejects.toMatchObject({ status: 409, code: "environment_join_in_progress" });
+  });
+});

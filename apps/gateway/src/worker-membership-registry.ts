@@ -3,18 +3,24 @@ import path from "node:path";
 import { WorkerRegistry } from "./worker-registry.js";
 import type { MembershipWorkerClientConfig } from "./worker-client.js";
 import { WorkerMembershipStore, type WorkerMembershipRegistry } from "./worker-membership-store.js";
+import { WorkerSessionRegistry } from "./worker-session-registry.js";
+import { SessionRegistryWorkerTransport } from "./session-registry-worker-transport.js";
 
-async function membershipClients(registry: WorkerMembershipRegistry): Promise<MembershipWorkerClientConfig[]> {
+async function membershipClients(registry: WorkerMembershipRegistry, sessions?: WorkerSessionRegistry): Promise<MembershipWorkerClientConfig[]> {
   return Promise.all(registry.workers.map(async (worker) => {
     const reference = worker.credentialRefs[0];
     if (!reference || reference.kind !== "secret-file") throw new Error(`Worker credential reference is unavailable: ${worker.workerId}`);
     const token = (await readFile(path.resolve(reference.path), "utf8")).trim();
     if (Buffer.byteLength(token) < 32) throw new Error(`Worker credential is invalid: ${worker.workerId}`);
+    const runtimeTransport = worker.transport.type === "grpc"
+      ? sessions ? new SessionRegistryWorkerTransport(sessions, worker.workerId) : (() => { throw new Error("Worker reverse session registry is required for gRPC membership"); })()
+      : undefined;
     return {
       workerId: worker.workerId,
       environmentId: worker.environmentId,
       transport: worker.transport,
       token,
+      ...(runtimeTransport ? { runtimeTransport } : {}),
     };
   }));
 }
@@ -24,7 +30,10 @@ export class MembershipWorkerRegistry {
   private loading: Promise<void> | undefined;
   private seenMembershipRevision = -1;
 
-  constructor(private readonly memberships: WorkerMembershipStore) {}
+  constructor(
+    private readonly memberships: WorkerMembershipStore,
+    private readonly sessions?: WorkerSessionRegistry,
+  ) {}
 
   async initialize(): Promise<void> {
     await this.reload(true);
@@ -33,7 +42,7 @@ export class MembershipWorkerRegistry {
   private async reload(force: boolean): Promise<void> {
     if (!force && this.seenMembershipRevision === this.memberships.revision) return;
     const current = await this.memberships.current();
-    this.registry = new WorkerRegistry(await membershipClients(current));
+    this.registry = new WorkerRegistry(await membershipClients(current, this.sessions));
     this.seenMembershipRevision = this.memberships.revision;
   }
 

@@ -1,4 +1,4 @@
-import { WorkerHttpError } from "./errors.js";
+import { WorkerHttpError, WorkerRemoteError } from "./errors.js";
 import { HttpWorkerTransport } from "./http-worker-transport.js";
 import type { WorkerTransport, WorkerTransportDescriptor, WorkerTransportRequest } from "./worker-transport.js";
 import {
@@ -19,6 +19,7 @@ export type WorkerClientConfig = {
   environmentId: string;
   transport: WorkerTransportDescriptor;
   token: string;
+  runtimeTransport?: WorkerTransport;
 };
 
 export type MembershipWorkerClientConfig = WorkerClientConfig & { workerId: string };
@@ -32,6 +33,7 @@ export class WorkerClient {
   readonly environmentId: string;
   readonly workerId: string | undefined;
   private handshakePromise: Promise<WorkerHello> | undefined;
+  private handshakeRevision: string | undefined;
 
   constructor(
     private readonly config: WorkerClientConfig,
@@ -48,36 +50,46 @@ export class WorkerClient {
       this.reportReachability(true);
       return result;
     } catch (error) {
-      if (error instanceof WorkerHttpError) this.reportReachability(true);
+      if (error instanceof WorkerRemoteError) this.reportReachability(true);
       else this.reportReachability(false);
       throw error;
     }
   }
 
   handshake(force = false): Promise<WorkerHello> {
-    if (force) this.handshakePromise = undefined;
-    this.handshakePromise ??= this.executeTracked<unknown>({ operation: "hello" }).then((value) => {
-      const hello = workerHelloSchema.parse(value);
-      if (hello.environmentId !== this.environmentId) throw new Error("Worker environment identity mismatch");
-
-      if (this.workerId) {
-        if (hello.protocolVersion !== QUEQIAO_WORKER_PROTOCOL_VERSION) {
-          throw new Error(`Worker Protocol ${QUEQIAO_WORKER_PROTOCOL_VERSION} is required for enrolled membership routing`);
-        }
-        if (hello.workerId !== this.workerId) throw new Error("Worker stable identity mismatch");
-      } else if (hello.protocolVersion === QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION) {
-        for (const capability of QUEQIAO_WORKER_LEGACY_CAPABILITIES) {
-          if (!hello.capabilities.includes(capability)) throw new Error(`Worker capability missing: ${capability}`);
-        }
-      }
-
-      this.reportReachability(true);
-      return hello;
-    }).catch((error) => {
+    const revision = this.transport.revision?.();
+    if (force || revision !== this.handshakeRevision) {
       this.handshakePromise = undefined;
-      this.reportReachability(false);
-      throw error;
-    });
+      this.handshakeRevision = undefined;
+    }
+    if (!this.handshakePromise) {
+      const startedRevision = revision;
+      this.handshakePromise = this.executeTracked<unknown>({ operation: "hello" }).then((value) => {
+        if (this.transport.revision && this.transport.revision() !== startedRevision) throw new Error("Worker transport session changed during handshake");
+        const hello = workerHelloSchema.parse(value);
+        if (hello.environmentId !== this.environmentId) throw new Error("Worker environment identity mismatch");
+
+        if (this.workerId) {
+          if (hello.protocolVersion !== QUEQIAO_WORKER_PROTOCOL_VERSION) {
+            throw new Error(`Worker Protocol ${QUEQIAO_WORKER_PROTOCOL_VERSION} is required for enrolled membership routing`);
+          }
+          if (hello.workerId !== this.workerId) throw new Error("Worker stable identity mismatch");
+        } else if (hello.protocolVersion === QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION) {
+          for (const capability of QUEQIAO_WORKER_LEGACY_CAPABILITIES) {
+            if (!hello.capabilities.includes(capability)) throw new Error(`Worker capability missing: ${capability}`);
+          }
+        }
+
+        this.handshakeRevision = startedRevision;
+        this.reportReachability(true);
+        return hello;
+      }).catch((error) => {
+        this.handshakePromise = undefined;
+        this.handshakeRevision = undefined;
+        this.reportReachability(false);
+        throw error;
+      });
+    }
     return this.handshakePromise;
   }
 

@@ -12,7 +12,7 @@ export class WorkerRegistry {
   private readonly reachability = new Map<string, ReachabilityRecord>();
 
   constructor(configs: readonly WorkerClientConfig[]) {
-    this.workers = configs.map((config) => new WorkerClient(config, undefined, (reachable) => this.recordReachability(config.environmentId, reachable)));
+    this.workers = configs.map((config) => new WorkerClient(config, config.runtimeTransport, (reachable) => this.recordReachability(config.environmentId, reachable)));
     for (const config of configs) this.reachability.set(config.environmentId, { reachable: false });
   }
 

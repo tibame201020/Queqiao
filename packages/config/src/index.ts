@@ -180,6 +180,9 @@ const runtimeConfigBaseSchema = z.object({
     publicBaseUrl: z.url(),
     listen: z.object({ host: z.literal("127.0.0.1").default("127.0.0.1"), port: z.number().int().min(1).max(65535).default(7575) }),
     managementListen: z.object({ host: z.literal("127.0.0.1").default("127.0.0.1"), port: z.number().int().min(1).max(65535).default(7574) }).default({ host: "127.0.0.1", port: 7574 }),
+    workerSessionListen: z.object({ host: z.enum(["127.0.0.1", "0.0.0.0"]).default("127.0.0.1"), port: z.number().int().min(1).max(65535) }).optional(),
+    workerSessionAdvertiseHost: z.string().min(1).max(253).optional(),
+    workerSessionTls: z.object({ certFile: z.string().min(1), keyFile: z.string().min(1) }).optional(),
     livenessIntervalMs: z.number().int().min(5_000).max(3_600_000).default(30_000),
     trustProxyHops: z.number().int().min(0).max(16).default(1),
     stateDirectory: z.string().min(1), approvalSecretFile: z.string().min(1), jwtSigningSecretFile: z.string().min(1),
@@ -190,12 +193,20 @@ const runtimeConfigBaseSchema = z.object({
     environmentId: environmentIdSchema,
     listen: z.object({ host: z.literal("127.0.0.1").default("127.0.0.1"), port: z.number().int().min(1).max(65535).default(7576) }),
     tokenFile: z.string().min(1),
+    reverseSession: z.object({
+      target: z.string().min(3).max(512),
+      caCertificateFile: z.string().min(1),
+    }).optional(),
   }).optional(),
   extensions: z.array(installedExtensionSchema).default([]),
   workspaces: z.array(workspaceConfigSchema).default([]),
 });
 
 export const runtimeConfigRepairSchema = runtimeConfigBaseSchema.superRefine((config, ctx) => {
+  if (config.gateway?.workerSessionListen?.host === "0.0.0.0") {
+    if (!config.gateway.workerSessionAdvertiseHost) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionAdvertiseHost"], message: "Remote Worker session listener requires an advertised host" });
+    if (!config.gateway.workerSessionTls) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionTls"], message: "Remote Worker session listener requires TLS" });
+  }
   const workspaceIds = new Set<string>();
   for (const [index, workspace] of config.workspaces.entries()) {
     if (workspaceIds.has(workspace.id)) ctx.addIssue({ code: "custom", path: ["workspaces", index, "id"], message: "Workspace id must be unique" });

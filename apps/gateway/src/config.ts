@@ -7,6 +7,10 @@ export type GatewayRuntimeConfig = {
   host?: "127.0.0.1";
   port: number;
   managementPort: number;
+  workerSessionHost: "127.0.0.1" | "0.0.0.0";
+  workerSessionPort: number;
+  workerSessionAdvertiseHost?: string;
+  workerSessionTls?: { cert: Buffer; key: Buffer };
   livenessIntervalMs?: number;
   publicBaseUrl: URL;
   resourceUrl: string;
@@ -36,6 +40,12 @@ function integer(env: NodeJS.ProcessEnv, name: string, fallback: number): number
   return value;
 }
 
+function resolveWorkerSessionPort(gatewayPort: number, explicit?: number): number {
+  const value = explicit ?? gatewayPort - 2;
+  if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error("Worker session port must be between 1 and 65535");
+  return value;
+}
+
 function livenessInterval(env: NodeJS.ProcessEnv): number {
   const value = integer(env, "QUEQIAO_LIVENESS_INTERVAL_MS", 30_000);
   if (value < 5_000 || value > 3_600_000) throw new Error("QUEQIAO_LIVENESS_INTERVAL_MS must be between 5000 and 3600000");
@@ -53,11 +63,14 @@ function normalizePublicBaseUrl(rawUrl: string, label: string): URL {
 export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): GatewayRuntimeConfig {
   const publicBaseUrl = normalizePublicBaseUrl(required(env, "PUBLIC_BASE_URL"), "PUBLIC_BASE_URL");
   const signingSecret = secret(env, "JWT_SIGNING_SECRET");
+  const port = integer(env, "PORT", 7575);
   if (Buffer.byteLength(signingSecret) < 32) throw new Error("JWT_SIGNING_SECRET must be at least 32 bytes");
   return {
     host: "127.0.0.1",
-    port: integer(env, "PORT", 7575),
+    port,
     managementPort: integer(env, "QUEQIAO_MANAGEMENT_PORT", 7574),
+    workerSessionHost: "127.0.0.1",
+    workerSessionPort: resolveWorkerSessionPort(port, env.QUEQIAO_WORKER_SESSION_PORT ? integer(env, "QUEQIAO_WORKER_SESSION_PORT", 7573) : undefined),
     livenessIntervalMs: livenessInterval(env),
     publicBaseUrl,
     resourceUrl: new URL("mcp", publicBaseUrl).href,
@@ -79,10 +92,17 @@ export function loadGatewayConfigFile(file: string): GatewayRuntimeConfig {
   const signingSecret = readFileSync(path.resolve(gateway.jwtSigningSecretFile), "utf8").trim();
   const approvalSecret = readFileSync(path.resolve(gateway.approvalSecretFile), "utf8").trim();
   if (Buffer.byteLength(signingSecret) < 32) throw new Error("JWT signing secret must be at least 32 bytes");
+  const workerSessionTls = gateway.workerSessionTls
+    ? { cert: readFileSync(path.resolve(gateway.workerSessionTls.certFile)), key: readFileSync(path.resolve(gateway.workerSessionTls.keyFile)) }
+    : undefined;
   return {
     host: gateway.listen.host,
     port: gateway.listen.port,
     managementPort: gateway.managementListen.port,
+    workerSessionHost: gateway.workerSessionListen?.host ?? "127.0.0.1",
+    workerSessionPort: resolveWorkerSessionPort(gateway.listen.port, gateway.workerSessionListen?.port),
+    ...(gateway.workerSessionAdvertiseHost ? { workerSessionAdvertiseHost: gateway.workerSessionAdvertiseHost } : {}),
+    ...(workerSessionTls ? { workerSessionTls } : {}),
     livenessIntervalMs: gateway.livenessIntervalMs,
     publicBaseUrl,
     resourceUrl: new URL("mcp", publicBaseUrl).href,
