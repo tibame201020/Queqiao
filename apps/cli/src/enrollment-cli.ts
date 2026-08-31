@@ -2,6 +2,8 @@ import { access, open, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { isIP } from "node:net";
+import selfsigned from "selfsigned";
 import { cancel, intro, isCancel, outro, password, text } from "@clack/prompts";
 import { runtimeConfigSchema, readRuntimeConfig, readRuntimeConfigForRepair, workspaceConfigSchema, type RuntimeConfig, type WorkspaceConfig } from "@queqiao/config";
 import { AtomicConfigStore } from "./atomic-config-store.js";
@@ -28,14 +30,31 @@ type JoinCodeEnvelope = {
   gateway: string;
   token: string;
   expiresAt?: string;
+  workerSession?: { target: string; caCertificate: string };
 };
 
 const JOIN_CODE_PREFIX = "qjq1:";
+
+function formatWorkerSessionTarget(host: string, port: number): string {
+  return isIP(host) === 6 ? `[${host}]:${port}` : `${host}:${port}`;
+}
+
+function validateWorkerSessionJoin(workerSession: JoinCodeEnvelope["workerSession"]): void {
+  if (!workerSession) return;
+  let url: URL;
+  try { url = new URL(`https://${workerSession.target}`); }
+  catch { throw new Error("Invalid Worker session target"); }
+  if (!url.hostname || !url.port || url.username || url.password || url.pathname !== "/") throw new Error("Invalid Worker session target");
+  if (!workerSession.caCertificate.includes("-----BEGIN CERTIFICATE-----") || !workerSession.caCertificate.includes("-----END CERTIFICATE-----") || Buffer.byteLength(workerSession.caCertificate) > 32_768) {
+    throw new Error("Invalid Worker session CA certificate");
+  }
+}
 
 export function encodeJoinCode(envelope: JoinCodeEnvelope): string {
   const gatewayError = validateGatewayUrl(envelope.gateway);
   if (gatewayError) throw new Error(gatewayError);
   if (!envelope.token.trim()) throw new Error("Join token is required");
+  validateWorkerSessionJoin(envelope.workerSession);
   return `${JOIN_CODE_PREFIX}${Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url")}`;
 }
 
@@ -47,7 +66,8 @@ export function decodeJoinCode(value: string): JoinCodeEnvelope {
     if (parsed.v !== 1 || typeof parsed.gateway !== "string" || typeof parsed.token !== "string") throw new Error("Invalid join code");
     const gatewayError = validateGatewayUrl(parsed.gateway);
     if (gatewayError || !parsed.token.trim()) throw new Error("Invalid join code");
-    return { v: 1, gateway: new URL(parsed.gateway).href, token: parsed.token, ...(typeof parsed.expiresAt === "string" ? { expiresAt: parsed.expiresAt } : {}) };
+    validateWorkerSessionJoin(parsed.workerSession);
+    return { v: 1, gateway: new URL(parsed.gateway).href, token: parsed.token, ...(typeof parsed.expiresAt === "string" ? { expiresAt: parsed.expiresAt } : {}), ...(parsed.workerSession ? { workerSession: parsed.workerSession } : {}) };
   } catch (error) {
     if (error instanceof Error && error.message === "Invalid join code") throw error;
     throw new Error("Invalid join code");
@@ -74,18 +94,18 @@ function validatePort(value: string): string | undefined {
   return Number.isInteger(port) && port >= 1 && port <= 65535 ? undefined : "Worker port must be an integer from 1 to 65535";
 }
 
-async function resolveJoinInputs(args: string[], prompt?: JoinPrompt): Promise<{ gateway: string; token: string; interactive: boolean }> {
+async function resolveJoinInputs(args: string[], prompt?: JoinPrompt): Promise<{ gateway: string; token: string; workerSession?: { target: string; caCertificate: string }; interactive: boolean }> {
   const codeArg = option(args, "join-code");
   if (codeArg) {
     const decoded = decodeJoinCode(codeArg);
-    return { gateway: decoded.gateway, token: decoded.token, interactive: false };
+    return { gateway: decoded.gateway, token: decoded.token, ...(decoded.workerSession ? { workerSession: decoded.workerSession } : {}), interactive: false };
   }
 
   if (prompt) {
     const code = (await prompt("code", "Join code")).trim();
     if (!code) throw new Error("Join code is required");
     const decoded = decodeJoinCode(code);
-    return { gateway: decoded.gateway, token: decoded.token, interactive: true };
+    return { gateway: decoded.gateway, token: decoded.token, ...(decoded.workerSession ? { workerSession: decoded.workerSession } : {}), interactive: true };
   }
 
   intro("Join Worker");
@@ -97,7 +117,7 @@ async function resolveJoinInputs(args: string[], prompt?: JoinPrompt): Promise<{
     },
   }), "Worker join cancelled")).trim();
   const decoded = decodeJoinCode(code);
-  return { gateway: decoded.gateway, token: decoded.token, interactive: true };
+  return { gateway: decoded.gateway, token: decoded.token, ...(decoded.workerSession ? { workerSession: decoded.workerSession } : {}), interactive: true };
 }
 
 async function persistRuntimeConfig(configFile: string, next: RuntimeConfig, replaceExisting = false): Promise<void> {
@@ -181,11 +201,20 @@ export async function createJoinToken(configFile: string, args: string[], clipbo
   const result = await jsonOrThrow(response);
   const runtime = await readRuntimeConfig(configFile);
   if (!runtime.gateway) throw new Error("gateway configuration is required");
+  let workerSession: JoinCodeEnvelope["workerSession"];
+  if (runtime.gateway.workerSessionListen?.host === "0.0.0.0") {
+    const advertiseHost = runtime.gateway.workerSessionAdvertiseHost;
+    const tls = runtime.gateway.workerSessionTls;
+    if (!advertiseHost || !tls) throw new Error("Remote Worker session configuration is incomplete");
+    const caCertificate = await readFile(path.resolve(tls.certFile), "utf8");
+    workerSession = { target: formatWorkerSessionTarget(advertiseHost, runtime.gateway.workerSessionListen.port), caCertificate };
+  }
   const joinCode = encodeJoinCode({
     v: 1,
     gateway: runtime.gateway.publicBaseUrl,
     token: String(result.token || ""),
     ...(typeof result.expiresAt === "string" ? { expiresAt: result.expiresAt } : {}),
+    ...(workerSession ? { workerSession } : {}),
   });
   const safeResult = { expiresAt: result.expiresAt, bindings: result.bindings, joinCodeVersion: 1 };
   if (args.includes("--json")) return { ...safeResult, joinCode };
@@ -292,6 +321,46 @@ async function preflightLocalWorker(endpoint: URL, worker: { workerId: string; e
   }
 }
 
+async function activateLocalReverseSession(endpoint: URL, credential: string, workerSession: NonNullable<JoinCodeEnvelope["workerSession"]>): Promise<void> {
+  const response = await fetch(new URL("enrollment/reverse-session/connect", endpoint), {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-queqiao-worker-token": credential },
+    body: JSON.stringify(workerSession),
+    signal: AbortSignal.timeout(10_000),
+  });
+  await jsonOrThrow(response);
+}
+
+async function persistWorkerReverseSession(
+  configFile: string,
+  workerId: string,
+  tokenFile: string,
+  workerSession: NonNullable<JoinCodeEnvelope["workerSession"]>,
+): Promise<void> {
+  const directory = path.dirname(tokenFile);
+  await secureRuntimeDirectory(directory);
+  const caCertificateFile = path.join(directory, `worker-session-${workerId}-${randomUUID()}.crt`);
+  await writeFile(caCertificateFile, workerSession.caCertificate, { encoding: "utf8", mode: 0o600, flag: "wx" });
+  await secureRuntimeFile(caCertificateFile);
+  let previousCaFile: string | undefined;
+  try {
+    const latest = await readRuntimeConfig(configFile);
+    if (!latest.worker || latest.worker.workerId !== workerId) throw new Error("Worker identity changed while persisting reverse session");
+    previousCaFile = latest.worker.reverseSession?.caCertificateFile;
+    const next = runtimeConfigSchema.parse({
+      ...latest,
+      worker: { ...latest.worker, reverseSession: { target: workerSession.target, caCertificateFile } },
+    });
+    await persistRuntimeConfig(configFile, next);
+  } catch (error) {
+    await rm(caCertificateFile, { force: true }).catch(() => undefined);
+    throw error;
+  }
+  if (previousCaFile && path.resolve(previousCaFile) !== path.resolve(caCertificateFile)) {
+    await rm(previousCaFile, { force: true }).catch(() => undefined);
+  }
+}
+
 export async function joinWorker(configFile: string, args: string[], prompt?: JoinPrompt): Promise<unknown> {
   assertAllowedOptions(args, "queqiao worker join", ["worker", "join-code", "json"]);
   const runtime = await readRuntimeConfig(configFile);
@@ -309,30 +378,68 @@ export async function joinWorker(configFile: string, args: string[], prompt?: Jo
   const start = await jsonOrThrow(await fetch(new URL("enrollment/join/start", gateway), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: joinToken, workerId: runtime.worker.workerId, environmentId: runtime.worker.environmentId, transport: { type: "http", endpoint: endpoint.href } }),
+    body: JSON.stringify({
+      token: joinToken,
+      workerId: runtime.worker.workerId,
+      environmentId: runtime.worker.environmentId,
+      transport: inputs.workerSession ? { type: "grpc", mode: "reverse" } : { type: "http", endpoint: endpoint.href },
+    }),
     signal: AbortSignal.timeout(5000),
   }));
   const transactionId = String(start.transactionId || "");
   const credential = String(start.credential || "");
   if (!transactionId || Buffer.byteLength(credential) < 32) throw new Error("Gateway returned an invalid provisional enrollment response");
   const state = await installProvisionalCredential(tokenFile, credential);
+  let gatewayCommitted = false;
   try {
+    if (inputs.workerSession) await activateLocalReverseSession(endpoint, credential, inputs.workerSession);
     const confirmed = await jsonOrThrow(await fetch(new URL("enrollment/join/confirm", gateway), {
       method: "POST",
       headers: { "content-type": "application/json", "x-queqiao-worker-token": credential },
       body: JSON.stringify({ transactionId }),
       signal: AbortSignal.timeout(15_000),
     }));
+    gatewayCommitted = true;
+    if (inputs.workerSession) await persistWorkerReverseSession(configFile, runtime.worker.workerId, tokenFile, inputs.workerSession);
     await commitProvisional(state);
     if (inputs.interactive && !prompt) outro(`Worker joined: ${runtime.worker.environmentId}`);
     return confirmed;
   } catch (error) {
-    await rollbackProvisional(tokenFile, state);
+    if (gatewayCommitted) await commitProvisional(state).catch(() => undefined);
+    else await rollbackProvisional(tokenFile, state);
     throw error;
   }
 }
 
+async function generateWorkerSessionTls(secretsDirectory: string, advertiseHost: string): Promise<{ certFile: string; keyFile: string }> {
+  const altNames = isIP(advertiseHost)
+    ? [{ type: 7 as const, ip: advertiseHost }]
+    : [{ type: 2 as const, value: advertiseHost }];
+  const pems = await selfsigned.generate([{ name: "commonName", value: advertiseHost }], {
+    keyType: "ec",
+    curve: "P-256",
+    algorithm: "sha256",
+    notBeforeDate: new Date(Date.now() - 60_000),
+    notAfterDate: new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000),
+    extensions: [
+      { name: "basicConstraints", cA: true },
+      { name: "keyUsage", keyCertSign: true, digitalSignature: true, keyEncipherment: true },
+      { name: "extKeyUsage", serverAuth: true },
+      { name: "subjectAltName", altNames },
+    ],
+  });
+  const suffix = randomUUID();
+  const certFile = path.join(secretsDirectory, `worker-session-${suffix}.crt`);
+  const keyFile = path.join(secretsDirectory, `worker-session-${suffix}.key`);
+  await writeFile(certFile, pems.cert, { encoding: "utf8", mode: 0o600, flag: "wx" });
+  await writeFile(keyFile, pems.private, { encoding: "utf8", mode: 0o600, flag: "wx" });
+  await secureRuntimeFile(certFile);
+  await secureRuntimeFile(keyFile);
+  return { certFile, keyFile };
+}
+
 export async function setupGateway(configFile: string, args: string[], stateDirectoryDefault: string, secretsDirectory: string, prompt?: GatewaySetupPrompt): Promise<unknown> {
+  assertAllowedOptions(args, "queqiao gateway setup", ["public-base-url", "port", "management-port", "worker-session-host", "worker-session-port"]);
   let current: any = { version: 1, workspaces: [] };
   try { current = await readRuntimeConfig(configFile); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
 
@@ -375,17 +482,57 @@ export async function setupGateway(configFile: string, args: string[], stateDire
   await secureRuntimeDirectory(stateDirectoryDefault);
   await secureRuntimeDirectory(secretsDirectory);
 
+  const gatewayPort = Number(option(args, "port") || existingGateway?.listen?.port || 7575);
+  const managementPort = Number(option(args, "management-port") || existingGateway?.managementListen?.port || 7574);
+  const requestedWorkerSessionHost = option(args, "worker-session-host")?.trim();
+  const requestedWorkerSessionPort = option(args, "worker-session-port");
+  if (!Number.isInteger(gatewayPort) || gatewayPort < 1 || gatewayPort > 65535) throw new Error("Gateway port must be between 1 and 65535");
+  if (!Number.isInteger(managementPort) || managementPort < 1 || managementPort > 65535) throw new Error("Management port must be between 1 and 65535");
+  if (gatewayPort === managementPort) throw new Error("Gateway and Management ports must be different");
+  if (requestedWorkerSessionHost && (requestedWorkerSessionHost.includes("://") || requestedWorkerSessionHost.includes("/") || /\s/.test(requestedWorkerSessionHost))) {
+    throw new Error("Worker session host must be a DNS name or IP address without a scheme or path");
+  }
+
+  const existingRemoteHost = existingGateway?.workerSessionAdvertiseHost as string | undefined;
+  const effectiveRemoteHost = requestedWorkerSessionHost || existingRemoteHost;
+  const remoteEnabled = Boolean(effectiveRemoteHost && (requestedWorkerSessionHost || existingGateway?.workerSessionListen?.host === "0.0.0.0"));
+  if (requestedWorkerSessionPort && !remoteEnabled) throw new Error("--worker-session-port requires --worker-session-host or an existing remote Worker session listener");
+
+  let workerSessionPatch: Record<string, unknown> = {};
+  let obsoleteTls: { certFile?: string; keyFile?: string } | undefined;
+  if (remoteEnabled && effectiveRemoteHost) {
+    const workerSessionPort = Number(requestedWorkerSessionPort || existingGateway?.workerSessionListen?.port || gatewayPort - 2);
+    if (!Number.isInteger(workerSessionPort) || workerSessionPort < 1 || workerSessionPort > 65535) throw new Error("Worker session port must be between 1 and 65535");
+    if (workerSessionPort === gatewayPort || workerSessionPort === managementPort) throw new Error("Worker session port must be different from Gateway and Management ports");
+    let tls = existingGateway?.workerSessionTls as { certFile: string; keyFile: string } | undefined;
+    if (!tls || (requestedWorkerSessionHost && requestedWorkerSessionHost !== existingRemoteHost)) {
+      const generated = await generateWorkerSessionTls(secretsDirectory, effectiveRemoteHost);
+      obsoleteTls = tls;
+      tls = generated;
+    }
+    workerSessionPatch = {
+      workerSessionListen: { host: "0.0.0.0", port: workerSessionPort },
+      workerSessionAdvertiseHost: effectiveRemoteHost,
+      workerSessionTls: tls,
+    };
+  }
+
   if (existingGateway) {
     const next = runtimeConfigSchema.parse({
       ...current,
       gateway: {
         ...existingGateway,
         publicBaseUrl: publicBaseUrl.href,
-        listen: { ...existingGateway.listen, port: Number(option(args, "port") || existingGateway.listen.port) },
-        managementListen: { ...existingGateway.managementListen, port: Number(option(args, "management-port") || existingGateway.managementListen.port) },
+        listen: { ...existingGateway.listen, port: gatewayPort },
+        managementListen: { ...existingGateway.managementListen, port: managementPort },
+        ...workerSessionPatch,
       },
     });
     await persistRuntimeConfig(configFile, next);
+    if (obsoleteTls) {
+      if (obsoleteTls.certFile) await rm(obsoleteTls.certFile, { force: true }).catch(() => undefined);
+      if (obsoleteTls.keyFile) await rm(obsoleteTls.keyFile, { force: true }).catch(() => undefined);
+    }
     return { setup: true, mode: "edit", role: "gateway", file: configFile };
   }
 
@@ -400,7 +547,19 @@ export async function setupGateway(configFile: string, args: string[], stateDire
   const managementSecretFile = path.join(stateDirectoryDefault, "management.secret");
   await writeFile(managementSecretFile, `${randomBytes(32).toString("base64url")}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
   await secureRuntimeFile(managementSecretFile);
-  const next = runtimeConfigSchema.parse({ ...current, gateway: { publicBaseUrl: publicBaseUrl.href, listen: { host: "127.0.0.1", port: Number(option(args, "port") || 7575) }, managementListen: { host: "127.0.0.1", port: Number(option(args, "management-port") || 7574) }, trustProxyHops: 1, stateDirectory: stateDirectoryDefault, approvalSecretFile, jwtSigningSecretFile } });
+  const next = runtimeConfigSchema.parse({
+    ...current,
+    gateway: {
+      publicBaseUrl: publicBaseUrl.href,
+      listen: { host: "127.0.0.1", port: gatewayPort },
+      managementListen: { host: "127.0.0.1", port: managementPort },
+      trustProxyHops: 1,
+      stateDirectory: stateDirectoryDefault,
+      approvalSecretFile,
+      jwtSigningSecretFile,
+      ...workerSessionPatch,
+    },
+  });
   await persistRuntimeConfig(configFile, next);
   return { setup: true, mode: "create", role: "gateway", file: configFile };
 }

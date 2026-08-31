@@ -36,8 +36,13 @@ Gateway's private runtime secret file. The default command reports availability 
 the secret; `--detail` is an explicit local reveal and the copy flags avoid printing copied values.
 ## Enrollment and membership
 
-Startup and enrollment are separate. Start both roles, create a short-lived self-contained
-join code on the Gateway host, then join from the Worker host:
+Startup and enrollment are separate. For same-host HTTP, use the normal Gateway/Worker setup. For a cross-machine Worker, configure the Gateway once with a DNS name or IPv4 address that the Worker host can reach:
+
+```shell
+queqiao gateway setup --worker-session-host <gateway-lan-host-or-ip>
+```
+
+`--worker-session-port <port>` is optional; otherwise the Worker-session port derives from the Gateway port. Remote setup creates TLS material only in the Gateway runtime secrets area. Then start both roles, create a short-lived self-contained join code on the Gateway host, and join from the Worker host:
 
 ```shell
 queqiao worker serve --worker <worker> --bg
@@ -46,10 +51,9 @@ queqiao gateway join-token --gateway <gateway>
 queqiao worker join --worker <worker>
 ```
 
-Human-mode `gateway join-token` copies the join code to the clipboard. Interactive
-`worker join` accepts it through a password-style prompt so the secret is not echoed.
-Membership remains Gateway-owned state and is committed only after Worker identity/protocol
-validation succeeds. See [Distribution & Cluster Baseline v1](distribution-cluster-baseline-v1.md).
+Human-mode `gateway join-token` copies the join code to the clipboard. Interactive `worker join` accepts it through a password-style prompt so the secret is not echoed. For remote transport the same join code also carries the Gateway Worker-session target and pinned certificate; the Worker initiates the TLS gRPC session before confirmation. Membership remains Gateway-owned state and is committed only after identity/protocol validation over the proposed transport succeeds.
+
+See [Distribution & Cluster Baseline v1](distribution-cluster-baseline-v1.md) and [Security Baseline v3](security/security-baseline-v3-gate.md).
 
 Inspect or manage membership with:
 
@@ -77,8 +81,7 @@ machine-specific paths are not required inside the source checkout.
 
 ## Worker listener changes
 
-Worker listeners remain loopback-only in the current transport baseline. To change a Worker
-port, stop that Worker first, change the configured port, restart it, then update Gateway
+Worker HTTP/local-control listeners remain loopback-only. Remote Workers use an outbound TLS gRPC session and therefore do not require an inbound LAN Worker port. For loopback-HTTP memberships, to change a Worker port, stop that Worker first, change the configured port, restart it, then update Gateway
 membership if the Gateway-visible endpoint changed:
 
 ```shell
@@ -141,6 +144,6 @@ Migration is non-overwriting and should be reviewed before execution.
 
 ## Transport boundary
 
-The current Worker HTTP transport is loopback-only. Windows-to-WSL localhost forwarding may
-make a WSL loopback Worker visible to a Windows Gateway through the local WSL relay, but
-Queqiao does not publish the Worker under the Gateway's public MCP base URL.
+Same-host Worker HTTP remains loopback-only. Cross-host transport is Worker-initiated TLS gRPC/HTTP2 to a dedicated Gateway Worker-session listener. The public MCP/OAuth listener remains behind its existing Gateway exposure boundary; the Worker-session listener is separate and carries Worker Protocol traffic only.
+
+Remote enrollment uses the same `qjq1:` flow. The join code bootstraps the Gateway session target and pinned certificate; after membership commit the Worker persists that trust locally and reconnects with bounded backoff if the Gateway is temporarily unavailable. See ADR-0013 and Security Baseline v3.

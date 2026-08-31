@@ -47,6 +47,27 @@ describe("gateway join-token UX", () => {
       fetchSpy.mockRestore();
     }
   });
+  it("embeds the TLS Worker-session endpoint and pinned CA when remote Worker transport is enabled", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-join-token-grpc-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const stateDirectory = path.join(root, "gateway-state");
+    const secretsDirectory = path.join(root, "secrets");
+    await setupGateway(configFile, ["gateway", "setup", "--public-base-url", "https://gateway.example/stable/", "--port", "8075", "--management-port", "8074", "--worker-session-host", "192.168.1.10"], stateDirectory, secretsDirectory);
+    const runtime = await readRuntimeConfig(configFile);
+    expect(runtime.gateway?.workerSessionListen).toEqual({ host: "0.0.0.0", port: 8073 });
+    expect(runtime.gateway?.workerSessionTls).toBeDefined();
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ token: "one-time-token", expiresAt: "2026-08-28T14:30:00.000Z", bindings: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+    let copied = "";
+    try {
+      await createJoinToken(configFile, ["gateway", "join-token"], async (value) => { copied = value; });
+      const decoded = decodeJoinCode(copied);
+      expect(decoded.workerSession?.target).toBe("192.168.1.10:8073");
+      expect(decoded.workerSession?.caCertificate).toContain("BEGIN CERTIFICATE");
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("rejects hidden token binding flags", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-join-token-options-"));
     const configFile = path.join(root, "config", "config.yaml");
@@ -317,6 +338,60 @@ describe("worker join CLI transaction", () => {
     expect(prompted).toEqual(["code"]);
     expect(result).toMatchObject({ joined: true, workerId: f.workerId, environmentId: f.environmentId });
     expect((await f.memberships.read()).workers).toHaveLength(1);
+  });
+
+  it("activates reverse TLS before confirmation and persists the durable Worker session only after commit", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-cli-grpc-join-"));
+    const configFile = path.join(root, "config.yaml");
+    const tokenFile = path.join(root, "worker.secret");
+    const workspaceRoot = path.join(root, "workspace");
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(workspaceRoot, { recursive: true }));
+    const workerId = crypto.randomUUID();
+    const environmentId = "linux";
+    const bootstrap = "b".repeat(48);
+    const provisional = "p".repeat(48);
+    const caCertificate = `-----BEGIN CERTIFICATE-----\n${"C".repeat(96)}\n-----END CERTIFICATE-----\n`;
+    await writeFile(tokenFile, `${bootstrap}\n`, { mode: 0o600 });
+    await writeFile(configFile, serializeRuntimeConfig({
+      version: 1,
+      workspaces: [{ id: "default", displayName: "default", root: workspaceRoot, profile: "read-only" }],
+      worker: { workerId, environmentId, listen: { host: "127.0.0.1", port: 8765 }, tokenFile },
+    }), "utf8");
+    const order: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const raw = input instanceof URL ? input.href : typeof input === "string" ? input : input.url;
+      const url = new URL(raw);
+      if (url.hostname === "127.0.0.1" && url.pathname === "/health") return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.hostname === "127.0.0.1" && url.pathname === "/enrollment/identity") return new Response(JSON.stringify({ workerId, environmentId }), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.hostname === "gateway.example" && url.pathname === "/enrollment/join/start") {
+        order.push("start");
+        expect(JSON.parse(String(init?.body))).toMatchObject({ transport: { type: "grpc", mode: "reverse" } });
+        return new Response(JSON.stringify({ transactionId: "txn-1", credential: provisional }), { status: 201, headers: { "content-type": "application/json" } });
+      }
+      if (url.hostname === "127.0.0.1" && url.pathname === "/enrollment/reverse-session/connect") {
+        order.push("activate");
+        expect(new Headers(init?.headers).get("x-queqiao-worker-token")).toBe(provisional);
+        expect(JSON.parse(String(init?.body))).toEqual({ target: "gateway.local:7573", caCertificate });
+        return new Response(null, { status: 204 });
+      }
+      if (url.hostname === "gateway.example" && url.pathname === "/enrollment/join/confirm") {
+        order.push("confirm");
+        return new Response(JSON.stringify({ joined: true, workerId, environmentId }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      throw new Error(`Unexpected fetch: ${url.href}`);
+    });
+    try {
+      const joinCode = encodeJoinCode({ v: 1, gateway: "https://gateway.example/", token: "one-time-token", workerSession: { target: "gateway.local:7573", caCertificate } });
+      const result: any = await joinWorker(configFile, ["worker", "join", "--join-code", joinCode]);
+      expect(result).toMatchObject({ joined: true, workerId, environmentId });
+      expect(order).toEqual(["start", "activate", "confirm"]);
+      expect((await readFile(tokenFile, "utf8")).trim()).toBe(provisional);
+      const runtime = await readRuntimeConfig(configFile);
+      expect(runtime.worker?.reverseSession?.target).toBe("gateway.local:7573");
+      expect(await readFile(runtime.worker!.reverseSession!.caCertificateFile, "utf8")).toBe(caCertificate);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("rejects a mismatched local Worker identity before consuming the join token", async () => {

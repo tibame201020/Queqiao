@@ -1,12 +1,14 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { requireRuntimeConfigFile } from "@queqiao/platform-paths";
 import { readRuntimeConfig } from "@queqiao/config";
 import { ProcessRunner } from "@queqiao/process-runtime";
 import { getWorkerCoreToolDefinitions } from "./core-tools.js";
-import path from "node:path";
 import { createWorkerApp } from "./app.js";
 import { WorkerCredentialSource } from "./worker-credential-source.js";
 import { ReloadableExtensionHost } from "./reloadable-extension-host.js";
-
+import { createWorkerProtocolService } from "./worker-protocol-service.js";
+import { WorkerReverseSessionManager } from "./reverse-session-manager.js";
 
 const configFile = requireRuntimeConfigFile();
 const runtime = await readRuntimeConfig(configFile);
@@ -24,6 +26,24 @@ const extensionRuntime = new ReloadableExtensionHost(
 );
 await extensionRuntime.initialize();
 const processes = new ProcessRunner();
+const protocolService = await createWorkerProtocolService({
+  ...(runtime.worker.workerId ? { workerId: runtime.worker.workerId } : {}),
+  environmentId: runtime.worker.environmentId,
+  workspacesFile: configFile,
+  processes,
+  extensionRuntime,
+});
+const reverseSessions = new WorkerReverseSessionManager({
+  service: protocolService,
+  credential,
+  loadPersistent: async () => {
+    const latest = await readRuntimeConfig(configFile);
+    const reverse = latest.worker?.reverseSession;
+    if (!reverse) return undefined;
+    const caCertificate = await readFile(path.resolve(reverse.caCertificateFile), "utf8");
+    return { target: reverse.target, caCertificate };
+  },
+});
 const app = await createWorkerApp({
   ...(runtime.worker.workerId ? { workerId: runtime.worker.workerId } : {}),
   environmentId: runtime.worker.environmentId,
@@ -31,13 +51,19 @@ const app = await createWorkerApp({
   workerCredential: credential,
   processes,
   extensionRuntime,
+  protocolService,
+  reverseSessionControl: { activate: (input) => reverseSessions.activate(input) },
 });
-const server = app.listen(port, "127.0.0.1", () => console.log(`Queqiao Worker listening on http://127.0.0.1:${port}`));
+const server = app.listen(port, "127.0.0.1", () => {
+  console.log(`Queqiao Worker listening on http://127.0.0.1:${port}`);
+  void reverseSessions.startPersistent().catch((error) => console.error("Worker reverse-session startup failed", error));
+});
 
 let stopping = false;
 const shutdown = () => {
   if (stopping) return;
   stopping = true;
+  reverseSessions.close();
   server.close(() => { void extensionRuntime.dispose().catch((error) => console.error("ExtensionHost shutdown failed", error)); });
   processes.shutdown();
 };

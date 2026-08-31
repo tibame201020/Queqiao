@@ -2,9 +2,10 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { open, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { QUEQIAO_WORKER_PROTOCOL_VERSION, workerHelloV3Schema } from "@queqiao/worker-protocol";
+import { QUEQIAO_WORKER_PROTOCOL_VERSION, workerHelloV3Schema, type WorkerHelloV3 } from "@queqiao/worker-protocol";
 import { secureRuntimeDirectory, secureRuntimeFile } from "@queqiao/platform-paths";
 import { gatewayVisibleTransportKey, WorkerMembershipStore, workerMembershipSchema, workerTransportDescriptorSchema, type WorkerMembership, type WorkerTransportDescriptor } from "./worker-membership-store.js";
+import { WorkerSessionRegistry, type WorkerSessionAuthentication } from "./worker-session-registry.js";
 
 const joinStartSchema = z.object({
   token: z.string().min(32).max(256),
@@ -39,11 +40,19 @@ export class EnrollmentService {
   private readonly joinTokens = new Map<string, JoinToken>();
   private readonly provisional = new Map<string, ProvisionalJoin>();
 
-  constructor(readonly memberships: WorkerMembershipStore, readonly stateDirectory: string) {}
+  constructor(
+    readonly memberships: WorkerMembershipStore,
+    readonly stateDirectory: string,
+    private readonly sessions?: WorkerSessionRegistry,
+  ) {}
 
   private purge(now = Date.now()): void {
     for (const [key, token] of this.joinTokens) if (token.expiresAt <= now) this.joinTokens.delete(key);
-    for (const [key, join] of this.provisional) if (join.expiresAt <= now) this.provisional.delete(key);
+    for (const [key, join] of this.provisional) {
+      if (join.expiresAt > now) continue;
+      this.provisional.delete(key);
+      this.sessions?.detachProvisional(join.transactionId, new Error("Worker join transaction expired"));
+    }
   }
 
   createJoinToken(options: JoinTokenOptions = {}): { token: string; expiresAt: string; bindings: { workerId?: string; environmentId?: string } } {
@@ -64,15 +73,20 @@ export class EnrollmentService {
     const key = digest(request.token);
     const token = this.joinTokens.get(key);
     if (!token) throw new EnrollmentError(401, "invalid_join_token", "Join token is invalid, expired, or already consumed");
-    this.joinTokens.delete(key); // presentation of a valid token starts and consumes the transaction authority
+    this.joinTokens.delete(key);
     if (token.expiresAt <= Date.now()) throw new EnrollmentError(401, "expired_join_token", "Join token has expired");
     if (token.workerId && token.workerId !== request.workerId) throw new EnrollmentError(403, "worker_binding_mismatch", "Join token is bound to a different workerId");
     if (token.environmentId && token.environmentId !== request.environmentId) throw new EnrollmentError(403, "environment_binding_mismatch", "Join token is bound to a different environmentId");
+
     const registry = await this.memberships.read();
     if (registry.workers.some((worker) => worker.workerId === request.workerId)) throw new EnrollmentError(409, "worker_already_joined", "workerId is already enrolled");
     if (registry.workers.some((worker) => worker.environmentId === request.environmentId)) throw new EnrollmentError(409, "environment_already_joined", "environmentId is already enrolled");
+    if ([...this.provisional.values()].some((join) => join.workerId === request.workerId)) throw new EnrollmentError(409, "worker_join_in_progress", "workerId already has a join transaction in progress");
+    if ([...this.provisional.values()].some((join) => join.environmentId === request.environmentId)) throw new EnrollmentError(409, "environment_join_in_progress", "environmentId already has a join transaction in progress");
+
     const transportKey = gatewayVisibleTransportKey(request.transport);
-    if (registry.workers.some((worker) => gatewayVisibleTransportKey(worker.transport) === transportKey)) throw new EnrollmentError(409, "worker_transport_conflict", "Gateway-visible Worker transport endpoint is already enrolled");
+    if (transportKey && registry.workers.some((worker) => gatewayVisibleTransportKey(worker.transport) === transportKey)) throw new EnrollmentError(409, "worker_transport_conflict", "Gateway-visible Worker transport endpoint is already enrolled");
+
     const transactionId = randomUUID();
     const credential = randomBytes(32).toString("base64url");
     const expiresAt = Date.now() + 30_000;
@@ -80,29 +94,67 @@ export class EnrollmentService {
     return { transactionId, credential, confirmBy: new Date(expiresAt).toISOString() };
   }
 
+  async authenticateWorkerSession(rawHello: WorkerHelloV3, credential: string): Promise<WorkerSessionAuthentication> {
+    this.purge();
+    const hello = workerHelloV3Schema.parse(rawHello);
+    if (Buffer.byteLength(credential) < 32) throw new EnrollmentError(401, "worker_session_unauthorized", "Worker session credential is invalid");
+
+    const registry = await this.memberships.read();
+    const membership = registry.workers.find((worker) => worker.workerId === hello.workerId && worker.environmentId === hello.environmentId);
+    if (membership) {
+      for (const reference of membership.credentialRefs) {
+        if (reference.kind !== "secret-file") continue;
+        try {
+          const persisted = (await readFile(reference.path, "utf8")).trim();
+          if (Buffer.byteLength(persisted) >= 32 && safeEqual(credential, persisted)) return { kind: "membership" };
+        } catch { /* try the next credential reference */ }
+      }
+    }
+
+    const provisional = [...this.provisional.values()].find((candidate) =>
+      candidate.transport.type === "grpc"
+      && candidate.workerId === hello.workerId
+      && candidate.environmentId === hello.environmentId
+      && safeEqual(candidate.credential, credential));
+    if (provisional) return { kind: "provisional", transactionId: provisional.transactionId };
+
+    throw new EnrollmentError(401, "worker_session_unauthorized", "Worker session is not authorized for this identity");
+  }
+
   async confirmJoin(transactionId: string, credential: string): Promise<WorkerMembership> {
     this.purge();
     const join = this.provisional.get(transactionId);
     if (!join) throw new EnrollmentError(410, "join_transaction_expired", "Join transaction is absent or expired");
-    if (join.expiresAt <= Date.now()) { this.provisional.delete(transactionId); throw new EnrollmentError(410, "join_transaction_expired", "Join transaction expired after 30 seconds"); }
+    if (join.expiresAt <= Date.now()) {
+      this.provisional.delete(transactionId);
+      this.sessions?.detachProvisional(transactionId, new Error("Worker join transaction expired"));
+      throw new EnrollmentError(410, "join_transaction_expired", "Join transaction expired after 30 seconds");
+    }
     if (!safeEqual(credential, join.credential)) {
       this.provisional.delete(transactionId);
+      this.sessions?.detachProvisional(transactionId, new Error("Worker join confirmation credential mismatch"));
       throw new EnrollmentError(401, "invalid_provisional_credential", "Provisional credential does not match the transaction");
     }
+
+    let credentialFile: string | undefined;
+    let membershipCommitted = false;
     try {
       await this.verifyWorker(join);
-      const credentialFile = await this.persistCredential(join.workerId, join.credential);
-      try {
-        const membership: WorkerMembership = workerMembershipSchema.parse({ workerId: join.workerId, environmentId: join.environmentId, transport: join.transport, credentialRefs: [{ kind: "secret-file", path: credentialFile }] });
-        await this.memberships.add(membership);
-        this.provisional.delete(transactionId);
-        return membership;
-      } catch (error) {
-        await rm(credentialFile, { force: true }).catch(() => undefined);
-        throw error;
+      credentialFile = await this.persistCredential(join.workerId, join.credential);
+      const membership: WorkerMembership = workerMembershipSchema.parse({ workerId: join.workerId, environmentId: join.environmentId, transport: join.transport, credentialRefs: [{ kind: "secret-file", path: credentialFile }] });
+      await this.memberships.add(membership);
+      membershipCommitted = true;
+      if (join.transport.type === "grpc") {
+        if (!this.sessions) throw new EnrollmentError(500, "worker_session_registry_unavailable", "Worker session registry is unavailable");
+        this.sessions.promote(join.workerId, transactionId);
       }
+      this.provisional.delete(transactionId);
+      return membership;
     } catch (error) {
       this.provisional.delete(transactionId);
+      if (membershipCommitted) await this.memberships.remove(join.workerId).catch(() => undefined);
+      if (credentialFile) await rm(credentialFile, { force: true }).catch(() => undefined);
+      this.sessions?.detachProvisional(transactionId, new Error("Worker join transaction failed"));
       throw error;
     }
   }
@@ -113,7 +165,7 @@ export class EnrollmentService {
     const existing = registry.workers.find((worker) => worker.workerId === workerId);
     if (!existing) throw new EnrollmentError(404, "worker_not_found", "Worker membership was not found");
     const transportKey = gatewayVisibleTransportKey(transport);
-    if (registry.workers.some((worker) => worker.workerId !== workerId && gatewayVisibleTransportKey(worker.transport) === transportKey)) throw new EnrollmentError(409, "worker_transport_conflict", "Gateway-visible Worker transport endpoint is already enrolled");
+    if (transportKey && registry.workers.some((worker) => worker.workerId !== workerId && gatewayVisibleTransportKey(worker.transport) === transportKey)) throw new EnrollmentError(409, "worker_transport_conflict", "Gateway-visible Worker transport endpoint is already enrolled");
     const reference = existing.credentialRefs[0];
     if (!reference || reference.kind !== "secret-file") throw new EnrollmentError(500, "worker_credential_unavailable", "Worker credential reference is unavailable");
     const credential = (await readFile(reference.path, "utf8")).trim();
@@ -124,7 +176,32 @@ export class EnrollmentService {
   }
 
   private async verifyWorker(join: ProvisionalJoin): Promise<void> {
-    if (join.transport.type !== "http") throw new EnrollmentError(400, "unsupported_transport", "Unsupported Worker transport");
+    if (join.transport.type === "grpc") {
+      if (!this.sessions) throw new EnrollmentError(502, "worker_session_unavailable", "Worker reverse session registry is unavailable");
+      let session;
+      try { session = this.sessions.require(join.workerId); }
+      catch { throw new EnrollmentError(502, "worker_session_unavailable", "Worker has no active reverse gRPC session"); }
+      if (session.environmentId !== join.environmentId) throw new EnrollmentError(409, "worker_identity_mismatch", "Worker session environment does not match the enrollment transaction");
+      if (join.transactionId === "management-update") {
+        if (session.authentication.kind !== "membership") throw new EnrollmentError(409, "worker_session_auth_mismatch", "Worker session is not authenticated by existing membership");
+      } else if (session.authentication.kind !== "provisional" || session.authentication.transactionId !== join.transactionId) {
+        throw new EnrollmentError(409, "worker_session_auth_mismatch", "Worker session is not bound to this enrollment transaction");
+      }
+
+      const signal = AbortSignal.timeout(5_000);
+      try {
+        const health = await session.transport.execute<{ ok?: unknown }>({ operation: "health" }, signal);
+        if (health.ok !== true) throw new EnrollmentError(502, "worker_health_failed", "Worker reverse-session health probe failed");
+        const hello = workerHelloV3Schema.parse(await session.transport.execute<unknown>({ operation: "hello" }, signal));
+        if (hello.workerId !== join.workerId || hello.environmentId !== join.environmentId) throw new EnrollmentError(409, "worker_handshake_mismatch", "Worker reverse-session handshake does not match the enrollment transaction");
+        if (hello.protocolVersion !== QUEQIAO_WORKER_PROTOCOL_VERSION) throw new EnrollmentError(409, "worker_protocol_mismatch", "Worker Protocol is incompatible with this Gateway");
+        return;
+      } catch (error) {
+        if (error instanceof EnrollmentError) throw error;
+        throw new EnrollmentError(502, "worker_unreachable", error instanceof Error ? error.message : "Worker reverse-session enrollment probe failed");
+      }
+    }
+
     const endpoint = new URL(join.transport.endpoint);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);

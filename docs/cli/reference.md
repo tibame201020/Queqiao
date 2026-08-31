@@ -117,7 +117,7 @@ The former `dev:shadow:refresh` helper is retired; do not replace its role names
 ## Gateway
 
 ```text
-queqiao gateway setup
+queqiao gateway setup [--worker-session-host <reachable-dns-or-ip>] [--worker-session-port <port>]
 queqiao gateway list
 queqiao gateway serve [--gateway <gateway>] [--bg]
 queqiao gateway stop [--gateway <gateway>]
@@ -131,6 +131,8 @@ queqiao gateway workers remove [--gateway <gateway>] --worker-id <id>
 ```
 
 `gateway info` is the connector handoff command. The default view shows the MCP URL and approval-secret availability without revealing the secret. `--detail` explicitly reveals the local approval secret and Gateway metadata; do not paste that output into logs or issues. `--copy-url` and `--copy-secret` copy exactly one value without echoing it.
+
+`--worker-session-host` explicitly enables the dedicated non-loopback TLS Worker-session listener for cross-machine Workers; use a DNS name or IPv4 address reachable from those Workers. `--worker-session-port` overrides the derived session port. These are advanced non-interactive flags and do not add another routine setup prompt.
 
 ## Worker and Workspace authority
 

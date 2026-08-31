@@ -19,9 +19,16 @@ export class QueqiaoError extends Error {
   }
 }
 
-export class WorkerHttpError extends QueqiaoError {
-  constructor(readonly status: number, code: string, message: string) {
-    super(code, message, "worker", workerErrorIsRetryable(code, status));
+export class WorkerRemoteError extends QueqiaoError {
+  constructor(readonly status: number, code: string, message: string, retryable = workerErrorIsRetryable(code, status)) {
+    super(code, message, "worker", retryable);
+    this.name = "WorkerRemoteError";
+  }
+}
+
+export class WorkerHttpError extends WorkerRemoteError {
+  constructor(status: number, code: string, message: string) {
+    super(status, code, message);
     this.name = "WorkerHttpError";
   }
 }

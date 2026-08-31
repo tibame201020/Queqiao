@@ -1,18 +1,22 @@
+import type { WorkerProtocolRequest } from "@queqiao/worker-protocol";
+
 export type WorkerHttpTransportDescriptor = {
   type: "http";
   endpoint: string;
 };
 
-export type WorkerTransportDescriptor = WorkerHttpTransportDescriptor;
+export type WorkerGrpcReverseTransportDescriptor = {
+  type: "grpc";
+  mode: "reverse";
+};
+
+export type WorkerTransportDescriptor = WorkerHttpTransportDescriptor | WorkerGrpcReverseTransportDescriptor;
 
 export type WorkerTransportRequest =
-  | { operation: "health" }
-  | { operation: "hello" }
-  | { operation: "list-workspaces" }
-  | { operation: "workspace-info"; workspaceId: string; tool: "workspace_info" | "open_workspace" }
-  | { operation: "invoke-tool"; toolName: string; input: unknown }
+  | WorkerProtocolRequest
   | { operation: "legacy-read-file"; input: { workspaceId: string; path: string; offset: number; limit: number } };
 
 export interface WorkerTransport {
+  revision?(): string | undefined;
   execute<T>(request: WorkerTransportRequest, signal?: AbortSignal): Promise<T>;
 }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkerClient } from "./worker-client.js";
+import { WorkerRemoteError } from "./errors.js";
 import { QUEQIAO_WORKER_LEGACY_CAPABILITIES, QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION, QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 
 const legacyConfig = { environmentId: "windows", transport: { type: "http" as const, endpoint: "http://worker.local" }, token: "secret" };
@@ -64,6 +65,20 @@ describe("WorkerClient rolling upgrade", () => {
     vi.stubGlobal("fetch", fetch);
     await expect(new WorkerClient(membershipConfig).run({ workspaceId: "one", executable: "node", args: [], cwd: ".", timeoutMs: 1000, mode: "async" })).resolves.toEqual(asyncResult);
   });
+  it("keeps reachability true for transport-neutral Worker remote errors", async () => {
+    const states: boolean[] = [];
+    const transport = {
+      execute: vi.fn(async (request: { operation: string }) => {
+        if (request.operation === "hello") return membershipHello;
+        if (request.operation === "list-workspaces") throw new WorkerRemoteError(403, "tool_denied", "denied");
+        throw new Error(`unexpected operation: ${request.operation}`);
+      }),
+    };
+    const client = new WorkerClient(membershipConfig, transport, (reachable) => states.push(reachable));
+    await expect(client.listWorkspaces()).rejects.toMatchObject({ code: "tool_denied", layer: "worker" });
+    expect(states.at(-1)).toBe(true);
+  });
+
   it("treats liveness as advisory and restores reachability after a real invocation succeeds", async () => {
     const states: boolean[] = [];
     const transport = {

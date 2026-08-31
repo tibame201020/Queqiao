@@ -44,6 +44,7 @@ describe("extension config schema", () => {
     const parsed = runtimeConfigSchema.parse({ ...base, discovery: { roots: ["C:/legacy"], maxDepth: 4, exclude: [] } });
     expect("discovery" in parsed).toBe(false);
   });
+
   it("keeps the verified Gateway listener loopback-only and liveness polling low-frequency", () => {
     const gateway = { publicBaseUrl: "https://queqiao.example/", listen: { host: "127.0.0.1", port: 7575 }, stateDirectory: "state", approvalSecretFile: "approval.secret", jwtSigningSecretFile: "jwt.secret" };
     const parsed = runtimeConfigSchema.parse({ ...base, gateway });
@@ -53,6 +54,31 @@ describe("extension config schema", () => {
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, livenessIntervalMs: 4_999 } })).toThrow();
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, listen: { host: "0.0.0.0", port: 7575 } } })).toThrow();
   });
+
+  it("allows a dedicated remote Worker-session listener only with TLS and an advertised host", () => {
+    const gateway = { publicBaseUrl: "https://queqiao.example/", listen: { host: "127.0.0.1", port: 7575 }, stateDirectory: "state", approvalSecretFile: "approval.secret", jwtSigningSecretFile: "jwt.secret" };
+    expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, workerSessionListen: { host: "0.0.0.0", port: 7573 } } })).toThrow(/TLS|advertised/i);
+    const parsed = runtimeConfigSchema.parse({ ...base, gateway: {
+      ...gateway,
+      workerSessionListen: { host: "0.0.0.0", port: 7573 },
+      workerSessionAdvertiseHost: "192.168.1.10",
+      workerSessionTls: { certFile: "worker-session.crt", keyFile: "worker-session.key" },
+    } });
+    expect(parsed.gateway?.workerSessionListen).toEqual({ host: "0.0.0.0", port: 7573 });
+    expect(parsed.gateway?.workerSessionAdvertiseHost).toBe("192.168.1.10");
+  });
+
+  it("persists a Worker reverse-session target and pinned CA file", () => {
+    const parsed = runtimeConfigSchema.parse({ ...base, worker: {
+      workerId: "11111111-1111-4111-8111-111111111111",
+      environmentId: "linux",
+      listen: { host: "127.0.0.1", port: 7576 },
+      tokenFile: "worker.secret",
+      reverseSession: { target: "192.168.1.10:7573", caCertificateFile: "worker-session-ca.crt" },
+    } });
+    expect(parsed.worker?.reverseSession?.target).toBe("192.168.1.10:7573");
+  });
+
   it("rejects self-ordering and duplicate register declarations", () => {
     expect(() => runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: true, source: { kind: "local-module", module: "x.mjs" }, manifest: { ...manifest, ordering: { requires: [manifest.id], before: [], after: [] } } }] })).toThrow(/itself/);
     expect(() => runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: true, source: { kind: "local-module", module: "x.mjs" }, manifest: { ...manifest, contributions: [manifest.contributions[0], manifest.contributions[0]] } }] })).toThrow(/more than once/);

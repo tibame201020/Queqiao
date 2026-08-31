@@ -50,7 +50,22 @@ describe("WorkerMembershipStore", () => {
     expect((await store.read()).workers.map((entry) => entry.workerId).sort()).toEqual([first.workerId, second.workerId].sort());
   });
 
-  it("keeps transport loopback-only and reserves at most two credential references", () => {
+  it("accepts reverse gRPC membership without treating the shared session transport as an endpoint conflict", () => {
+    const first = {
+      ...worker("11111111-1111-4111-8111-111111111111", "windows", 7576),
+      transport: { type: "grpc", mode: "reverse" },
+    };
+    const second = {
+      ...worker("22222222-2222-4222-8222-222222222222", "linux", 7577),
+      transport: { type: "grpc", mode: "reverse" },
+    };
+    expect(workerMembershipRegistrySchema.parse({ version: 1, workers: [first, second] }).workers).toMatchObject([
+      { workerId: first.workerId, transport: { type: "grpc", mode: "reverse" } },
+      { workerId: second.workerId, transport: { type: "grpc", mode: "reverse" } },
+    ]);
+  });
+
+  it("keeps HTTP transport loopback-only and reserves at most two credential references", () => {
     expect(() => workerMembershipRegistrySchema.parse({ version: 1, workers: [{
       ...worker("11111111-1111-4111-8111-111111111111", "windows", 7576),
       transport: { type: "http", endpoint: "http://example.com:7576" },

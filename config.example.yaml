@@ -4,6 +4,15 @@ gateway:
   listen:
     host: 127.0.0.1
     port: 7575
+  # Optional cross-machine Worker sessions. Prefer `queqiao gateway setup
+  # --worker-session-host <reachable-dns-or-ip>` so TLS files are generated securely.
+  # workerSessionListen:
+  #   host: 0.0.0.0
+  #   port: 7573
+  # workerSessionAdvertiseHost: gateway.local
+  # workerSessionTls:
+  #   certFile: /replace/with/queqiao/data/secrets/worker-session.crt
+  #   keyFile: /replace/with/queqiao/data/secrets/worker-session.key
   trustProxyHops: 1
   stateDirectory: /replace/with/queqiao/data/gateway
   approvalSecretFile: /replace/with/queqiao/data/secrets/oauth-approval.secret
@@ -19,6 +28,10 @@ worker:
     host: 127.0.0.1
     port: 7576
   tokenFile: /replace/with/queqiao/data/secrets/worker-token.secret
+  # Created automatically after a successful remote `worker join`:
+  # reverseSession:
+  #   target: gateway.local:7573
+  #   caCertificateFile: /replace/with/queqiao/data/secrets/worker-session-ca.crt
 workspaces:
   - id: project
     displayName: Project

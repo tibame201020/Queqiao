@@ -1,4 +1,4 @@
-# Architecture
+﻿# Architecture
 
 This document distinguishes the verified current runtime from the Secure Agent Substrate target boundaries. Target sections are architectural direction and must not be read as claims that every listed feature is already shipped.
 
@@ -19,17 +19,17 @@ Queqiao Gateway
                         Windows workspaces        Linux workspaces
 ```
 
-Only the Gateway is publicly exposed. The currently verified Windows/WSL deployment uses loopback HTTP Worker endpoints on the same host. Each native Worker is authoritative for its own Workspace filesystem/process operations and validates delegated requests again.
+Only the Gateway control plane is exposed beyond a Worker host. Same-host Workers may use authenticated loopback HTTP. Cross-host Workers use a dedicated Gateway Worker-session listener and initiate pinned-TLS gRPC/HTTP2 sessions; the remote Worker does not expose a LAN execution listener. Each native Worker remains authoritative for its own Workspace filesystem/process operations and validates delegated requests again.
 
-The Worker boundary is intentionally independent from this current loopback transport. ADR-0011 now governs the implemented membership model: Worker membership is established explicitly through CLI-driven `worker join`, while logical invocation remains `Client -> Gateway -> Worker -> Gateway -> Client`. Worker runtime startup does not auto-register, and connection lifetime remains a transport concern.
+The Worker boundary is transport-independent. ADR-0011 governs membership and ADR-0013 governs the Worker-initiated remote binding: membership is established explicitly through CLI-driven `worker join`, while logical invocation remains `Client -> Gateway -> Worker -> Gateway -> Client`. Worker runtime startup does not auto-register; an already-enrolled remote Worker may reconnect as transport recovery.
 
 Successful enrollment creates Gateway-owned persistent membership, stored separately from the user-managed main configuration. Persistent membership contains stable Worker identity, unique environment identity, a fixed transport descriptor, and credential references. Runtime reachability, instance identity, Worker Protocol version, optional capabilities, and transport-session state are negotiated live and are not persisted as authoritative membership data.
 
-Enrollment uses an explicit one-time, memory-only join token and an atomic transaction: provisional credential issuance, secure Worker-side storage, confirmation within 30 seconds, and a real Gateway-to-Worker health/protocol handshake must all succeed before membership is committed. Failed transactions roll back membership and provisional credentials; an attempted join token remains consumed.
+Enrollment uses an explicit one-time, memory-only join token and an atomic transaction. HTTP enrollment verifies the proposed loopback endpoint. Remote gRPC enrollment first binds the provisional credential to one authenticated live session, then performs health + Worker Protocol hello over that exact session before membership commit. Failed pre-commit transactions roll back membership/provisional authority; an attempted join token remains consumed.
 
 Gateway-observed liveness is configurable and low-frequency; no Worker lease/heartbeat lease is required. A failed health check marks observed reachability but does not permanently veto a real invocation attempt; a successful invocation can restore reachability. Functional `doctor` diagnostics are a separate optional Worker Protocol capability and are not part of basic liveness.
 
-The transport descriptor is intentionally abstract and is fixed in persistent membership until an explicit management update changes it. Loopback HTTP is the current verified implementation; future bindings such as gRPC may be introduced without redefining Worker Protocol semantics, Gateway routing responsibilities, or Worker-authoritative execution policy.
+The transport descriptor is intentionally abstract and fixed in persistent membership until an explicit management update or enrollment changes it. Verified bindings are authenticated loopback HTTP and Worker-initiated TLS gRPC/HTTP2. Both preserve the same Worker Protocol semantics, Gateway routing responsibilities, and Worker-authoritative execution policy.
 
 The current development candidate is **Core Manifest Revision 7**. Revision 7 preserves the ten existing Core tools and adds one fixed public `extension` proxy tool:
 
@@ -53,11 +53,11 @@ Historical Revision 4 and Revision 5 validation evidence remains authoritative f
 
 Queqiao uses distinct version dimensions. They must not be treated as aliases:
 
-- **Queqiao release version** — the packaged product release.
-- **Core Manifest Revision** — the bundled Core public tool contract.
-- **Deployment Manifest Fingerprint** — the deterministic effective public manifest after configured public-tool extensions are composed. It is implemented and exposed through safe deployment diagnostics/attestation.
-- **Worker Protocol Version** — Gateway-to-Worker compatibility/version ownership.
-- **MCP specification revision window** — the finite set/range supported by the MCP adapter. The Secure Agent Substrate implementation explicitly pins `2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28`; deprecated 2024 transport revisions and unknown future revisions are not inherited from SDK defaults.
+- **Queqiao release version** ??the packaged product release.
+- **Core Manifest Revision** ??the bundled Core public tool contract.
+- **Deployment Manifest Fingerprint** ??the deterministic effective public manifest after configured public-tool extensions are composed. It is implemented and exposed through safe deployment diagnostics/attestation.
+- **Worker Protocol Version** ??Gateway-to-Worker compatibility/version ownership.
+- **MCP specification revision window** ??the finite set/range supported by the MCP adapter. The Secure Agent Substrate implementation explicitly pins `2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28`; deprecated 2024 transport revisions and unknown future revisions are not inherited from SDK defaults.
 
 A change in one version dimension does not silently imply a change in another.
 
@@ -71,11 +71,11 @@ The Gateway MUST NOT perform native Workspace filesystem/process execution. MCP-
 
 ### `apps/worker`
 
-Environment-local authoritative execution root. It loads native Workspace policy, exposes the current authenticated Worker HTTP API, validates delegated requests, and invokes bounded native Workspace/process capabilities.
+Environment-local authoritative execution root. It loads native Workspace policy, exposes an authenticated loopback HTTP/local-control API, optionally maintains an outbound pinned-TLS gRPC session to its Gateway, validates delegated requests, and invokes bounded native Workspace/process capabilities.
 
 A Worker MUST NOT rely on Gateway authorization alone and MUST NOT implement the public OAuth authorization server.
 
-The current loopback HTTP API is the deployed Worker transport, not the permanent definition of the Worker protocol boundary.
+Loopback HTTP and Worker-initiated gRPC are adapters around the same `WorkerProtocolService`; neither transport defines the Worker authority boundary.
 
 ### `apps/cli`
 
@@ -91,9 +91,9 @@ This package has no MCP SDK dependency and does not own Gateway-to-Worker transp
 
 ### `packages/worker-protocol`
 
-Explicit Gateway-to-Worker protocol contract. It owns the Worker Protocol Version, the current `/v1` Worker HTTP API prefix, Worker capability negotiation, Worker hello validation, and shared invocation response typing.
+Explicit Gateway-to-Worker protocol contract. It owns the Worker Protocol Version, the `/v1` HTTP compatibility prefix, Worker capability negotiation, Worker hello validation, transport-neutral request typing, reverse-session frame schemas/codec, and shared invocation response typing.
 
-The current HTTP route implementation remains in Gateway/Worker apps; the version/contract ownership is independent from MCP protocol revisions.
+HTTP route and gRPC stream adapters remain in Gateway/Worker apps; protocol/version ownership is independent from either transport and from MCP protocol revisions.
 
 ### `packages/protocol`
 
@@ -141,7 +141,6 @@ Workspace is an authority boundary. Repository/worktree/project-marker interpret
 
 Packages such as the following may be introduced when their implementation tickets require them:
 
-- transport/channel abstraction for a future non-loopback Worker transport;
 - observability/audit projection helpers;
 - shared hostile-fixture/contract test utilities.
 
