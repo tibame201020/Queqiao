@@ -25,6 +25,7 @@ import { listRoleInstances, resolveRoleInstance, selectorRoleForCliArgs, withRol
 import { QUEQIAO_CLI_VERSION } from "./version.js";
 import { getGatewayInfo } from "./gateway-info.js";
 import { renderShellCompletion } from "./shell-completion.js";
+import { runWorkstation } from "./workstation.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
@@ -63,6 +64,7 @@ async function main() {
     process.stdout.write(renderShellCompletion(shell));
     return;
   }
+  if (dispatch?.handler === "workstation") return runWorkstation(rawArgs);
   if (dispatch?.handler === "list-role-instances" && dispatch.route === "gateway list") return print({ schemaVersion: "1.0", role: "gateway", instances: await listRoleInstances("gateway") });
   if (dispatch?.handler === "list-role-instances" && dispatch.route === "worker list") return print({ schemaVersion: "1.0", role: "worker", instances: await listRoleInstances("worker") });
 

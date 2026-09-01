@@ -1,6 +1,9 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { runtimeConfigSchema } from "@queqiao/config";
-import type { RuntimeLayout } from "@queqiao/platform-paths";
+import { resolveNamedRoleConfigRoot, resolveRuntimeLayoutForNamedRole, type RuntimeLayout } from "@queqiao/platform-paths";
 import { doctorGateway, doctorPaths, doctorQueqiao } from "./doctor.js";
 
 const config = runtimeConfigSchema.parse({
@@ -88,6 +91,33 @@ describe("doctorQueqiao", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores stale named-role directories that do not contain a runtime config", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-doctor-stale-"));
+    const env: NodeJS.ProcessEnv = process.platform === "win32"
+      ? { LOCALAPPDATA: root, USERPROFILE: root }
+      : { HOME: root, XDG_CONFIG_HOME: path.join(root, "config"), XDG_DATA_HOME: path.join(root, "data"), XDG_STATE_HOME: path.join(root, "state"), XDG_RUNTIME_DIR: path.join(root, "runtime") };
+    const gatewayLayout = resolveRuntimeLayoutForNamedRole("gateway", "stable", env, process.platform);
+    const workerLayout = resolveRuntimeLayoutForNamedRole("worker", "wsl", env, process.platform);
+    await mkdir(path.dirname(gatewayLayout.configFile), { recursive: true });
+    await mkdir(path.dirname(workerLayout.configFile), { recursive: true });
+    await writeFile(gatewayLayout.configFile, "configured", "utf8");
+    await writeFile(workerLayout.configFile, "configured", "utf8");
+    await mkdir(path.join(resolveNamedRoleConfigRoot("gateway", env, process.platform), "stale-gateway"), { recursive: true });
+    await mkdir(path.join(resolveNamedRoleConfigRoot("worker", env, process.platform), "stale-worker"), { recursive: true });
+
+    const result = await doctorQueqiao(layout("hub.yaml"), {
+      env,
+      platform: process.platform,
+      readConfig: (async (file: string) => file === gatewayLayout.configFile ? config : workerConfig) as never,
+      status: async (_configFile, _layout, role, name) => ({ name, role, active: true, managed: true, pid: role === "gateway" ? 100 : 200, health: { reachable: true, healthy: true, identityMatches: true, status: 200 } }),
+      fetchImpl: vi.fn(async () => new Response(JSON.stringify({ ok: true, environments: [{ environmentId: "linux", reachable: true }] }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch,
+      extensionDoctor: async () => ({ ok: true, issues: [] }),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.gateways.map((entry) => entry.name)).toEqual(["stable"]);
+    expect(result.workers.map((entry) => entry.name)).toEqual(["wsl"]);
+  });
   it("fails the whole-system result when Extension Hub integrity fails", async () => {
     const result = await doctorQueqiao(layout("hub.yaml"), {
       roleNames: async () => [],

@@ -1,5 +1,4 @@
-import { readdir } from "node:fs/promises";
-import path from "node:path";
+import { listNamedRoleInstances } from "./setup-wizard.js";
 import { readRuntimeConfig, type RuntimeConfig } from "@queqiao/config";
 import {
   resolveExtensionHubRoot,
@@ -54,17 +53,7 @@ function hasExplicitLayout(env: NodeJS.ProcessEnv): boolean {
 }
 
 async function defaultRoleNames(role: RuntimeRole, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): Promise<string[]> {
-  const root = resolveNamedRoleConfigRoot(role, env, platform);
-  try {
-    const entries = await readdir(root, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isDirectory() && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(entry.name))
-      .map((entry) => entry.name)
-      .sort((a, b) => a.localeCompare(b));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
+  return listNamedRoleInstances(role, env, platform);
 }
 
 export async function doctorGateway(config: RuntimeConfig, fetchImpl: typeof fetch = fetch): Promise<GatewayDoctorResult> {

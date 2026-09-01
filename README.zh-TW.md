@@ -1,148 +1,111 @@
 # Queqiao
 
-[English](https://github.com/tibame201020/Queqiao/blob/main/README.md) | **繁體中文**
+[English](README.md) | **繁體中文**
 [![Resource Safety Baseline](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml/badge.svg)](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/tibame201020/Queqiao/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/@tibame201020/queqiao.svg)](https://www.npmjs.com/package/@tibame201020/queqiao)
 
-Queqiao 是 AI client 與多個本機開發環境之間的安全橋接層。公開 Gateway 負責 MCP ingress、驗證、路由與 Worker membership；Windows、WSL、Linux 或未來遠端環境各自執行 Worker，讓檔案系統與程序操作留在實際擁有該環境的主機。
+Queqiao 是 AI client 與本機開發環境之間的安全橋接層。公開 Gateway 負責 MCP ingress、驗證、路由與 Worker membership；Windows、WSL、Linux 或遠端環境各自執行自己的 Worker，讓檔案系統與程序操作留在實際擁有它們的環境內。
 
 ## 安裝
+
 ```shell
 npm install --global @tibame201020/queqiao
 queqiao --version
 ```
 
-## Shell tab completion
-
-PowerShell、Bash、Zsh completion 都由 CLI parser 使用的同一份 canonical command contract 產生：
-
-```powershell
-queqiao completion powershell | Out-String | Invoke-Expression
-```
-
-```bash
-eval "$(queqiao completion bash)"
-```
-
-```zsh
-eval "$(queqiao completion zsh)"
-```
-
-把對應命令加入 shell profile 即可；Gateway、Worker 等 runtime value 仍由 shell 正常輸入。
-
 ## 核心模型
 
-- **Gateway**：公開 control plane，負責 MCP endpoint、OAuth、routing 與 Worker membership。
-- **Worker**：原生 execution host，擁有該環境內的 filesystem/process execution。
-- **Workspace**：Worker 擁有的 authority boundary，限制 root、Tools 與 executable commands。
-- **Extension**：先安裝到本機 Extension Hub，再明確 attach 到 Worker。
+- **Gateway** — 公開 control plane：MCP endpoint、OAuth、routing、Worker membership。
+- **Worker** — 單一 OS／環境的 native execution host。
+- **Workspace** — Worker 擁有的 authority boundary，限制 root、Tools 與可執行命令。
+- **Access Profile** — 可重複使用的 authority template；套用時複製到 Workspace。
+- **Extension** — 安裝到主機的 Extension Hub，再明確 attach 到 Worker。
 
-Queqiao 不用通用 `queqiao setup` 隱藏這些邊界；CLI 與 runtime 使用同一套 ownership model。
+## Quick Start — Workstation
 
-## 第一次部署
-
-### 1. 設定 Gateway
-
-![Interactive Queqiao Gateway setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/01-gateway-setup.gif)
+啟動持續運作的管理介面：
 
 ```shell
-queqiao gateway setup
+queqiao workstation
 ```
 
-建立或編輯具名 Gateway，設定 public URL、Gateway port 與本機 management port。
+![Queqiao Workstation overview](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/01-overview.gif)
 
-### 2. 取得 connector URL 與 approval secret
+第一次部署可以完全在 Workstation 內完成：
 
-![Interactive Queqiao Gateway connector info](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/02-gateway-info.gif)
+1. **Gateway (`1`)** — 選 **Set up Gateway**，設定 public URL 與 ports，再執行 **Start**。
+2. **Worker (`2`)** — 選 **Set up Worker**，建立第一個 Workspace 與 authority policy，再執行 **Start**。
+3. **Gateway (`1`)** — 執行 **Create join code**。可用剪貼簿時會直接複製；失敗時 Workstation 會顯示可手動複製的 fallback。
+4. **Worker (`2`)** — 執行 **Join Gateway**，輸入短效 join code。
+5. **Gateway (`1`)** — 註冊 AI client connector 時使用 **Copy MCP URL** 與 **Copy approval secret**。
+6. **Diagnostics (`6`)** — 驗證 Core runtimes、Gateway routing 與 Extension Hub health。
+
+Workstation 與 leaf CLI 共用同一套 domain model。`1..6` 切換 domain；方向鍵移動 pane／選取項目；`Enter` inspect／執行選定 action；`i` 開啟 Detailed Info；`?` 開 Help；`,` 開 Appearance Settings；`q` 離開。簡單 action 直接執行，只有需要輸入或具破壞性的操作才開 form／確認畫面。
+
+### Workstation controls
+
+<details><summary><b>Gateway — lifecycle、connector 資訊、membership</b></summary>
+
+![Gateway control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/02-gateway.gif)
+
+設定、啟停 Gateway，複製 MCP URL／approval secret、產生 join code，並檢視已 enroll 的 Worker membership。
+</details>
+
+<details><summary><b>Worker — native runtime 與 enrollment</b></summary>
+
+![Worker control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/03-worker.gif)
+
+設定、啟停 native Worker，檢視 identity／health、加入 Gateway，並管理本機 execution boundary。
+</details>
+
+<details><summary><b>Workspace — filesystem 與 tool authority</b></summary>
+
+![Workspace control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/04-workspace.gif)
+
+建立與編輯 Worker-owned roots，明確指定 Tool 與 executable-command authority；已設定的 Worker 至少保留一個 Workspace。
+</details>
+
+<details><summary><b>Access Profile — 可重用 authority template</b></summary>
+
+![Access Profile control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/05-access-profile.gif)
+
+建立可重用的 Tool／command template。套用 profile 會把 policy 複製到 Workspace；之後修改 profile 不會暗中改寫既有 Workspace。
+</details>
+
+<details><summary><b>Extension — Hub inventory 與 Worker attachment</b></summary>
+
+![Extension control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/06-extension.gif)
+
+把 package 安裝到本機 Extension Hub，再明確 attach／detach 到 Worker。單純安裝不會擴大 Workspace authority。
+</details>
+
+<details><summary><b>Diagnostics — runtime、routing、Hub health</b></summary>
+
+![Diagnostics control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/07-diagnostics.gif)
+
+使用與 `queqiao doctor` 相同的 authoritative diagnostics，顯示結構化 warning 與 remediation，而不是建立第二套 health model。
+</details>
+
+## Configuration 與 Persistence
+
+Queqiao 刻意把 **config**、**durable data**、**operational state** 與 **ephemeral runtime files** 分開。Named Gateway／Worker 設定不放在 repository 裡；目前正式模型中 Workspace 直接持久化在各 Worker 的 `config.yaml`，不是另一份 `workspaces.json`。
+
+可先用以下命令查看目前主機的主要路徑：
 
 ```shell
-queqiao gateway info
-queqiao gateway info --detail
-queqiao gateway info --copy-url
-queqiao gateway info --copy-secret
+queqiao doctor paths
 ```
 
-`gateway info` 預設隱藏 approval secret；`--detail` 明確顯示，copy flags 則只把指定值放進剪貼簿，不再次輸出到 terminal。
-
-### 3. 設定 Worker 與第一個 Workspace
-
-![Interactive Queqiao Worker and Access setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/03-worker-access-setup.gif)
-
-```shell
-queqiao worker setup
-```
-
-Workspace setup 會設定 root、display name、Access Profile、Tools，以及在允許 `run` 時的 executable allowlist。已設定的 Worker 至少保留一個 Workspace。
-
-### 4. 管理 Workspaces 與 Access Profiles
-
-![Interactive Queqiao Workspace Management](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/04-workspace-management.gif)
-
-```shell
-queqiao workspace
-```
-
-TUI 把 Worker-owned Workspaces 與 reusable Access Profiles 分開。套用 profile 時會把 Tools 與 executable allowlist 複製到 Workspace；之後 edit、rename 或 delete profile 不會暗中修改已套用的 Workspace。Automation 可使用 CLI reference 中明確的 `workspace ...` 與 `workspace profiles ...` 子命令。
-
-### 5. 多 instance 時選擇具名 Gateway / Worker
-
-![Interactive Queqiao named-instance selector](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/05-instance-selector.gif)
-
-```shell
-queqiao gateway status
-```
-
-TTY 可使用共用 selector；automation 與 `--json` 應明確提供 `--gateway <name>` 或 `--worker <name>`。
-
-### 6. 安裝並 attach Extensions
-
-![Interactive Queqiao Extension attachment](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/06-extension-attach.gif)
-
-```shell
-queqiao extension install <npm:package|local-path>
-queqiao extension attach
-```
-
-安裝 package 不會自動 attach 到所有 Worker，也不會擴大 Workspace authority。
-
-### 7. 啟動、enroll、驗證
-
-#### 7A. 啟動 runtimes
-
-![Interactive Queqiao runtime startup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/07-runtime-start.gif)
-
-```shell
-queqiao worker serve --worker <worker> --bg
-queqiao gateway serve --gateway <gateway> --bg
-```
-
-#### 7B. Enroll Worker
-
-![Interactive Queqiao Worker enrollment](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/cli/interactive/08-worker-enrollment.gif)
-
-```shell
-queqiao gateway join-token --gateway <gateway>
-queqiao worker join --worker <worker>
-```
-
-接著驗證 runtime 與 Gateway membership：
-
-```shell
-queqiao worker status --worker <worker>
-queqiao gateway status --gateway <gateway>
-queqiao gateway workers list --gateway <gateway>
-```
-
-Gateway 此時可把核准的 MCP operation 路由到已 enroll 的 Worker；Worker 仍在本機強制執行 Workspace、Tool、command 與 Extension authority。
+完整 Windows／Linux／WSL 路徑、檔案內容、secret、Extension Hub、membership registry、logs/PID、backup 建議與 `QUEQIAO_*` override，請見 **[Configuration & Persistence](https://github.com/tibame201020/Queqiao/blob/main/docs/configuration-persistence.zh-TW.md)**。
 
 ## 文件
 
-- [CLI reference](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/reference.md) — 完整 public command surface。
-- [CLI visual guide](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md) — interactive / operational / component visuals。
-- [Workspace authority](https://github.com/tibame201020/Queqiao/blob/main/docs/workspace-authority.md) — Workspace 與 Access policy。
-- [Extensions](https://github.com/tibame201020/Queqiao/blob/main/docs/extensions.md) — Extension Hub 與 authoring。
-- [Operations](https://github.com/tibame201020/Queqiao/blob/main/docs/operations.md) — lifecycle、enrollment、cleanup、migration。
-- [Architecture](https://github.com/tibame201020/Queqiao/blob/main/docs/architecture.md) 與 [validation evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/README.md)。
+- [Workstation 詳細指南](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.zh-TW.md) — layout、各 control、Detailed Info、actions/modal、responsive 行為與實際錄製畫面。
+- [Classic / leaf CLI 指南](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md) — 適合 script／automation 的命令式流程與真實 PTY 錄製。
+- [CLI reference](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/reference.md) — 完整 public command surface、JSON／selector 規則。
+- [Configuration & Persistence](https://github.com/tibame201020/Queqiao/blob/main/docs/configuration-persistence.zh-TW.md) — on-disk model、secret、backup／migration boundary、Windows／Linux／WSL 路徑。
+- [Workspace authority](https://github.com/tibame201020/Queqiao/blob/main/docs/workspace-authority.md) · [Extensions](https://github.com/tibame201020/Queqiao/blob/main/docs/extensions.md) · [Operations](https://github.com/tibame201020/Queqiao/blob/main/docs/operations.md) · [Architecture](https://github.com/tibame201020/Queqiao/blob/main/docs/architecture.md)
+- [Validation evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/README.md) · [Contributing](https://github.com/tibame201020/Queqiao/blob/main/CONTRIBUTING.md) · [Security](https://github.com/tibame201020/Queqiao/blob/main/SECURITY.md)
 
-Contributing 與安全回報請參考 [CONTRIBUTING.md](https://github.com/tibame201020/Queqiao/blob/main/CONTRIBUTING.md) 與 [SECURITY.md](https://github.com/tibame201020/Queqiao/blob/main/SECURITY.md)。Queqiao 受 [Waishnav DevSpace](https://github.com/Waishnav/devspace) 啟發，但為獨立實作，與 DevSpace 無隸屬或背書關係。
+Shell completion 與完整 non-interactive command surface 請見 [CLI reference](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/reference.md)。Queqiao 受到 [Waishnav DevSpace](https://github.com/Waishnav/devspace) 啟發，但為獨立實作，與 DevSpace 無隸屬或背書關係。

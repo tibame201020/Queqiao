@@ -83,6 +83,7 @@ describe("CLI hierarchy consolidation", () => {
     expect(help).toContain("doctor");
     expect(help).toContain("uninstall");
     expect(help).toContain("workspace");
+    expect(help).toContain("workstation");
     expect(help).not.toMatch(/^\s{2}(profile|tool|command|permissions|discovery|manifest|config|migrate)\b/m);
   });
 
@@ -144,7 +145,7 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it("freezes every public leaf in one parser contract", () => {
-    expect(CLI_LEAF_CONTRACTS).toHaveLength(47);
+    expect(CLI_LEAF_CONTRACTS).toHaveLength(48);
     expect(new Set(CLI_LEAF_CONTRACTS.map(({ route }) => route)).size).toBe(CLI_LEAF_CONTRACTS.length);
     expect(CLI_LEAF_CONTRACTS.map(({ route }) => route).sort()).toEqual(listCanonicalCliRoutes());
   });

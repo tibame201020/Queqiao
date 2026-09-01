@@ -4,7 +4,7 @@ import { runtimeConfigSchema, workspaceConfigSchema, type RuntimeConfig, type Wo
 import { AtomicConfigStore } from "./atomic-config-store.js";
 import { AccessProfileStore, resolveAccessProfileFile, type AccessProfile } from "./access-profile-store.js";
 import { BUILTIN_ACCESS_PROFILES, accessConfigurationToWorkspacePolicy, type AccessConfiguration } from "./access-configuration.js";
-import { collectAccessConfiguration, collectCustomAccessConfiguration } from "./access-configuration-flow.js";
+import { collectAccessConfiguration, collectCustomAccessConfiguration, type AccessConfigurationPrompts } from "./access-configuration-flow.js";
 import { createAccessConfigurationPrompts } from "./access-configuration-prompts.js";
 import { workspacePath } from "./workspace-path-prompt.js";
 import { resolveWorkspaceAuthorityRoot, workspaceRootsEqual } from "./workspace-authority.js";
@@ -28,6 +28,12 @@ function requiredOption(args: readonly string[], name: string): string {
 function isInteractive(args: readonly string[]): boolean {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY && !args.includes("--json"));
 }
+
+export type WorkspaceEditInteractiveDependencies = {
+  prompts?: AccessConfigurationPrompts;
+  pathPrompt?: (cwd: string) => Promise<string | symbol | undefined>;
+  profileStore?: Pick<AccessProfileStore, "list" | "save">;
+};
 
 async function choose(message: string, choices: Array<{ value: string; label: string; description?: string }>): Promise<string> {
   const value = await queqiaoSelect({ message, choices });
@@ -121,7 +127,11 @@ export async function getManagedWorkspaceInfo(configFile: string, args: readonly
   return { schemaVersion: "1.0", workspace: workspaceSummary(config.workspaces.find((entry) => entry.id === workspaceId)!) };
 }
 
-export async function editManagedWorkspace(configFile: string, args: string[]): Promise<unknown> {
+export async function editManagedWorkspace(
+  configFile: string,
+  args: string[],
+  interactiveDependencies: WorkspaceEditInteractiveDependencies = {},
+): Promise<unknown> {
   const workspaceId = await resolveWorkspaceId(configFile, args);
   const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
   const current = await store.read();
@@ -140,21 +150,21 @@ export async function editManagedWorkspace(configFile: string, args: string[]): 
       policy = accessConfigurationToWorkspacePolicy(configuration);
     }
   } else {
-    if (!isInteractive(args)) throw new Error("Workspace edit requires --root, --display-name, or --access-profile outside an interactive terminal.");
-    intro(`Edit Workspace: ${selected.displayName}`);
-    const action = await choose("Edit", [
+    if (!interactiveDependencies.prompts && !isInteractive(args)) throw new Error("Workspace edit requires --root, --display-name, or --access-profile outside an interactive terminal.");
+    const injectedPrompts = interactiveDependencies.prompts;
+    if (!injectedPrompts) intro(`Edit Workspace: ${selected.displayName}`);
+    const prompts = injectedPrompts || createAccessConfigurationPrompts({ cancelMessage: "Workspace edit cancelled" });
+    const action = await prompts.choose("Edit", [
       { value: "identity", label: "Identity", description: "Workspace path and display name" },
       { value: "access", label: "Access", description: "Access Profile or Custom tools/commands" },
     ]);
     if (action === "identity") {
-      const selectedRoot = await workspacePath(selected.root);
+      const selectedRoot = await (interactiveDependencies.pathPrompt || workspacePath)(selected.root);
       if (isCancel(selectedRoot)) throw new Error("Workspace edit cancelled");
       root = await resolveWorkspaceAuthorityRoot(String(selectedRoot || selected.root));
-      const prompts = createAccessConfigurationPrompts({ cancelMessage: "Workspace edit cancelled" });
       displayName = await prompts.text("Display name", selected.displayName);
     } else {
-      const prompts = createAccessConfigurationPrompts({ cancelMessage: "Workspace edit cancelled" });
-      const configuration = await collectAccessConfiguration(prompts, new AccessProfileStore(resolveAccessProfileFile()));
+      const configuration = await collectAccessConfiguration(prompts, interactiveDependencies.profileStore || new AccessProfileStore(resolveAccessProfileFile()));
       policy = accessConfigurationToWorkspacePolicy(configuration);
     }
   }
@@ -172,7 +182,7 @@ export async function editManagedWorkspace(configFile: string, args: string[]): 
     }),
   }));
   await secureRuntimeFile(configFile);
-  if (!scripted) outro(`Workspace updated: ${updated!.displayName}`);
+  if (!scripted && !interactiveDependencies.prompts) outro(`Workspace updated: ${updated!.displayName}`);
   return { changed: true, workspace: workspaceSummary(updated!) };
 }
 
