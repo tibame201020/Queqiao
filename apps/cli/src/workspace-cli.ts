@@ -13,6 +13,11 @@ import { secureRuntimeFile } from "./secure-runtime-paths.js";
 export type WorkspacePrompt = (message: string) => Promise<string>;
 export type WorkspaceProfile = "read-only" | "editor" | "coding";
 export type WorkspaceAnswers = { root: string; displayName: string; profile: WorkspaceProfile };
+export type WorkspaceInteractiveDependencies = {
+  prompts?: AccessConfigurationPrompts;
+  pathPrompt?: (cwd: string) => Promise<string | symbol | undefined>;
+  profileStore?: Pick<AccessProfileStore, "list" | "save">;
+};
 
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
@@ -109,7 +114,12 @@ async function testPromptAnswers(prompt: WorkspacePrompt): Promise<WorkspaceAnsw
   return { root, displayName, profile };
 }
 
-export async function addWorkspace(configFile: string, args: string[], prompt?: WorkspacePrompt): Promise<unknown> {
+export async function addWorkspace(
+  configFile: string,
+  args: string[],
+  prompt?: WorkspacePrompt,
+  interactiveDependencies: WorkspaceInteractiveDependencies = {},
+): Promise<unknown> {
   const store = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
   const current = await store.read();
   if (!current.worker) throw new Error("Worker setup is required before adding a Workspace");
@@ -135,12 +145,13 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
   } else if (prompt) {
     answers = await testPromptAnswers(prompt);
   } else {
-    intro("Add Workspace");
-    const prompts = createAccessConfigurationPrompts({ cancelMessage: "Workspace setup cancelled" });
-    const profileStore = new AccessProfileStore(resolveAccessProfileFile());
+    const injectedPrompts = interactiveDependencies.prompts;
+    if (!injectedPrompts) intro("Add Workspace");
+    const prompts = injectedPrompts || createAccessConfigurationPrompts({ cancelMessage: "Workspace setup cancelled" });
+    const profileStore = interactiveDependencies.profileStore || new AccessProfileStore(resolveAccessProfileFile());
     const candidate = await interactiveWorkspaceCandidate({
       cwd: process.cwd(),
-      pathPrompt: workspacePath,
+      pathPrompt: interactiveDependencies.pathPrompt || workspacePath,
       prompts,
       profileStore,
     });
@@ -166,7 +177,7 @@ export async function addWorkspace(configFile: string, args: string[], prompt?: 
   });
   await secureRuntimeFile(configFile);
   if (!addedWorkspace) throw new Error("Workspace add did not produce a Workspace");
-  if (!prompt && !scripted) outro(`Workspace added: ${addedWorkspace.displayName}`);
+  if (!prompt && !scripted && !interactiveDependencies.prompts) outro(`Workspace added: ${addedWorkspace.displayName}`);
   return { added: true, workspace: next.workspaces.find((entry) => entry.id === addedWorkspace?.id) };
 }
 

@@ -1,6 +1,6 @@
-# Queqiao CLI
+# Queqiao Classic / Leaf CLI
 
-This directory contains the production CLI reference and visual interaction documentation.
+This directory documents the explicit command-oriented CLI used for scripts, automation, JSON output, and direct administration. For the persistent interactive operator surface, use the [Workstation guide](../workstation/README.md).
 
 ```text
 queqiao
@@ -18,7 +18,9 @@ independently. TUI presentation composes these primitives but does not change th
 
 ## User guides
 
+- [Workstation guide](../workstation/README.md) - persistent interactive control plane and domain controls.
 - [CLI reference](reference.md) - complete public command surface and selector/JSON rules.
+- [Configuration & persistence](../configuration-persistence.md) - actual on-disk config/data/state/runtime layout.
 - [Interactive flows](interactive/README.md) - real PTY recordings of setup, Workspace Management, selection, runtime startup, enrollment, and verification.
 - [Components](components/README.md) - reusable selector, multiselect, input, result, help, and error grammar.
 - [Operational flows](flows/README.md) - longer packaged CLI lifecycle and diagnostic recordings.

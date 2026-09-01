@@ -12,6 +12,8 @@
     "@queqiao/operations": "0.1.0",
     "@queqiao/platform-paths": "0.1.0",
     "@queqiao/worker-protocol": "0.1.0",
+    "ink": "7.1.1",
+    "react": "19.2.8",
     "zod": "4.4.3"
   }
 }

@@ -51,8 +51,7 @@ jobs:
             exit 1
           }
       - run: npm ci --ignore-scripts
-      - run: npm run security:gate
-      - run: npm run resource:gate
+      - run: npm run release:gate
       - name: Verify trusted publishing toolchain
         shell: bash
         run: |

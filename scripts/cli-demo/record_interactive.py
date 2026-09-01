@@ -174,6 +174,12 @@ class Session:
     def up(self, count=1):
         for _ in range(count): self.send(b"\x1b[A")
     def space(self): self.send(b" ")
+    def left(self, count=1):
+        for _ in range(count): self.send(b"\x1b[D")
+    def right(self, count=1):
+        for _ in range(count): self.send(b"\x1b[C")
+    def tab(self, count=1):
+        for _ in range(count): self.send(b"\t")
 
     def command(self, command: str, wait_for: str | None = None):
         mark = self.mark()
@@ -363,6 +369,58 @@ def enroll_verify_demo(rec: Recorder, cast: Path):
         rec.run_noninteractive("worker", "stop", "--worker", "demo-worker", "--json")
 
 
+def workstation_fixture(rec: Recorder):
+    gateway_port=free_port(); management_port=free_port(); worker_port=free_port()
+    gateway_setup(
+        rec, None, "demo-gateway", str(gateway_port), str(management_port),
+        public_url=f"http://127.0.0.1:{gateway_port}/",
+    )
+    worker_setup(rec, None, "demo-worker", str(worker_port), custom=False)
+    second=rec.root / "workspace-two"
+    second.mkdir(parents=True, exist_ok=True)
+    rec.run_noninteractive(
+        "workspace", "add", "--worker", "demo-worker", "--root", str(second),
+        "--display-name", "Docs Workspace", "--access-profile", "Reader", "--json",
+    )
+    rec.run_noninteractive(
+        "workspace", "profiles", "create", "--name", "Coding Safe",
+        "--tools", "read_file,write_file,edit_file,run", "--commands", "git,npm", "--json",
+    )
+    ext=rec.write_extension("workstation-extension", "dev.queqiao.docs", "Docs Extension")
+    rec.run_noninteractive("extension", "install", str(ext), "--worker", "demo-worker", "--json")
+    rec.run_noninteractive("worker", "serve", "--worker", "demo-worker", "--bg", "--json")
+    rec.run_noninteractive("gateway", "serve", "--gateway", "demo-gateway", "--bg", "--json")
+    wait_json(rec, ["worker", "status", "--worker", "demo-worker", "--json"], lambda v: v.get("active") is True)
+    wait_json(rec, ["gateway", "status", "--gateway", "demo-gateway", "--json"], lambda v: v.get("active") is True)
+    join=json.loads(rec.run_noninteractive("gateway", "join-token", "--gateway", "demo-gateway", "--expires", "120", "--json"))
+    rec.run_noninteractive("worker", "join", "--worker", "demo-worker", "--join-code", join["joinCode"], "--json")
+    wait_json(rec, ["gateway", "status", "--gateway", "demo-gateway", "--json"], lambda v: v.get("active") is True and v.get("health", {}).get("healthy") is True)
+
+
+def workstation_demo(rec: Recorder, cast: Path, domain: str):
+    workstation_fixture(rec)
+    key={"gateway":"1","worker":"2","workspace":"3","profile":"4","extension":"5","diagnostics":"6"}.get(domain)
+    s=Session(rec, cast).start()
+    try:
+        s.command("queqiao workstation", "Queqiao Workstation")
+        time.sleep(0.7)
+        while s._drain_once(0.02): pass
+        if domain == "overview":
+            for selected in ("2","3","4","5","6","1"):
+                s.send(selected.encode("ascii"), pause=0.65)
+        else:
+            s.send(key.encode("ascii"), pause=0.55)
+            s.tab(2)
+            time.sleep(0.45)
+            while s._drain_once(0.02): pass
+            s.send(b"i", pause=0.8)
+            s.send(b"\x1b", pause=0.5)
+        s.send(b"q", pause=0.6)
+    finally:
+        s.close(final_hold=1.0)
+        rec.run_noninteractive("gateway", "stop", "--gateway", "demo-gateway", "--json")
+        rec.run_noninteractive("worker", "stop", "--worker", "demo-worker", "--json")
+
 def render(agg: Path, cast: Path, gif: Path):
     gif.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([
@@ -377,17 +435,17 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--work", required=True)
     parser.add_argument("--agg", required=True)
-    parser.add_argument("--demo", choices=["all","gateway","info","worker","workspace","selector","extension","start","enroll"], default="all")
+    parser.add_argument("--demo", choices=["all","gateway","info","worker","workspace","selector","extension","start","enroll","workstation-all","ws-overview","ws-gateway","ws-worker","ws-workspace","ws-profile","ws-extension","ws-diagnostics"], default="all")
     args=parser.parse_args()
     out=Path(args.out); work=Path(args.work); agg=Path(args.agg)
     work.mkdir(parents=True, exist_ok=True); out.mkdir(parents=True, exist_ok=True)
-    selected=["gateway","info","worker","workspace","selector","extension","start","enroll"] if args.demo=="all" else [args.demo]
+    selected=["gateway","info","worker","workspace","selector","extension","start","enroll"] if args.demo=="all" else (["ws-overview","ws-gateway","ws-worker","ws-workspace","ws-profile","ws-extension","ws-diagnostics"] if args.demo=="workstation-all" else [args.demo])
     files=[]
     for index, name in enumerate(selected, start=1):
         root=work / name
         shutil.rmtree(root, ignore_errors=True)
         cast=work / f"{name}.cast"
-        rec=Recorder(root, args.package)
+        rec=Recorder(root, args.package, width=140 if name.startswith("ws-") else 110, height=34 if name.startswith("ws-") else 32)
         if name=="gateway": gateway_setup(rec, cast)
         elif name=="info": gateway_info_demo(rec, cast)
         elif name=="worker": worker_setup(rec, cast, custom=True)
@@ -396,6 +454,7 @@ def main():
         elif name=="extension": extension_demo(rec, cast)
         elif name=="start": start_runtime_demo(rec, cast)
         elif name=="enroll": enroll_verify_demo(rec, cast)
+        elif name.startswith("ws-"): workstation_demo(rec, cast, name.removeprefix("ws-"))
         stems={
             "gateway":"01-gateway-setup",
             "info":"02-gateway-info",
@@ -405,6 +464,13 @@ def main():
             "extension":"06-extension-attach",
             "start":"07-runtime-start",
             "enroll":"08-worker-enrollment",
+            "ws-overview":"01-overview",
+            "ws-gateway":"02-gateway",
+            "ws-worker":"03-worker",
+            "ws-workspace":"04-workspace",
+            "ws-profile":"05-access-profile",
+            "ws-extension":"06-extension",
+            "ws-diagnostics":"07-diagnostics",
         }
         gif=out / f"{stems[name]}.gif"
         render(agg, cast, gif)

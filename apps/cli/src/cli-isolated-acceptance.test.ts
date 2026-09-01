@@ -20,6 +20,7 @@ const EXTENSION_ID = "dev.queqiao.acceptance";
 const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "version": "packaged-version",
   "completion": "packaged-shell-completion",
+  "workstation": "packaged-workstation-contract",
   "gateway list": "packaged-process-state",
   "gateway setup": "interactive-setup",
   "gateway remove": "interactive-destructive",
@@ -241,6 +242,17 @@ describe.sequential("isolated packaged CLI acceptance", () => {
     expect(bash).toContain("gateway info");
     expect(zsh).toContain("compdef _queqiao_completion queqiao");
     expect(powershell).toContain("Register-ArgumentCompleter -Native -CommandName queqiao,queqiao.cmd");
+  });
+  it("exposes the packaged Workstation contract without replacing leaf automation", async () => {
+    const help = await runCli(["workstation", "--help"]);
+    expect(help.stderr).toBe("");
+    expect(help.stdout).toContain("Usage: queqiao workstation");
+    expect(help.stdout).toContain("interactive control plane");
+    expect(help.stdout).toContain("automation API");
+
+    await expect(runCli(["workstation", "--json"])).rejects.toMatchObject({
+      stderr: expect.stringContaining("requires an interactive terminal"),
+    });
   });
   it("creates isolated Gateway and Worker instances through the real setup wizards and packaged read paths", async () => {
     const workspaceRoot = path.join(root, "workspace-one");

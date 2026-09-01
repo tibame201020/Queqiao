@@ -56,6 +56,7 @@ export const COMMAND_TREE: CommandNode = {
   children: {
     version: terminal,
     completion: terminal,
+    workstation: terminal,
     gateway: {
       children: {
         list: terminal,
@@ -121,7 +122,7 @@ export type CliHandlerKey =
   | "gateway-info" | "gateway-join-token" | "membership-list" | "membership-update" | "membership-remove" | "worker-port" | "worker-join"
   | "workspace-manager" | "workspace-add" | "workspace-list" | "workspace-info" | "workspace-edit" | "workspace-remove" | "workspace-profiles-list" | "workspace-profiles-info" | "workspace-profiles-create" | "workspace-profiles-edit" | "workspace-profiles-rename" | "workspace-profiles-delete"
   | "extension-install" | "extension-attach" | "extension-detach" | "extension-uninstall" | "extension-list" | "extension-show" | "extension-doctor"
-  | "version" | "completion" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
+  | "version" | "completion" | "workstation" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
 
 type CliLeafContract = {
   route: string;
@@ -136,6 +137,7 @@ type CliLeafContract = {
 export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "version", handler: "version", options: [] },
   { route: "completion", handler: "completion", options: [], positionals: 1, positionalValues: ["bash", "zsh", "powershell"] },
+  { route: "workstation", handler: "workstation", options: [] },
   { route: "gateway list", handler: "list-role-instances", options: [] },
   { route: "gateway setup", handler: "role-setup", options: [] },
   { route: "gateway remove", handler: "role-remove", options: ["gateway"], valueOptions: ["gateway"] },
@@ -356,6 +358,7 @@ const ROOT_HELP = `Usage: queqiao <command> [options]
 Commands:
   version      Print the installed Queqiao version
   completion   Print shell tab-completion setup
+  workstation  Open the interactive Queqiao control plane
   gateway      Manage a Queqiao Gateway
   worker       Manage a Queqiao Worker
   workspace    Manage Workspaces and Access Profiles
@@ -368,6 +371,11 @@ Global options:
   --json         Print machine-readable JSON
 
 Run "queqiao <command> --help" for command details.`;
+
+const WORKSTATION_HELP = `Usage: queqiao workstation
+
+Opens the interactive control plane for Gateway, Worker, Workspace, Extension, and diagnostic operations.
+Existing leaf CLI commands remain the automation API.`;
 
 const GATEWAY_HELP = `Usage: queqiao gateway <command> [options]
 
@@ -534,6 +542,7 @@ export function renderCliHelp(input: readonly string[]): string {
   const [domain, action] = args;
   if (!domain) return ROOT_HELP;
   if (domain === "completion") return COMPLETION_HELP;
+  if (domain === "workstation") return WORKSTATION_HELP;
   if (domain === "gateway") {
     if (action === "info") return GATEWAY_INFO_HELP;
     if (action === "join-token") return GATEWAY_JOIN_TOKEN_HELP;
