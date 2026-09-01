@@ -24,6 +24,10 @@ describe("Workstation isolated verification harness", () => {
     expect(session.env.LOCALAPPDATA).not.toBe(process.env.LOCALAPPDATA);
     expect(session.env.HOME).not.toBe(process.env.HOME);
     expect(session.env.USERPROFILE).not.toBe(process.env.USERPROFILE);
+    expect(session.env.XDG_CONFIG_HOME).toBe(path.join(session.root, "xdg", "config"));
+    expect(session.env.XDG_DATA_HOME).toBe(path.join(session.root, "xdg", "data"));
+    expect(session.env.XDG_STATE_HOME).toBe(path.join(session.root, "xdg", "state"));
+    expect(session.env.XDG_RUNTIME_DIR).toBe(path.join(session.root, "xdg", "runtime"));
     expect(await readFile(session.cliEntry, "utf8")).toContain("#!/usr/bin/env node");
 
     const gateways = JSON.parse((await session.runCli(["gateway", "list", "--json"])).stdout);

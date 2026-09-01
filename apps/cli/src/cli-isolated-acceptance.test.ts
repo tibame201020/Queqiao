@@ -189,12 +189,20 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       USERPROFILE: path.join(root, "home"),
       HOME: path.join(root, "home"),
       TEMP: path.join(root, "temp"),
+      XDG_CONFIG_HOME: path.join(root, "xdg", "config"),
+      XDG_DATA_HOME: path.join(root, "xdg", "data"),
+      XDG_STATE_HOME: path.join(root, "xdg", "state"),
+      XDG_RUNTIME_DIR: path.join(root, "xdg", "runtime"),
       NO_COLOR: "1",
     };
     await Promise.all([
       mkdir(env.LOCALAPPDATA!, { recursive: true }),
       mkdir(env.USERPROFILE!, { recursive: true }),
       mkdir(env.TEMP!, { recursive: true }),
+      mkdir(env.XDG_CONFIG_HOME!, { recursive: true }),
+      mkdir(env.XDG_DATA_HOME!, { recursive: true }),
+      mkdir(env.XDG_STATE_HOME!, { recursive: true }),
+      mkdir(env.XDG_RUNTIME_DIR!, { recursive: true }),
     ]);
     packageOutdir = path.join(root, "package");
     await execFileAsync(process.execPath, [path.join(repositoryRoot, "scripts", "build-package.mjs")], {

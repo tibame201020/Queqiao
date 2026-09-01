@@ -146,6 +146,10 @@ export async function prepareWorkstationVerification(repositoryRoot = path.resol
     USERPROFILE: path.join(root, "home"),
     HOME: path.join(root, "home"),
     TEMP: path.join(root, "temp"),
+    XDG_CONFIG_HOME: path.join(root, "xdg", "config"),
+    XDG_DATA_HOME: path.join(root, "xdg", "data"),
+    XDG_STATE_HOME: path.join(root, "xdg", "state"),
+    XDG_RUNTIME_DIR: path.join(root, "xdg", "runtime"),
     QUEQIAO_WORKSTATION_VERIFY: "1",
   };
   delete env.NO_COLOR;
@@ -226,7 +230,7 @@ export async function prepareWorkstationVerification(repositoryRoot = path.resol
 }
 
 export async function captureWorkstationVerificationFrames(session: WorkstationVerificationSession): Promise<Record<string, string>> {
-  const keys = ["LOCALAPPDATA", "USERPROFILE", "HOME", "TEMP", "QUEQIAO_WORKSTATION_VERIFY"] as const;
+  const keys = ["LOCALAPPDATA", "USERPROFILE", "HOME", "TEMP", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR", "QUEQIAO_WORKSTATION_VERIFY"] as const;
   let gatewayStarted = false;
   const previous = new Map<string, string | undefined>();
   for (const key of keys) {
