@@ -163,22 +163,27 @@ describe.sequential("isolated packaged CLI acceptance", () => {
     return { stdout, stderr };
   }
 
-  async function waitForJson<T>(args: string[], predicate: (value: T) => boolean, timeoutMs = 15_000): Promise<T> {
+  async function waitForJson<T>(args: string[], predicate: (value: T) => boolean, timeoutMs = 20_000): Promise<T> {
     const deadline = Date.now() + timeoutMs;
-    let last: unknown;
+    let lastError: unknown;
+    let lastValue: T | undefined;
     while (Date.now() < deadline) {
       try {
         const result = await runCli(args);
         if (!result.stderr) {
-          const value = JSON.parse(result.stdout) as T;
-          if (predicate(value)) return value;
+          lastValue = JSON.parse(result.stdout) as T;
+          if (predicate(lastValue)) return lastValue;
         }
       } catch (error) {
-        last = error;
+        lastError = error;
       }
-      await delay(100);
+      // Each Windows status probe launches a packaged CLI and performs CIM + HTTP identity checks.
+      // Avoid a tight process-spawn retry storm when the full suite is already running in parallel.
+      await delay(process.platform === "win32" ? 300 : 150);
     }
-    throw last instanceof Error ? last : new Error(`Timed out waiting for CLI state: ${args.join(" ")}`);
+    const state = lastValue === undefined ? "" : `; last=${JSON.stringify(lastValue)}`;
+    const message = `Timed out waiting for CLI state: ${args.join(" ")}${state}`;
+    throw lastError instanceof Error ? new Error(`${message}; last error: ${lastError.message}`, { cause: lastError }) : new Error(message);
   }
 
   beforeAll(async () => {
@@ -372,14 +377,14 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       expect(workerStart).toMatchObject({ started: true, role: "worker", name: WORKER });
       expect(workerStart.pid).toEqual(expect.any(Number));
       workerStarted = true;
-      const runningWorker = await waitForJson<any>(["worker", "status", "--worker", WORKER, "--json"], (value) => value.active === true && value.managed === true);
+      const runningWorker = await waitForJson<any>(["worker", "status", "--worker", WORKER, "--json"], (value) => value.active === true && value.managed === true, 30_000);
       expect(runningWorker.pid).toBe(workerStart.pid);
 
       const gatewayStart = parseJson<any>(await runCli(["gateway", "serve", "--bg", "--gateway", GATEWAY, "--json"]));
       expect(gatewayStart).toMatchObject({ started: true, role: "gateway", name: GATEWAY });
       expect(gatewayStart.pid).toEqual(expect.any(Number));
       gatewayStarted = true;
-      const preJoinGateway = await waitForJson<any>(["gateway", "status", "--gateway", GATEWAY, "--json"], (value) => value.managed === true && value.health?.reachable === true);
+      const preJoinGateway = await waitForJson<any>(["gateway", "status", "--gateway", GATEWAY, "--json"], (value) => value.managed === true && value.health?.reachable === true, 30_000);
       expect(preJoinGateway.active).toBe(true);
       expect(preJoinGateway.health?.healthy).toBe(false);
       expect(preJoinGateway.pid).toBe(gatewayStart.pid);
@@ -392,7 +397,7 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       const endpoint = `http://127.0.0.1:${workerPort}/`;
       expect(parseJson<any>(await runCli(["gateway", "workers", "update", "--gateway", GATEWAY, "--worker-id", workerConfig.worker.workerId, "--endpoint", endpoint, "--json"]))).toMatchObject({ updated: true, workerId: workerConfig.worker.workerId });
 
-      const runningGateway = await waitForJson<any>(["gateway", "status", "--gateway", GATEWAY, "--json"], (value) => value.active === true && value.managed === true && value.health?.healthy === true, 12_000);
+      const runningGateway = await waitForJson<any>(["gateway", "status", "--gateway", GATEWAY, "--json"], (value) => value.active === true && value.managed === true && value.health?.healthy === true, 30_000);
       expect(runningGateway.pid).toBe(gatewayStart.pid);
       const doctor = parseJson<any>(await runCli(["doctor", "--json"]));
       expect(doctor.gateways).toEqual([expect.objectContaining({ name: GATEWAY, ok: true })]);

@@ -1,6 +1,6 @@
 # Queqiao
 
-**English** | [繁體中文](README.zh-TW.md)
+**English** | [繁體中文](https://github.com/tibame201020/Queqiao/blob/main/README.zh-TW.md)
 [![Resource Safety Baseline](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml/badge.svg)](https://github.com/tibame201020/Queqiao/actions/workflows/resource-safety.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/@tibame201020/queqiao.svg)](https://www.npmjs.com/package/@tibame201020/queqiao)
@@ -30,82 +30,71 @@ Launch the persistent operator UI:
 queqiao workstation
 ```
 
-![Queqiao Workstation overview](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/01-overview.gif)
+Complete the first deployment entirely inside Workstation.
 
-A first deployment can be completed without leaving Workstation:
+### 1. Set up the Gateway
 
-1. **Gateway (`1`)** — choose **Set up Gateway**, configure its public URL and ports, then **Start** it.
-2. **Worker (`2`)** — choose **Set up Worker**, create its first Workspace and authority policy, then **Start** it.
-3. **Gateway (`1`)** — **Create join code**. The code is copied when clipboard access is available; otherwise Workstation displays a copyable fallback.
-4. **Worker (`2`)** — **Join Gateway** and enter the short-lived join code.
-5. **Gateway (`1`)** — **Copy MCP URL** and **Copy approval secret** when registering the connector in the AI client.
-6. **Diagnostics (`6`)** — verify Core runtimes, Gateway routing, and Extension Hub health.
+Choose **Gateway (`1`) → Set up Gateway**, then enter its public URL, Gateway port, and local management port.
 
-Workstation keeps the same domain model as the leaf CLI. `1..6` switch domains, arrow keys move spatially/select rows, `Enter` inspects/runs the selected action, `i` opens Detailed Info, `?` opens Help, `,` opens Appearance Settings, and `q` exits. Simple actions execute directly; forms and destructive confirmation appear only when the operation requires input or review.
+![Gateway setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/01-gateway-setup.gif)
 
-### Workstation controls
+### 2. Start the Gateway
 
-<details><summary><b>Gateway — lifecycle, connector values, membership</b></summary>
+Select the configured Gateway and run **Start**.
 
-![Gateway control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/02-gateway.gif)
+![Gateway start](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/02-gateway-start.gif)
 
-Set up/start/stop Gateways, copy the MCP URL or approval secret, issue join codes, and inspect enrolled Worker membership.
-</details>
+### 3. Set up the Worker
 
-<details><summary><b>Worker — native runtime and enrollment</b></summary>
+Choose **Worker (`2`) → Set up Worker**. Setup creates the Worker and its first Workspace/authority policy together.
 
-![Worker control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/03-worker.gif)
+![Worker setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/03-worker-setup.gif)
 
-Set up/start/stop a native Worker, inspect its identity and health, join it to a Gateway, and manage its local execution boundary.
-</details>
+### 4. Start the Worker
 
-<details><summary><b>Workspace — filesystem and tool authority</b></summary>
+Select the configured Worker and run **Start**.
 
-![Workspace control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/04-workspace.gif)
+![Worker start](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/04-worker-start.gif)
 
-Create and edit Worker-owned roots with explicit Tool and executable-command authority. A configured Worker always retains at least one Workspace.
-</details>
+### 5. Create a join code
 
-<details><summary><b>Access Profile — reusable authority templates</b></summary>
+Return to **Gateway (`1`)** and run **Create join code**. The short-lived code is copied when clipboard access is available.
 
-![Access Profile control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/05-access-profile.gif)
+![Create join code](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/05-create-join-code.gif)
 
-Create reusable Tool/command templates. Applying a profile copies policy into a Workspace; later profile changes do not silently rewrite existing Workspaces.
-</details>
+### 6. Join the Worker
 
-<details><summary><b>Extension — Hub inventory and Worker attachment</b></summary>
+Open **Worker (`2`) → Join Gateway** and choose the local Gateway or paste a self-contained join code from another host.
 
-![Extension control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/06-extension.gif)
+![Worker join](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/06-worker-join.gif)
 
-Install packages into the local Extension Hub and explicitly attach/detach them from Workers. Installation alone does not expand Workspace authority.
-</details>
+### 7. Verify Gateway details
 
-<details><summary><b>Diagnostics — runtime, routing, and Hub health</b></summary>
+Return to the Gateway Inspector and press `i`. Detailed Info exposes runtime status, connector information, and enrolled Workers without leaving Workstation.
 
-![Diagnostics control](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/07-diagnostics.gif)
+![Gateway Detailed Info](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/07-gateway-detail.gif)
 
-Run the same authoritative diagnostics used by `queqiao doctor`, with structured warnings and remediation rather than a second health model.
-</details>
+`1..6` switch domains, arrows move/select, `Enter` inspects or runs an action, `i` opens Detailed Info, `?` opens Help, `,` opens Appearance Settings, and `q` exits when no modal owns input.
+
+For every control, action behavior, Appearance, and per-domain Detailed Info screenshots/GIFs, see the **[Workstation guide](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.md)**. For deterministic scripting/automation, use the **[Classic / leaf CLI](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md)**.
 
 ## Configuration and persistence
 
-Queqiao intentionally separates **config**, **durable data**, **operational state**, and **ephemeral runtime files**. Named Gateway/Worker configuration is not stored in the repository, and Workspaces are persisted inside each Worker's `config.yaml` rather than a separate current `workspaces.json`.
-
-Use this command to discover the host-level roots on the current machine:
+Queqiao separates **config**, **durable data**, **operational state**, and **ephemeral runtime files**. Named Gateway/Worker configuration is outside the repository, and Workspaces are persisted inside each Worker's `config.yaml` rather than a separate production `workspaces.json`.
 
 ```shell
 queqiao doctor paths
 ```
 
-See **[Configuration & persistence](https://github.com/tibame201020/Queqiao/blob/main/docs/configuration-persistence.md)** for exact Windows/Linux/WSL paths, file contents, secrets, Extension Hub storage, membership registry, logs/PIDs, backup guidance, and `QUEQIAO_*` path overrides.
+See **[Configuration & persistence](https://github.com/tibame201020/Queqiao/blob/main/docs/configuration-persistence.md)** for Windows/Linux/WSL paths, secrets, membership, Extension Hub storage, logs/PIDs, backup guidance, and `QUEQIAO_*` path overrides.
 
 ## Documentation
 
-- [Workstation guide](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.md) — layouts, controls, Detailed Info, actions/modals, responsive behavior, and recorded UI.
-- [Classic / leaf CLI guide](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md) — command-oriented workflows and real PTY recordings for scripting and automation.
-- [CLI reference](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/reference.md) — complete public command surface and JSON/selector rules.
-- [Configuration & persistence](https://github.com/tibame201020/Queqiao/blob/main/docs/configuration-persistence.md) — on-disk model, secrets, backup/migration boundaries, Windows/Linux/WSL paths.
+- [Workstation](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.md) — operator UI, controls, Appearance, Detailed Info, actions/modals, and recorded UI.
+- [Classic / leaf CLI](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md) — command-oriented workflows and real PTY recordings.
+- [CLI reference](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/reference.md) — complete command surface, selectors, JSON output, and shell completion.
+- [Configuration & persistence](https://github.com/tibame201020/Queqiao/blob/main/docs/configuration-persistence.md) — on-disk model, secrets, backups, and cross-OS paths.
 - [Workspace authority](https://github.com/tibame201020/Queqiao/blob/main/docs/workspace-authority.md) · [Extensions](https://github.com/tibame201020/Queqiao/blob/main/docs/extensions.md) · [Operations](https://github.com/tibame201020/Queqiao/blob/main/docs/operations.md) · [Architecture](https://github.com/tibame201020/Queqiao/blob/main/docs/architecture.md)
 - [Validation evidence](https://github.com/tibame201020/Queqiao/blob/main/docs/validation/README.md) · [Contributing](https://github.com/tibame201020/Queqiao/blob/main/CONTRIBUTING.md) · [Security](https://github.com/tibame201020/Queqiao/blob/main/SECURITY.md)
 
-Shell completion and the full non-interactive command surface are documented in the [CLI reference](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/reference.md). Queqiao was inspired by [Waishnav DevSpace](https://github.com/Waishnav/devspace) but is an independent implementation with no affiliation or endorsement.
+Queqiao was inspired by [Waishnav DevSpace](https://github.com/Waishnav/devspace) but is an independent implementation with no affiliation or endorsement.
