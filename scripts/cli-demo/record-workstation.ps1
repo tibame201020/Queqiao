@@ -1,5 +1,10 @@
 param(
-  [ValidateSet('all','overview','gateway','worker','workspace','profile','extension','diagnostics')]
+  [ValidateSet(
+    'all','quickstart','controls','details',
+    'qs-gateway-setup','qs-gateway-start','qs-worker-setup','qs-worker-start','qs-create-join-code','qs-worker-join','qs-gateway-detail',
+    'control-gateways','control-workers','control-workspaces','control-profiles','control-extensions','control-diagnostics','control-appearance',
+    'detail-gateway','detail-worker','detail-workspace','detail-profile','detail-extension','detail-diagnostics'
+  )]
   [string]$Demo = 'all',
   [string]$PackageTarball = ''
 )
@@ -41,7 +46,7 @@ if (-not $PackageTarball) {
 }
 
 $PackageTarball = (Resolve-Path $PackageTarball).Path
-$python = (Resolve-Path (Join-Path $PSScriptRoot 'record_interactive.py')).Path
+$python = (Resolve-Path (Join-Path $PSScriptRoot 'record_workstation.py')).Path
 
 function Convert-ToWslPath([string]$Path) {
   return (wsl.exe wslpath -a ($Path -replace '\\','/')).Trim()
@@ -62,6 +67,14 @@ wsl.exe bash -lc "set -e; mkdir -p '$toolDir'; if [ ! -x '$agg' ]; then curl -fs
 if ($LASTEXITCODE -ne 0) { throw 'agg bootstrap or checksum verification failed' }
 
 $work = "$wslHome/.cache/queqiao-workstation-demo-work"
-$demoName = if ($Demo -eq 'all') { 'workstation-all' } else { "ws-$Demo" }
-wsl.exe python3 $wslPython --package $wslPackage --out $wslOut --work $work --agg $agg --demo $demoName
+wsl.exe python3 $wslPython --package $wslPackage --out $wslOut --work $work --agg $agg --demo $Demo
 if ($LASTEXITCODE -ne 0) { throw 'Workstation recording failed' }
+
+$extractor = Join-Path $PSScriptRoot 'extract-final-frame.py'
+if ((Test-Path $extractor) -and ($Demo -eq 'all' -or $Demo -eq 'details' -or $Demo.StartsWith('detail-'))) {
+  $detailGifs = Get-ChildItem (Join-Path $outDir 'details') -Filter '*.gif' -File -ErrorAction SilentlyContinue
+  foreach ($gif in $detailGifs) {
+    python $extractor $gif.FullName
+    if ($LASTEXITCODE -ne 0) { throw "Failed to extract final frame for $($gif.Name)" }
+  }
+}

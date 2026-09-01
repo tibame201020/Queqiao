@@ -87,12 +87,18 @@ describe("Workstation lazy Inspector detail", () => {
   });
 
   it("does not re-run heavy Inspector detail during periodic inventory refresh", async () => {
-    const refresh = vi.fn(async () => snapshot());
-    const loadInspectorDetail = vi.fn(async (target: WorkstationInspectorTarget) => readyDetail(target, "periodic"));
-    app({ refresh, refreshIntervalMs: 20, loadInspectorDetail });
-    await delay(120);
-    expect(refresh.mock.calls.length).toBeGreaterThan(1);
-    expect(loadInspectorDetail).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+    try {
+      const refresh = vi.fn(async () => snapshot());
+      const loadInspectorDetail = vi.fn(async (target: WorkstationInspectorTarget) => readyDetail(target, "periodic"));
+      const ui = app({ refresh, refreshIntervalMs: 20, loadInspectorDetail });
+      await vi.advanceTimersByTimeAsync(80);
+      expect(refresh.mock.calls.length).toBeGreaterThan(1);
+      expect(loadInspectorDetail).toHaveBeenCalledTimes(1);
+      ui.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps an unchanged periodic refresh visually stable instead of pulsing the full TUI", async () => {
