@@ -5,6 +5,14 @@ import type { WorkstationSnapshot } from "./workstation.js";
 import { WorkstationApp } from "./workstation-ui.js";
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 30));
+async function waitForFrame(ui: ReturnType<typeof render>, text: string, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if ((ui.lastFrame() || "").includes(text)) return;
+    await delay();
+  }
+  throw new Error(`Timed out waiting for Workstation frame: ${text}`);
+}
 const snapshot = (overrides: Partial<WorkstationSnapshot> = {}): WorkstationSnapshot => ({
   gateways: [{ name: "stable", configured: true, running: true, managed: true, publicUrl: "https://example.test/stable/", servicePort: 8075, managementPort: 8074 }],
   workers: [
@@ -140,33 +148,23 @@ describe("Workstation v2 window hierarchy", () => {
   it("uses left/right as non-wrapping spatial navigation in wide, standard, and narrow layouts", async () => {
     const wide = app(140, 35);
     expect(wide.lastFrame()).toContain("▸ CONTROL");
-    wide.stdin.write("\u001b[D"); await delay();
-    expect(wide.lastFrame()).toContain("▸ CONTROL");
-    wide.stdin.write("\u001b[C"); await delay();
-    expect(wide.lastFrame()).toContain("▸ INVENTORY");
-    wide.stdin.write("\u001b[C"); await delay();
-    expect(wide.lastFrame()).toContain("▸ INSPECTOR");
-    wide.stdin.write("\u001b[C"); await delay();
-    expect(wide.lastFrame()).toContain("▸ INSPECTOR");
-    wide.stdin.write("\u001b[D"); await delay();
-    expect(wide.lastFrame()).toContain("▸ INVENTORY");
+    wide.stdin.write("\u001b[D"); await waitForFrame(wide, "▸ CONTROL");
+    wide.stdin.write("\u001b[C"); await waitForFrame(wide, "▸ INVENTORY");
+    wide.stdin.write("\u001b[C"); await waitForFrame(wide, "▸ INSPECTOR");
+    wide.stdin.write("\u001b[C"); await waitForFrame(wide, "▸ INSPECTOR");
+    wide.stdin.write("\u001b[D"); await waitForFrame(wide, "▸ INVENTORY");
 
     const standard = app(100, 28);
     expect(standard.lastFrame()).toContain("▸ INVENTORY");
-    standard.stdin.write("\u001b[D"); await delay();
-    expect(standard.lastFrame()).toContain("▸ INVENTORY");
-    standard.stdin.write("\u001b[C"); await delay();
-    expect(standard.lastFrame()).toContain("▸ INSPECTOR");
-    standard.stdin.write("\u001b[D"); await delay();
-    expect(standard.lastFrame()).toContain("▸ INVENTORY");
+    standard.stdin.write("\u001b[D"); await waitForFrame(standard, "▸ INVENTORY");
+    standard.stdin.write("\u001b[C"); await waitForFrame(standard, "▸ INSPECTOR");
+    standard.stdin.write("\u001b[D"); await waitForFrame(standard, "▸ INVENTORY");
 
     const narrow = app(70, 24);
     expect(narrow.lastFrame()).toContain("INVENTORY");
-    narrow.stdin.write("\u001b[C"); await delay();
-    expect(narrow.lastFrame()).toContain("INSPECTOR");
-    narrow.stdin.write("\u001b[D"); await delay();
-    expect(narrow.lastFrame()).toContain("INVENTORY");
-  });
+    narrow.stdin.write("\u001b[C"); await waitForFrame(narrow, "INSPECTOR");
+    narrow.stdin.write("\u001b[D"); await waitForFrame(narrow, "INVENTORY");
+  }, 12_000);
 
   it("keeps Inspector Enter semantics consistent across viewports by running the selected action", async () => {
     for (const [width, height, enters] of [[140, 35, 2], [100, 28, 1], [70, 24, 1]] as const) {

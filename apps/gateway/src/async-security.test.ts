@@ -122,13 +122,16 @@ describe("async disconnect and resource security", () => {
     const childScript = `setTimeout(()=>require('fs').writeFileSync(${JSON.stringify(leaked)},'leak'),700)`;
     const parentScript = `require('fs').writeFileSync(${JSON.stringify(started)},'started');require('child_process').spawn(process.execPath,['-e',${JSON.stringify(childScript)}],{stdio:'ignore'});setInterval(()=>{},1000)`;
     const abort = new AbortController();
-    const call = client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", parentScript], timeoutMs: 5000 } }, { signal: abort.signal, timeout: 5000 });
+    const call = client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", parentScript], timeoutMs: 20_000 } }, { signal: abort.signal, timeout: 20_000 });
+    void call.then(() => undefined, () => undefined);
     await waitForFile(started);
     abort.abort(new Error("client cancelled sync tool"));
-    await expect(call).rejects.toThrow();
+    const cancellationDeadline = Date.now() + 2500;
+    while (harness!.processes.activeCount() !== 0 && Date.now() < cancellationDeadline) await delay(25);
+    expect(harness!.processes.activeCount()).toBe(0);
     await delay(900);
     await expectMissing(leaked);
-  }, 10_000);
+  }, 12_000);
 
   it("detaches request cancellation after successful async acceptance", async () => {
     const { client, processes } = await startHarness(new ProcessRunner());

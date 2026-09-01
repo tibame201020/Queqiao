@@ -43,7 +43,10 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
-      - run: npm test
+      - if: runner.os != 'Windows'
+        run: npm test
+      - if: runner.os == 'Windows'
+        run: npm test -- --maxWorkers=2
 
   package-install:
     name: Self-contained package (${{ matrix.os }})
