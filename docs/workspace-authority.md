@@ -53,6 +53,8 @@ focus are independent states. `shell` remains explicit high-risk authority. If `
 the flow asks for a comma-separated executable allowlist. A Custom Tools ? executable matrix can
 be saved as a reusable Access Profile.
 
+`extension` is the single Core trust gate for installed/attached Extension execution. Registered Extension capability names are intentionally not copied into `tools.allow` and are not re-authorized by profile, capability, or command policy after that gate is granted.
+
 Saved Access Profiles are **templates, not live links**. Applying a profile copies its Tools and
 executable allowlist into the Workspace policy. Later profile edit, rename, or delete operations do
 not mutate Workspaces that previously applied it; those operations report zero affected Workspaces.

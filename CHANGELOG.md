@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.9.6 - 2026-09-01
+
+- Fixes a Workspace/Extension authority regression introduced by the converged Access Profile model: once a Workspace explicitly allows the Core `extension` tool, registered capabilities from installed and attached Extensions are treated as trusted execution authority instead of being re-blocked by capability-specific `tools.allow`, legacy profile ceilings, declared Core capability ceilings, or the Workspace command allowlist.
+- Keeps the Core `extension` grant as the explicit Workspace trust gate and preserves Workspace identity/path containment plus Worker process timeout, cancellation, concurrency, and output bounds for Extension helper APIs; Core tools and Core `extend`/`replace` invocations retain their existing policy envelope.
+- Adds regression coverage for finite Core tool allowlists, Git Extension execution under non-coding/empty-command policy, denied Core `extension` access, trusted Extension capability escalation semantics, and retained SafeWorkspace containment.
+
 ## 0.9.5 - 2026-09-01
 
 - Makes Workstation the README Quick Start, adds real packaged-PTY GIFs for every Workstation control domain, separates the detailed Workstation and classic/leaf CLI visual guides, and adds a code-derived Configuration & Persistence reference covering Windows/Linux/WSL paths, durable files, secrets, membership, Extension Hub storage, Workstation settings, backup boundaries, and path overrides.

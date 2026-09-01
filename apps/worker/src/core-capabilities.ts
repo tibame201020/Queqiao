@@ -5,21 +5,24 @@ import { WorkerToolError } from "./tool-errors.js";
 
 export type NativeShellName = "default" | "bash" | "powershell" | "cmd" | "git-bash";
 export type WorkerProcessExecutor = Pick<ProcessRunner, "run" | "start">;
+export type WorkerAuthorityMode = "core" | "extension";
 
 function sameCapabilities(left: readonly ToolCapability[], right: readonly ToolCapability[]): boolean {
   return [...left].sort().join("\u0000") === [...right].sort().join("\u0000");
 }
 
 /**
- * Per-invocation Core capability surface. The raw Workspace reader/catalog and
- * ProcessRunner never enter extension context. The granted capability ceiling is
- * the original registered tool contract, not replacement metadata.
+ * Per-invocation capability surface. Core tool calls retain Workspace policy and
+ * contract enforcement. Registered extension calls are an explicit trusted-authority
+ * boundary: Core policy ceilings are bypassed while Workspace containment and
+ * ProcessRunner bounds remain available through these helpers.
  */
 export class WorkerCoreCapabilities {
   readonly #toolName: string;
   readonly #granted: readonly ToolCapability[];
   readonly #workspace: WorkspaceEntry;
   readonly #processes: WorkerProcessExecutor;
+  readonly #authority: WorkerAuthorityMode;
   readonly #signal?: AbortSignal;
 
   constructor(input: {
@@ -27,23 +30,31 @@ export class WorkerCoreCapabilities {
     grantedCapabilities: readonly ToolCapability[];
     workspace: WorkspaceEntry;
     processes: WorkerProcessExecutor;
+    authority?: WorkerAuthorityMode;
     signal?: AbortSignal;
   }) {
     this.#toolName = input.toolName;
     this.#granted = Object.freeze([...input.grantedCapabilities]);
     this.#workspace = input.workspace;
     this.#processes = input.processes;
+    this.#authority = input.authority ?? "core";
     if (input.signal) this.#signal = input.signal;
   }
 
   workspaceId(): string { return this.#workspace.config.id; }
 
   assertInvocation(toolName: string, requiredCapabilities: readonly ToolCapability[], requestedWorkspaceId: string): void {
-    if (toolName !== this.#toolName || !sameCapabilities(requiredCapabilities, this.#granted)) {
+    if (toolName !== this.#toolName || (this.#authority === "core" && !sameCapabilities(requiredCapabilities, this.#granted))) {
       throw new WorkerToolError(403, "capability_contract_mismatch", "Tool capability contract does not match the bound invocation");
     }
     if (requestedWorkspaceId !== this.#workspace.config.id) {
       throw new WorkerToolError(403, "workspace_mismatch", "Tool invocation is bound to a different Workspace");
+    }
+    if (this.#authority === "extension") {
+      if (!workspaceAllowsTool(this.#workspace.config, "extension", ["workspace:read"])) {
+        throw new WorkerToolError(403, "tool_denied", "extension is denied by Workspace policy");
+      }
+      return;
     }
     if (workspaceRequiresStepUp(this.#workspace.config, toolName)) {
       throw new WorkerToolError(403, "step_up_required", "Step-up approval is required, but approval grants are not available in the verified runtime");
@@ -54,6 +65,7 @@ export class WorkerCoreCapabilities {
   }
 
   #require(capability: ToolCapability): void {
+    if (this.#authority === "extension") return;
     if (!this.#granted.includes(capability)) {
       throw new WorkerToolError(403, "capability_denied", `${this.#toolName} is not granted ${capability}`);
     }
@@ -106,7 +118,7 @@ export class WorkerCoreCapabilities {
   async run(input: { executable: string; args: readonly string[]; cwd: string; timeoutMs: number; mode: ProcessExecutionMode }) {
     this.#require("workspace:exec");
     const normalizedExecutable = input.executable.toLowerCase();
-    if (!this.#workspace.config.commands.allow.some((allowed) => allowed.toLowerCase() === normalizedExecutable)) {
+    if (this.#authority === "core" && !this.#workspace.config.commands.allow.some((allowed) => allowed.toLowerCase() === normalizedExecutable)) {
       throw new WorkerToolError(403, "command_denied", `${input.executable} is not allowed by Workspace command policy`);
     }
     const cwd = await this.#workspace.reader.resolveStrictDirectory(input.cwd);
@@ -116,7 +128,7 @@ export class WorkerCoreCapabilities {
 
   async shell(input: { shell: NativeShellName; command: string; cwd: string; timeoutMs: number; mode: ProcessExecutionMode }) {
     this.#require("workspace:exec");
-    if (this.#toolName !== "shell") {
+    if (this.#authority === "core" && this.#toolName !== "shell") {
       throw new WorkerToolError(403, "capability_denied", "Native shell is only available to the shell Core contract");
     }
     const cwd = await this.#workspace.reader.resolveStrictDirectory(input.cwd);

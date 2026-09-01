@@ -211,9 +211,9 @@ These apply to current and future implementations:
 2. A Worker never trusts authorization performed only by the Gateway.
 3. MCP clients select configured Workspace IDs; they cannot grant themselves arbitrary filesystem roots.
 4. Filesystem operations remain contained by canonical Workspace boundaries and must reject traversal/symlink/junction escape paths as applicable.
-5. Process execution remains bounded by profile/tool/command/cwd/timeout/concurrency/output/cancellation policy.
+5. Core process execution remains bounded by profile/tool/command/cwd/timeout/concurrency/output/cancellation policy. Registered Extension execution is a separate trusted authority once Core `extension` access is granted; Worker helper APIs still preserve Workspace containment and process runtime bounds.
 6. Enabling a high-risk tool such as `shell` requires explicit Workspace policy; blank normal allowlists do not implicitly grant it.
-7. Extension composition cannot replace the mandatory security/policy envelope.
+7. Installing and attaching an Extension explicitly expands the Worker trust boundary. Registered Extension capabilities are not re-authorized by Core `tools.allow`, profile, capability, or command policy; Core `extend`/`replace` contributions remain inside the invoked Core tool contract.
 8. Runtime configuration, endpoint-specific data, tokens, signing material, approval secrets, generated state, and logs remain outside source control.
 9. Public health and diagnostics expose only intentionally safe/redacted projections.
 10. OAuth callback CSP must preserve validated ChatGPT redirect-origin support without broadening to arbitrary external origins.
