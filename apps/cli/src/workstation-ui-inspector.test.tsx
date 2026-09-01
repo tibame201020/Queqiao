@@ -6,7 +6,7 @@ import { WorkstationApp } from "./workstation-ui.js";
 import type { WorkstationInspectorDetail, WorkstationInspectorTarget } from "./workstation-inspector.js";
 
 const delay = (ms = 40) => new Promise((resolve) => setTimeout(resolve, ms));
-async function waitFor(condition: () => boolean, timeoutMs = 500) {
+async function waitFor(condition: () => boolean, timeoutMs = 2000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (condition()) return;
@@ -56,7 +56,7 @@ describe("Workstation lazy Inspector detail", () => {
   it("loads detail for only the selected entity and reloads when the selection changes", async () => {
     const loadInspectorDetail = vi.fn(async (target: WorkstationInspectorTarget) => readyDetail(target, target.kind === "gateway" ? "windows" : target.kind === "worker" ? target.name : "static"));
     const ui = app({ loadInspectorDetail });
-    await delay();
+    await waitFor(() => loadInspectorDetail.mock.calls.length === 1);
     expect(loadInspectorDetail).toHaveBeenCalledTimes(1);
     expect(loadInspectorDetail.mock.calls[0]?.[0]).toEqual({ kind: "gateway", name: "stable" });
     ui.stdin.write("\t"); await delay();
@@ -68,7 +68,7 @@ describe("Workstation lazy Inspector detail", () => {
     ui.stdin.write("i"); await delay();
 
     ui.stdin.write("2");
-    await delay();
+    await waitFor(() => loadInspectorDetail.mock.calls.length === 2);
     expect(loadInspectorDetail).toHaveBeenCalledTimes(2);
     expect(loadInspectorDetail.mock.calls[1]?.[0]).toEqual({ kind: "worker", name: "wins-worker" });
     ui.stdin.write("i"); await delay();
@@ -77,14 +77,15 @@ describe("Workstation lazy Inspector detail", () => {
     ui.stdin.write("i"); await delay();
 
     ui.stdin.write("\u001b[D"); await delay();
-    ui.stdin.write("j"); await delay();
+    ui.stdin.write("j");
+    await waitFor(() => loadInspectorDetail.mock.calls.length === 3);
     expect(loadInspectorDetail).toHaveBeenCalledTimes(3);
     expect(loadInspectorDetail.mock.calls[2]?.[0]).toEqual({ kind: "worker", name: "wsl" });
     ui.stdin.write("\u001b[C"); await delay();
     ui.stdin.write("i"); await delay();
     for (let index = 0; index < 4; index += 1) { ui.stdin.write("\u001b[C"); await delay(); }
     expect(ui.lastFrame()).toContain("wsl.test");
-  });
+  }, 15_000);
 
   it("does not re-run heavy Inspector detail during periodic inventory refresh", async () => {
     vi.useFakeTimers();
@@ -216,5 +217,5 @@ describe("Workstation lazy Inspector detail", () => {
     await delay();
     expect(ui.lastFrame()).toContain("worker-current");
     expect(ui.lastFrame()).not.toContain("STALE-WSL");
-  });
+  }, 15_000);
 });

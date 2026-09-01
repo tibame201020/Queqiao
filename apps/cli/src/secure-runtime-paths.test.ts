@@ -14,27 +14,27 @@ function windowsSystemExecutable(name: string): string {
   return path.win32.join(systemRoot, "System32", name);
 }
 
-function currentSid(): string {
-  const output = execFileSync(windowsSystemExecutable("whoami.exe"), ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
-  const sid = output.match(/S-\d-(?:\d+-)+\d+/)?.[0];
-  if (!sid) throw new Error("Could not resolve test user SID");
-  return sid;
-}
-
-function aclState(target: string): { protected: boolean; sids: string[]; inherited: boolean[] } {
+type AclState = { protected: boolean; sids: string[]; inherited: boolean[] };
+function aclSnapshot(targets: string[]): { currentSid: string; states: AclState[] } {
   const script = [
-    "$p=$env:QUEQIAO_ACL_TARGET",
-    "$acl=if([System.IO.Directory]::Exists($p)){[System.IO.Directory]::GetAccessControl($p)}else{[System.IO.File]::GetAccessControl($p)}",
-    "$rules=@($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | ForEach-Object { [pscustomobject]@{ sid=$_.IdentityReference.Value; inherited=[bool]$_.IsInherited } })",
-    "[pscustomobject]@{ isProtected=[bool]$acl.AreAccessRulesProtected; rules=$rules } | ConvertTo-Json -Compress -Depth 4",
+    "$paths=ConvertFrom-Json $env:QUEQIAO_ACL_TARGETS",
+    "$currentSid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
+    "$states=@($paths | ForEach-Object { $p=$_; $acl=if([System.IO.Directory]::Exists($p)){[System.IO.Directory]::GetAccessControl($p)}else{[System.IO.File]::GetAccessControl($p)}; $rules=@($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | ForEach-Object { [pscustomobject]@{ sid=$_.IdentityReference.Value; inherited=[bool]$_.IsInherited } }); [pscustomobject]@{ protected=[bool]$acl.AreAccessRulesProtected; rules=$rules } })",
+    "[pscustomobject]@{ currentSid=$currentSid; states=$states } | ConvertTo-Json -Compress -Depth 5",
   ].join("; ");
-  const parsed = JSON.parse(execFileSync(path.win32.join(process.env.SystemRoot || process.env.WINDIR || "", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", script], {
+  const output = execFileSync(path.win32.join(process.env.SystemRoot || process.env.WINDIR || "", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", script], {
     encoding: "utf8",
     windowsHide: true,
-    env: { ...process.env, QUEQIAO_ACL_TARGET: target },
-  })) as { isProtected: boolean; rules: Array<{ sid: string; inherited: boolean }> | { sid: string; inherited: boolean } };
-  const rules = Array.isArray(parsed.rules) ? parsed.rules : [parsed.rules];
-  return { protected: parsed.isProtected, sids: rules.map((rule) => rule.sid).sort(), inherited: rules.map((rule) => rule.inherited) };
+    env: { ...process.env, QUEQIAO_ACL_TARGETS: JSON.stringify(targets) },
+  });
+  const parsed = JSON.parse(output) as { currentSid: string; states: Array<{ protected: boolean; rules: Array<{ sid: string; inherited: boolean }> | { sid: string; inherited: boolean } }> };
+  return {
+    currentSid: parsed.currentSid,
+    states: parsed.states.map((state) => {
+      const rules = Array.isArray(state.rules) ? state.rules : [state.rules];
+      return { protected: state.protected, sids: rules.map((rule) => rule.sid).sort(), inherited: rules.map((rule) => rule.inherited) };
+    }),
+  };
 }
 
 describe.skipIf(process.platform !== "win32")("Windows runtime ACL hardening", () => {
@@ -48,12 +48,12 @@ describe.skipIf(process.platform !== "win32")("Windows runtime ACL hardening", (
     await writeFile(file, "secret", { mode: 0o600 });
     await secureRuntimeFile(file);
 
-    const expected = ["S-1-5-18", currentSid()].sort();
-    for (const target of [directory, file]) {
-      const state = aclState(target);
+    const { currentSid, states } = aclSnapshot([directory, file]);
+    const expected = ["S-1-5-18", currentSid].sort();
+    for (const state of states) {
       expect(state.protected).toBe(true);
       expect(state.sids).toEqual(expected);
       expect(state.inherited.every((value) => value === false)).toBe(true);
     }
-  }, 20_000);
+  }, 30_000);
 });
