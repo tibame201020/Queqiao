@@ -43,11 +43,11 @@ function replacementExtension(execute: ToolDefinition<WorkerToolContext>["execut
   };
 }
 
-function contextFor(runtime: ReturnType<typeof createWorkerToolRuntime>, entry: WorkspaceEntry, toolName: string, processes: WorkerProcessExecutor = inertProcesses): WorkerToolContext {
+function contextFor(runtime: ReturnType<typeof createWorkerToolRuntime>, entry: WorkspaceEntry, toolName: string, processes: WorkerProcessExecutor = inertProcesses, authority: "core" | "extension" = "core"): WorkerToolContext {
   const contract = runtime.definitions().find(({ name }) => name === toolName)!;
   return {
     workspaceId: entry.config.id,
-    capabilities: new WorkerCoreCapabilities({ toolName, grantedCapabilities: contract.requiredCapabilities, workspace: entry, processes }),
+    capabilities: new WorkerCoreCapabilities({ toolName, grantedCapabilities: contract.requiredCapabilities, workspace: entry, processes, authority }),
   };
 }
 
@@ -79,18 +79,24 @@ describe("extension authority envelope", () => {
     expect(() => createWorkerToolRuntime([replacementExtension(async () => "bad", (definition) => ({ ...definition, inputSchema: z.object({ workspaceId: z.string(), path: z.string(), offset: z.number(), limit: z.number(), escape: z.boolean().optional() }) }))])).toThrow(/input schema mismatch/);
   });
 
-  it("applies generic Workspace deny and capability ceilings to registered extension tools", async () => {
-    const entry = await workspace({ id: "bounded", displayName: "Bounded", profile: "coding", tools: { allow: [], deny: ["extension_read"], explicit: [] }, commands: { allow: [] } });
-    const inputSchema = z.object({ workspaceId: z.string(), path: z.string() });
+  it("does not apply Core tool policy, profile, capability ceilings, or command allowlists inside trusted extension execution", async () => {
+    const entry = await workspace({ id: "bounded", displayName: "Bounded", profile: "read-only", tools: { allow: ["extension"], deny: ["extension_read"], explicit: [] }, commands: { allow: [] } });
+    let processCalls = 0;
+    const processes: WorkerProcessExecutor = { async run() { processCalls += 1; return inertProcesses.run({ executable: "node", args: [], cwd: temporary!, timeoutMs: 1000 }); } };
+    const inputSchema = z.object({ workspaceId: z.string() });
     const definition: ToolDefinition<WorkerToolContext> = {
       name: "extension_read",
-      title: "Extension read",
-      description: "Read through bounded Core capabilities",
+      title: "Extension execution",
+      description: "Trusted extension execution authority",
       inputSchema,
       requiredCapabilities: ["workspace:read"],
-      risk: "read",
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-      async execute(input, context) { return context.capabilities.readFile((input as { path: string }).path, 0, 1); },
+      risk: "execute",
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      async execute(_input, context) {
+        await context.capabilities.writeFile("trusted.txt", "ok");
+        await context.capabilities.run({ executable: "node", args: [], cwd: ".", timeoutMs: 1000, mode: "sync" });
+        return { ok: true };
+      },
     };
     const config: ExtensionManifestConfig = {
       id: "dev.queqiao.reader",
@@ -98,16 +104,18 @@ describe("extension authority envelope", () => {
       displayName: "Reader",
       host: { kind: "worker", environmentId: "windows" },
       ordering: { requires: [], before: [], after: [] },
-      contributions: [{ operation: "register", tool: definition.name, visibility: "public", title: definition.title, description: definition.description, inputSchema: z.toJSONSchema(inputSchema, { io: "input" }), requiredCapabilities: ["workspace:read"], risk: "read", annotations: definition.annotations }],
+      contributions: [{ operation: "register", tool: definition.name, visibility: "public", title: definition.title, description: definition.description, inputSchema: z.toJSONSchema(inputSchema, { io: "input" }), requiredCapabilities: ["workspace:read"], risk: "execute", annotations: definition.annotations }],
     };
     let invoked = false;
     const runtime = createWorkerToolRuntime([{ config, module: { manifest: { id: config.id, version: config.version, displayName: config.displayName }, activate(api) { api.registerTool({ ...definition, execute: async (input, context) => { invoked = true; return definition.execute(input, context); } }); } } }]);
-    await expect(runtime.execute("extension_read", { workspaceId: "bounded", path: "fixture.txt" }, contextFor(runtime, entry, "extension_read"))).rejects.toMatchObject({ code: "tool_denied" });
-    expect(invoked).toBe(false);
+    await expect(runtime.execute("extension_read", { workspaceId: "bounded" }, contextFor(runtime, entry, "extension_read", processes, "extension"))).resolves.toEqual({ ok: true });
+    expect(invoked).toBe(true);
+    expect(processCalls).toBe(1);
+    await expect(access(join(temporary!, "trusted.txt"))).resolves.toBeUndefined();
   });
 
   it("keeps SafeWorkspace path containment behind extension read capabilities", async () => {
-    const entry = await workspace({ id: "bounded", displayName: "Bounded", profile: "coding", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } });
+    const entry = await workspace({ id: "bounded", displayName: "Bounded", profile: "read-only", tools: { allow: ["extension"], deny: [], explicit: [] }, commands: { allow: [] } });
     await writeFile(join(temporary!, "inside.txt"), "inside\n", "utf8");
     const inputSchema = z.object({ workspaceId: z.string(), path: z.string() });
     const definition: ToolDefinition<WorkerToolContext> = {
@@ -129,7 +137,7 @@ describe("extension authority envelope", () => {
       contributions: [{ operation: "register", tool: definition.name, visibility: "internal", title: definition.title, description: definition.description, inputSchema: z.toJSONSchema(inputSchema, { io: "input" }), requiredCapabilities: ["workspace:read"], risk: "read", annotations: definition.annotations }],
     };
     const runtime = createWorkerToolRuntime([{ config, module: { manifest: { id: config.id, version: config.version, displayName: config.displayName }, activate(api) { api.registerTool(definition); } } }]);
-    await expect(runtime.execute("extension_read", { workspaceId: "bounded", path: "inside.txt" }, contextFor(runtime, entry, "extension_read"))).resolves.toMatchObject({ text: "inside" });
-    await expect(runtime.execute("extension_read", { workspaceId: "bounded", path: "../outside.txt" }, contextFor(runtime, entry, "extension_read"))).rejects.toThrow(/escapes the workspace/);
+    await expect(runtime.execute("extension_read", { workspaceId: "bounded", path: "inside.txt" }, contextFor(runtime, entry, "extension_read", inertProcesses, "extension"))).resolves.toMatchObject({ text: "inside" });
+    await expect(runtime.execute("extension_read", { workspaceId: "bounded", path: "../outside.txt" }, contextFor(runtime, entry, "extension_read", inertProcesses, "extension"))).rejects.toThrow(/escapes the workspace/);
   });
 });

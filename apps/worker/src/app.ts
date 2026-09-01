@@ -30,6 +30,7 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   const catalog = new WorkspaceCatalog(config.workspacesFile ? { file: config.workspacesFile } : { workspaces: config.workspaces! });
   await catalog.initialize();
   const coreTools = createWorkerToolRuntime();
+  const coreToolNames = new Set(coreTools.definitions().map(({ name }) => name));
   type RequestExtensionState = { host: ExtensionHost<WorkerToolContext> | undefined; generation: number };
   const requestExtensions = new WeakMap<Request, RequestExtensionState>();
   const toolRuntimes = new Map<string, { generation: number; runtime: ToolRuntime<WorkerToolContext> }>();
@@ -84,7 +85,7 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
     try { await catalog.refresh(); next(); } catch (error) { console.error("Workspace config reload rejected", error); next(); }
   });
   const descriptors = () => catalog.list().map(({ config: entry, reader }) => ({ environmentId: config.environmentId, workspaceId: entry.id, displayName: entry.displayName, root: reader.root, profile: entry.profile, tools: entry.tools, commands: entry.commands }));
-  const contextFor = (toolName: string, workspaceId: string, state: RequestExtensionState, signal?: AbortSignal): WorkerToolContext => {
+  const contextFor = (toolName: string, workspaceId: string, state: RequestExtensionState, signal?: AbortSignal, authority: "core" | "extension" = "core"): WorkerToolContext => {
     const runtime = toolsFor(workspaceId, state);
     const contract = runtime.definitions().find(({ name }) => name === toolName);
     if (!contract) throw new WorkerToolError(404, "tool_not_found", `Tool is not available: ${toolName}`);
@@ -95,12 +96,12 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
       invokeExtensionTool: async (targetTool: string, input: Record<string, unknown>) => runtime.execute(
         targetTool,
         { ...input, workspaceId },
-        contextFor(targetTool, workspaceId, state, signal),
+        contextFor(targetTool, workspaceId, state, signal, "extension"),
       ),
     } : {};
     return {
       workspaceId,
-      capabilities: new WorkerCoreCapabilities({ toolName, grantedCapabilities: contract.requiredCapabilities, workspace, processes, ...(signal ? { signal } : {}) }),
+      capabilities: new WorkerCoreCapabilities({ toolName, grantedCapabilities: contract.requiredCapabilities, workspace, processes, authority, ...(signal ? { signal } : {}) }),
       ...extensionContext,
       ...(signal ? { signal } : {}),
     };
@@ -108,7 +109,8 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   const extensionStateFor = (req: Request): RequestExtensionState => requestExtensions.get(req) ?? { host: config.extensionHost, generation: 0 };
   const executeTool = (req: Request, toolName: string, workspaceId: string, input: unknown, signal?: AbortSignal) => {
     const state = extensionStateFor(req);
-    return toolsFor(workspaceId, state).execute(toolName, input, contextFor(toolName, workspaceId, state, signal));
+    const authority = coreToolNames.has(toolName) ? "core" : "extension";
+    return toolsFor(workspaceId, state).execute(toolName, input, contextFor(toolName, workspaceId, state, signal, authority));
   };
 
   app.get("/health", (_req, res) => res.json({ ok: true, service: "queqiao-worker", environmentId: config.environmentId }));

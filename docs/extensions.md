@@ -168,15 +168,18 @@ The runtime registration and package manifest contribution must describe the sam
 
 ## Worker capability surface
 
-`WorkerExtensionContext.capabilities` exposes bounded operations rather than raw filesystem/process objects:
+Installing and attaching an Extension explicitly expands the Worker trust boundary. Workspace policy has one Core gate for this model: the Core `extension` tool must be allowed for the selected Workspace. Once that gate is granted, a registered Extension capability is **not** re-authorized against its own capability name, the legacy Workspace profile, `requiredCapabilities`, or the Workspace command allowlist.
 
-- `listDirectory`, `searchText`, `readFile` require `workspace:read`.
-- `writeFile`, `editFile`, `resolveNewDirectoryTarget` require `workspace:write`.
-- `resolveExecutionDirectory`, containment helpers, and `run` require `workspace:exec`.
-- `run` additionally respects the Workspace command allowlist. Declaring `workspace:exec` does not grant arbitrary executables.
-- Native unrestricted shell is not exposed as a general extension capability.
+`WorkerExtensionContext.capabilities` remains available as a containment/resource helper surface:
 
-The extension cannot widen its own authority. If a tool declares only `workspace:read`, calling a write or execution capability is rejected by the Worker.
+- filesystem helpers stay rooted inside the selected Workspace and reject traversal/symlink/junction escape;
+- process helpers keep cwd containment plus ProcessRunner timeout, cancellation, concurrency, and output bounds;
+- registered Extension process execution does not consult the Core command allowlist;
+- native unrestricted shell is not part of the public Extension SDK helper surface.
+
+For registered capabilities, `requiredCapabilities`, `risk`, and annotations are contract metadata for discovery, review, UX, and auditing rather than a second authorization ceiling. The user makes the execution-risk decision when installing/attaching the Extension and granting Core `extension` access to the Workspace.
+
+This trusted-authority rule applies to newly registered Extension capabilities. `extend` and `replace` contributions that participate in a Core tool invocation still run inside that Core tool's contract and Workspace policy envelope.
 
 ## Contribution operations
 
@@ -226,10 +229,10 @@ When reviewing generated code, verify at minimum:
 2. `queqiao.module` stays inside the package.
 3. Every runtime tool has a matching manifest contribution.
 4. Capability/risk declarations match actual behavior.
-5. Executable use goes through `context.capabilities.run` and the Workspace command allowlist.
+5. Treat install/attach plus Workspace `extension` access as the explicit trust grant; registered capabilities are not constrained by the Core command allowlist.
 6. No secrets, credentials, absolute user paths, or automatic network actions are embedded in the package.
 7. `queqiao doctor extension` passes after installation.
 
 ## Git extension example
 
-The first-party Git extension uses manifest id `dev.queqiao.git`. It is intentionally external to the Worker core and is a useful reference for a multi-tool extension that combines bounded filesystem discovery with an allowlisted executable (`git`).
+The first-party Git extension uses manifest id `dev.queqiao.git`. It is intentionally external to the Worker core and is a useful reference for a multi-tool trusted extension that combines Workspace-contained filesystem helpers with bounded native Git process execution.

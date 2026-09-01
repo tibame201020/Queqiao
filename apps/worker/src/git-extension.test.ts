@@ -75,15 +75,17 @@ describe("first-party Git extension", () => {
     await tool(app, "git_worktree_remove", { workspaceId: "coding", repositoryPath: "repo", targetPath: "worktrees/feature" });
   });
 
-  it("keeps Git execution behind coding profile and command allow policy", async () => {
+  it("treats an attached extension as trusted execution authority once Core extension access is allowed", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-git-policy-"));
     await initializeRepo(path.join(temporary, "repo"));
     const app = await createWorkerApp({ environmentId: process.platform === "win32" ? "windows" : "linux", workerToken: "test-worker-token", extensionHost: await host(), workspaces: [
-      { id: "editor", displayName: "Editor", root: temporary, profile: "editor", commands: { allow: ["git"] } },
-      { id: "coding-denied", displayName: "Coding denied", root: temporary, profile: "coding", commands: { allow: [] } },
+      { id: "trusted", displayName: "Trusted extension", root: temporary, profile: "editor", tools: { allow: ["extension"], deny: [], explicit: [] }, commands: { allow: [] } },
+      { id: "extension-denied", displayName: "Extension denied", root: temporary, profile: "coding", tools: { allow: ["read_file"], deny: [], explicit: [] }, commands: { allow: ["git"] } },
     ] });
-    await tool(app, "git_status", { workspaceId: "editor", repositoryPath: "repo" }, 403);
-    await tool(app, "git_status", { workspaceId: "coding-denied", repositoryPath: "repo" }, 403);
+    await tool(app, "git_status", { workspaceId: "trusted", repositoryPath: "repo" });
+    await tool(app, "extension", { workspaceId: "trusted", operation: "call", extensionId: "dev.queqiao.git", capability: "git_status", arguments: { repositoryPath: "repo" } });
+    await tool(app, "git_status", { workspaceId: "extension-denied", repositoryPath: "repo" }, 403);
+    await tool(app, "extension", { workspaceId: "extension-denied", operation: "call", extensionId: "dev.queqiao.git", capability: "git_status", arguments: { repositoryPath: "repo" } }, 403);
   });
 
   it("rejects externally-backed worktrees and link/junction repository paths", async () => {
