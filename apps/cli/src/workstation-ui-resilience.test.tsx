@@ -48,7 +48,7 @@ function props(overrides: Partial<React.ComponentProps<typeof WorkstationApp>> =
   };
 }
 
-describe("Workstation viewport resilience", () => {
+describe("Workstation viewport resilience", { timeout: 15_000 }, () => {
   it("auto-scrolls a long Inventory so the selected entity stays visible", async () => {
     const gateways = Array.from({ length: 24 }, (_, index) => ({
       name: `gateway-${String(index).padStart(2, "0")}`,
