@@ -15,3 +15,7 @@
 Gateway 主動停止時會顯示 **stopped**，不會誤標成 generic unreachable failure。Worker membership detail 只針對目前選取 Gateway lazy load，不會每次 periodic inventory refresh 都重新讀取。
 
 Mutation 留在 Gateway Inspector：Start/Stop、Configure、Copy MCP URL、Copy approval secret、Manage Workers、Create join code、Remove Gateway。
+
+## ChatGPT connector handoff
+
+Gateway Inspector 中，`c` 會複製 MCP URL，`p` 會複製 approval secret。兩個 action 都只回報 clipboard side effect；Workstation result 不會顯示 approval secret。建立 ChatGPT 自訂 app/connector 時使用 MCP URL 與 OAuth，approval secret 只提供給 Queqiao 自己的 OAuth approval 頁。

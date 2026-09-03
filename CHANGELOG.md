@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Adds Worker-initiated pinned-TLS gRPC/HTTP2 sessions for cross-host Workers while retaining authenticated loopback HTTP and Worker-authoritative execution policy.
+- Makes Worker transport routing extensible in Core Manifest Revision 9: Workspace operations use a dynamic transport identifier, Workspace discovery projects enabled transports/traits/default routing, explicit selection never falls back, and unknown/not-enabled transports fail distinctly.
+- Hardens reconnect/liveness behavior and validates real cross-device routing, Worker/Gateway restart recovery, downstream Extension→MCP execution, and ChatGPT connector schema lifecycle.
+- Completes Workstation onboarding with safe recorded **Copy MCP URL** / **Copy approval secret** handoff and a redacted ChatGPT custom-connector example.
+
 ## 0.9.6 - 2026-09-01
 
 - Fixes a Workspace/Extension authority regression introduced by the converged Access Profile model: once a Workspace explicitly allows the Core `extension` tool, registered capabilities from installed and attached Extensions are treated as trusted execution authority instead of being re-blocked by capability-specific `tools.allow`, legacy profile ceilings, declared Core capability ceilings, or the Workspace command allowlist.

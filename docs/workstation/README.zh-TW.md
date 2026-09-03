@@ -50,6 +50,17 @@ Workstation 不會強迫每個 action 都先開 review dialog，而是按操作�
 
 Result會區分 success、no-op、warning、cancelled、error，clipboard write等 side effect也會明確呈現。
 
+## Connector handoff
+
+Gateway Inspector 可以完成本機到 ChatGPT 的 connector handoff，而且不會在 Workstation 畫面顯示已複製的值：
+
+1. 按 `c` 執行 **Copy MCP URL**；
+2. 按 `p` 執行 **Copy approval secret**；
+3. 在 ChatGPT 建立自訂 app/connector，使用已複製的 MCP URL 與 OAuth；
+4. approval secret 只貼到 Queqiao 自己的 OAuth approval 頁。
+
+隔離錄製器會把 OS clipboard 換成 sink，因此 connector credential 不會進入 GIF frame。完整錄製流程與 ChatGPT 表單截圖請看根 README 第 8-9 步。
+
 ## 重新錄製
 
 Windows + x86_64 WSL：

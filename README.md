@@ -74,6 +74,22 @@ Return to the Gateway Inspector and press `i`. Detailed Info exposes runtime sta
 
 ![Gateway Detailed Info](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/07-gateway-detail.gif)
 
+### 8. Copy the MCP URL
+
+Back in the Gateway Inspector, press `c` (**Copy MCP URL**). Workstation copies the public `/mcp` endpoint without adding it to terminal output.
+
+![Copy MCP URL](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/08-copy-mcp-url.gif)
+
+### 9. Copy the approval secret and add Queqiao to ChatGPT
+
+Press `p` (**Copy approval secret**). In ChatGPT, create a custom app/connector, paste the MCP URL from step 8 as the server URL, keep **OAuth** authentication, then connect. When Queqiao opens its approval page, paste the approval secret copied by `p`. Never put the approval secret in documentation, logs, or issue reports.
+
+![Copy approval secret](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/09-copy-approval-secret.gif)
+
+![Add Queqiao connector in ChatGPT](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/10-chatgpt-add-connector.png)
+
+If a future Queqiao release changes the public MCP tool schema, use ChatGPT's **Refresh** action and validate from a new conversation. Reconnect is for the connection/OAuth lifecycle, not schema discovery.
+
 `1..6` switch domains, arrows move/select, `Enter` inspects or runs an action, `i` opens Detailed Info, `?` opens Help, `,` opens Appearance Settings, and `q` exits when no modal owns input.
 
 For every control, action behavior, Appearance, and per-domain Detailed Info screenshots/GIFs, see the **[Workstation guide](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.md)**. For deterministic scripting/automation, use the **[Classic / leaf CLI](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md)**.

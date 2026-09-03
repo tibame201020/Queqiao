@@ -222,7 +222,8 @@ def gateway_setup(rec: Recorder, cast: Path | None, name="demo-gateway", port="4
         m=s.mark(); s.type(name); s.enter(); s.wait_for("Public Gateway URL", after=m)
         m=s.mark(); s.type(public_url or f"https://gateway.example/{name}/"); s.enter(); s.wait_for("Gateway port", after=m)
         m=s.mark(); s.type(port); s.enter(); s.wait_for("Management port", after=m)
-        m=s.mark(); s.type(management); s.enter(); s.wait_for("Gateway created", after=m)
+        m=s.mark(); s.type(management); s.enter(); s.wait_for("Worker session exposure", after=m)
+        m=s.mark(); s.enter(); s.wait_for("Gateway created", after=m)
     finally:
         s.close()
 
@@ -393,7 +394,7 @@ def workstation_fixture(rec: Recorder):
     wait_json(rec, ["worker", "status", "--worker", "demo-worker", "--json"], lambda v: v.get("active") is True)
     wait_json(rec, ["gateway", "status", "--gateway", "demo-gateway", "--json"], lambda v: v.get("active") is True)
     join=json.loads(rec.run_noninteractive("gateway", "join-token", "--gateway", "demo-gateway", "--expires", "120", "--json"))
-    rec.run_noninteractive("worker", "join", "--worker", "demo-worker", "--join-code", join["joinCode"], "--json")
+    rec.run_noninteractive("worker", "join", "--worker", "demo-worker", "--join-code", join["joinCode"], "--protocols", "http,grpc", "--json")
     wait_json(rec, ["gateway", "status", "--gateway", "demo-gateway", "--json"], lambda v: v.get("active") is True and v.get("health", {}).get("healthy") is True)
 
 

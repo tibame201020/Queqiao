@@ -109,7 +109,8 @@ def quickstart_gateway_setup(rec: Recorder, cast: Path) -> None:
         mark = session.mark(); session.type("demo-gateway"); session.enter(); session.wait_for("Public Gateway URL", after=mark)
         mark = session.mark(); session.type(f"http://127.0.0.1:{gateway_port}/"); session.enter(); session.wait_for("Gateway port", after=mark)
         mark = session.mark(); replace_default_text(session, "7575", str(gateway_port)); session.wait_for("Management port", after=mark)
-        mark = session.mark(); replace_default_text(session, "7574", str(management_port)); session.wait_for("Gateway configured", after=mark, timeout=12)
+        mark = session.mark(); replace_default_text(session, "7574", str(management_port)); session.wait_for("Worker session exposure", after=mark)
+        mark = session.mark(); session.enter(); session.wait_for("Gateway configured", after=mark, timeout=12)
     finally:
         session.close(final_hold=3.0)
 
@@ -175,6 +176,7 @@ def quickstart_worker_join(rec: Recorder, cast: Path) -> None:
     try:
         focus_inspector(session, "2")
         mark = session.mark(); session.send(b"g"); session.wait_for("Enrollment source", after=mark)
+        mark = session.mark(); session.enter(); session.wait_for("Worker protocols", after=mark, timeout=15)
         mark = session.mark(); session.enter(); session.wait_for("Worker joined Gateway", after=mark, timeout=15)
     finally:
         session.close(final_hold=3.0)
@@ -193,6 +195,28 @@ def quickstart_gateway_detail(rec: Recorder, cast: Path) -> None:
     finally:
         session.close(final_hold=3.0)
         safe_stop(rec, "worker", "demo-worker")
+        safe_stop(rec, "gateway", "demo-gateway")
+
+
+def quickstart_copy_mcp_url(rec: Recorder, cast: Path) -> None:
+    seed_gateway(rec, running=True)
+    session = open_workstation(rec, cast)
+    try:
+        focus_inspector(session, "1")
+        mark = session.mark(); session.send(b"c"); session.wait_for("MCP URL copied", after=mark, timeout=10)
+    finally:
+        session.close(final_hold=3.0)
+        safe_stop(rec, "gateway", "demo-gateway")
+
+
+def quickstart_copy_approval_secret(rec: Recorder, cast: Path) -> None:
+    seed_gateway(rec, running=True)
+    session = open_workstation(rec, cast)
+    try:
+        focus_inspector(session, "1")
+        mark = session.mark(); session.send(b"p"); session.wait_for("Approval secret copied", after=mark, timeout=10)
+    finally:
+        session.close(final_hold=3.0)
         safe_stop(rec, "gateway", "demo-gateway")
 
 
@@ -255,6 +279,8 @@ QUICKSTART = {
     "qs-create-join-code": ("quickstart/05-create-join-code", quickstart_create_join_code),
     "qs-worker-join": ("quickstart/06-worker-join", quickstart_worker_join),
     "qs-gateway-detail": ("quickstart/07-gateway-detail", quickstart_gateway_detail),
+    "qs-copy-mcp-url": ("quickstart/08-copy-mcp-url", quickstart_copy_mcp_url),
+    "qs-copy-approval-secret": ("quickstart/09-copy-approval-secret", quickstart_copy_approval_secret),
 }
 
 CONTROLS = {

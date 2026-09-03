@@ -50,6 +50,17 @@ Workstation does not add a review dialog to every action. Behavior follows opera
 
 Results distinguish success, no-op, warning, cancelled, and error states, including side effects such as clipboard writes.
 
+## Connector handoff
+
+The Gateway Inspector provides the complete local-to-ChatGPT handoff without revealing copied values in Workstation:
+
+1. press `c` to **Copy MCP URL**;
+2. press `p` to **Copy approval secret**;
+3. in ChatGPT, create a custom app/connector with the copied MCP URL and OAuth authentication;
+4. paste the approval secret only into Queqiao's OAuth approval page.
+
+The isolated recorder replaces the OS clipboard with a sink, so connector credentials never enter the recorded GIF frames. See root README steps 8-9 for the recorded flow and ChatGPT form screenshot.
+
 ## Re-recording
 
 From Windows with x86_64 WSL available:
