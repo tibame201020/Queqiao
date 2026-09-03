@@ -29,9 +29,11 @@ Enrollment uses an explicit one-time, memory-only join token and an atomic trans
 
 Gateway-observed liveness is configurable and low-frequency; no Worker lease/heartbeat lease is required. A failed health check marks observed reachability but does not permanently veto a real invocation attempt; a successful invocation can restore reachability. Functional `doctor` diagnostics are a separate optional Worker Protocol capability and are not part of basic liveness.
 
-The transport descriptor is intentionally abstract and fixed in persistent membership until an explicit management update or enrollment changes it. Verified bindings are authenticated loopback HTTP and Worker-initiated TLS gRPC/HTTP2. Both preserve the same Worker Protocol semantics, Gateway routing responsibilities, and Worker-authoritative execution policy.
+Persistent Worker membership stores one or more selected transport descriptors. Transport identifiers are intentionally open lowercase tokens rather than a closed HTTP/gRPC enum. The currently registered providers are authenticated loopback HTTP and Worker-initiated TLS gRPC/HTTP2; both preserve the same Worker Protocol semantics, Gateway routing responsibilities, and Worker-authoritative execution policy.
 
-The current development candidate is **Core Manifest Revision 7**. Revision 7 preserves the ten existing Core tools and adds one fixed public `extension` proxy tool:
+The current development candidate is **Core Manifest Revision 9**. Revision 9 keeps the fixed Core tool names and changes the optional Workspace-bound `transport` selector to a dynamic identifier string (`^[a-z][a-z0-9.-]*$`, 1-64 characters). Available transports, health, mode, traits, and the deterministic omitted-selection projection are discovered through `list_workspaces` / `workspace_info`. Explicit selection is exact and never silently falls back. An unknown syntactically valid identifier fails at the Gateway with `transport_unknown`; a known provider that the Worker membership did not enable fails with `transport_not_enabled`.
+
+The fixed Core tools are:
 
 - `workspace_info`
 - `list_workspaces`
@@ -45,9 +47,11 @@ The current development candidate is **Core Manifest Revision 7**. Revision 7 pr
 - `shell`
 - `extension`
 
-The first-party Git capability is externalized from the Worker and is no longer a bundled Worker dependency. When a compatible Git extension package is installed through the Extension Hub and attached, it contributes seven named tools: `git_repositories`, `git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and `git_worktree_remove`. Registry and publishing policy are intentionally separate from this Core architecture freeze. Revision 7's fixed `extension` proxy remains the stable discovery/call surface for proxy-mode external extensions. `workspace_info` accepts an optional Workspace ID for explicit cross-environment inspection, and `list_workspaces` returns a safe deployment-attestation projection.
+The first-party Git capability is externalized from the Worker and is no longer a bundled Worker dependency. When a compatible Git extension package is installed through the Extension Hub and attached, it contributes seven named tools: `git_repositories`, `git_status`, `git_diff`, `git_log`, `git_branches`, `git_worktree_create`, and `git_worktree_remove`. Registry and publishing policy are intentionally separate from this Core architecture freeze. The fixed `extension` proxy remains the stable discovery/call surface for proxy-mode external extensions. `workspace_info` accepts an optional Workspace ID for explicit cross-environment inspection, and `list_workspaces` returns safe deployment attestation plus transport/routing discovery.
 
-Historical Revision 4 and Revision 5 validation evidence remains authoritative for those contracts and is not rewritten by later revisions.
+Adding a future transport implementation such as WebRTC or QUIC does not require an MCP connector schema migration merely to add the identifier, as long as the public `transport` input shape remains this dynamic string contract. Provider registration and its runtime/security implementation are still explicit Queqiao code and review work. A real public MCP schema shape change remains a manifest revision.
+
+Historical manifest validation evidence remains authoritative for the revisions it recorded and is not rewritten by later revisions.
 
 ## Version axes
 

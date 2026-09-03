@@ -1,7 +1,7 @@
 param(
   [ValidateSet(
     'all','quickstart','controls','details',
-    'qs-gateway-setup','qs-gateway-start','qs-worker-setup','qs-worker-start','qs-create-join-code','qs-worker-join','qs-gateway-detail',
+    'qs-gateway-setup','qs-gateway-start','qs-worker-setup','qs-worker-start','qs-create-join-code','qs-worker-join','qs-gateway-detail','qs-copy-mcp-url','qs-copy-approval-secret',
     'control-gateways','control-workers','control-workspaces','control-profiles','control-extensions','control-diagnostics','control-appearance',
     'detail-gateway','detail-worker','detail-workspace','detail-profile','detail-extension','detail-diagnostics'
   )]

@@ -34,6 +34,8 @@ queqiao gateway info --gateway <gateway> --copy-secret
 The MCP URL is derived from the configured public Gateway URL. The approval secret stays in the
 Gateway's private runtime secret file. The default command reports availability without revealing
 the secret; `--detail` is an explicit local reveal and the copy flags avoid printing copied values.
+
+In ChatGPT, a public MCP schema migration is applied with the connector/app **Refresh** action, then verified from a new conversation because an already-open conversation can retain its prior tool-schema snapshot. **Reconnect** re-establishes the connection/OAuth lifecycle but does not replace schema discovery. Reinstalling the same app can also reuse cached tool metadata; prefer Refresh before considering connector recreation.
 ## Enrollment and membership
 
 Startup and enrollment are separate. For same-host HTTP, use the normal Gateway/Worker setup. For a cross-machine Worker, configure the Gateway once with a DNS name or IPv4 address that the Worker host can reach:

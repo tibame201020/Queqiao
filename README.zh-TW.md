@@ -74,6 +74,22 @@ queqiao workstation
 
 ![Gateway Detailed Info](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/07-gateway-detail.gif)
 
+### 8. 複製 MCP URL
+
+回到 Gateway Inspector，按 `c`（**Copy MCP URL**）。Workstation 會把公開的 `/mcp` endpoint 複製到剪貼簿，不會把 URL 額外輸出到 terminal result。
+
+![Copy MCP URL](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/08-copy-mcp-url.gif)
+
+### 9. 複製 approval secret 並在 ChatGPT 新增 Queqiao
+
+按 `p`（**Copy approval secret**）。在 ChatGPT 建立自訂 app/connector，把第 8 步的 MCP URL 貼到 Server URL，驗證方式保留 **OAuth**，然後連線。Queqiao OAuth approval 頁開啟後，再貼上 `p` 複製的 approval secret。不要把 approval secret 放進文件、log 或 issue。
+
+![Copy approval secret](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/09-copy-approval-secret.gif)
+
+![在 ChatGPT 新增 Queqiao connector](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/10-chatgpt-add-connector.png)
+
+若未來版本真的修改公開 MCP tool schema，請在 ChatGPT 使用 **Refresh**，並從新對話驗證新 schema。Reconnect 是 connection/OAuth lifecycle，不負責 schema discovery。
+
 `1..6` 切換 domain；方向鍵移動／選取；`Enter` inspect 或執行 action；`i` 開 Detailed Info；`?` 開 Help；`,` 開 Appearance Settings；沒有 modal 取得 input 時可按 `q` 離開。
 
 各 control、action 行為、Appearance，以及每個 domain 的 Detailed Info 截圖／GIF，請見 **[Workstation 詳細指南](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.zh-TW.md)**。需要 script／automation 時請使用 **[Classic / leaf CLI](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md)**。

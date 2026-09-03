@@ -13,6 +13,8 @@ const quickstartAssets = [
   "docs/assets/workstation/quickstart/05-create-join-code.gif",
   "docs/assets/workstation/quickstart/06-worker-join.gif",
   "docs/assets/workstation/quickstart/07-gateway-detail.gif",
+  "docs/assets/workstation/quickstart/08-copy-mcp-url.gif",
+  "docs/assets/workstation/quickstart/09-copy-approval-secret.gif",
 ] as const;
 
 const controlAssets = [
@@ -35,6 +37,7 @@ const detailAssets = [
 ] as const;
 
 const workstationGifAssets = [...quickstartAssets, ...controlAssets, ...detailAssets.map((asset) => asset.gif)] as const;
+const connectorScreenshot = "docs/assets/workstation/quickstart/10-chatgpt-add-connector.png" as const;
 
 const legacyFlatWorkstationAssets = [
   "docs/assets/workstation/01-overview.gif",
@@ -75,7 +78,7 @@ const onboardingCommands = [
 ] as const;
 
 describe("CLI visual documentation", () => {
-  it("keeps the root README compact and task-oriented around the seven-step Workstation quick start", async () => {
+  it("keeps the root README compact and task-oriented around the connector-ready Workstation quick start", async () => {
     const readme = await readFile(path.join(repoRoot, "README.md"), "utf8");
     expect(readme.split(/\r?\n/).length).toBeLessThanOrEqual(180);
     expect(readme).toContain("## Quick start — Workstation");
@@ -86,6 +89,7 @@ describe("CLI visual documentation", () => {
     expect(readme).toContain("docs/cli/reference.md");
     expect(readme).toContain("docs/operations.md");
     for (const asset of quickstartAssets) expect(readme).toContain(asset);
+    expect(readme).toContain(connectorScreenshot);
     for (const asset of controlAssets) expect(readme).not.toContain(asset);
     expect(readme).not.toContain("docs/assets/workstation/01-overview.gif");
     expect(readme).not.toContain("docs/assets/cli/interactive/01-gateway-setup.gif");
@@ -93,7 +97,7 @@ describe("CLI visual documentation", () => {
     expect(readme).not.toContain("## Project status");
   });
 
-  it("keeps English and Traditional Chinese READMEs aligned on the seven Workstation deployment tasks", async () => {
+  it("keeps English and Traditional Chinese READMEs aligned on the connector-ready Workstation deployment tasks", async () => {
     const english = await readFile(path.join(repoRoot, "README.md"), "utf8");
     const traditionalChinese = await readFile(path.join(repoRoot, "README.zh-TW.md"), "utf8");
     expect(english).toContain("README.zh-TW.md");
@@ -104,6 +108,7 @@ describe("CLI visual documentation", () => {
       expect(readme).toContain("queqiao doctor paths");
       expect(readme).not.toContain("queqiao.cmd");
       for (const asset of quickstartAssets) expect(readme).toContain(asset);
+      expect(readme).toContain(connectorScreenshot);
     }
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
     expect(packageJson.files).toContain("README.zh-TW.md");
@@ -208,6 +213,9 @@ describe("CLI visual documentation", () => {
       expect(data.length).toBeGreaterThan(10_000);
       expect(data.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     }
+    const connectorPng = await readFile(path.join(repoRoot, connectorScreenshot));
+    expect(connectorPng.length).toBeGreaterThan(10_000);
+    expect(connectorPng.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     for (const asset of legacyFlatWorkstationAssets) {
       await expect(access(path.join(repoRoot, asset))).rejects.toMatchObject({ code: "ENOENT" });
     }
@@ -228,6 +236,8 @@ describe("CLI visual documentation", () => {
     expect(sharedRecorder).toContain('"--no-loop"');
     expect(workstationRecorder).toContain("install_fake_clipboard");
     expect(workstationRecorder).toContain("quickstart/07-gateway-detail");
+    expect(workstationRecorder).toContain("quickstart/08-copy-mcp-url");
+    expect(workstationRecorder).toContain("quickstart/09-copy-approval-secret");
     expect(workstationRecorder).toContain("controls/07-settings-appearance");
     expect(workstationRecorder).toContain("details/06-diagnostics");
     expect(workstationRecorder).not.toContain('session.send(b"q")');

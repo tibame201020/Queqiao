@@ -15,3 +15,7 @@
 A stopped Gateway is rendered as **stopped**, not as a generic unreachable failure. Worker membership detail is loaded lazily for the selected Gateway and is not re-fetched on every periodic inventory refresh.
 
 Mutations remain in the Gateway Inspector: Start/Stop, Configure, Copy MCP URL, Copy approval secret, Manage Workers, Create join code, and Remove Gateway.
+
+## ChatGPT connector handoff
+
+From the Gateway Inspector, `c` copies the MCP URL and `p` copies the approval secret. Both actions report only the clipboard side effect; the approval secret is never rendered in the Workstation result. Use the URL when creating the ChatGPT custom app/connector with OAuth, then supply the approval secret only on Queqiao's OAuth approval page.
