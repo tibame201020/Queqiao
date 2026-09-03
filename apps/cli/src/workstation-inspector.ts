@@ -71,6 +71,8 @@ export type WorkstationGatewayInspectorViewModel = {
   publicUrl?: string;
   servicePort?: number;
   managementPort?: number;
+  workerSessionMode?: "local" | "remote";
+  workerSessionTarget?: string;
   runtime: WorkstationRuntimeSection;
   workers: WorkstationListSection<WorkstationGatewayMemberViewModel>;
 };
@@ -82,6 +84,7 @@ export type WorkstationWorkerInspectorViewModel = {
   running: boolean;
   managed: boolean;
   endpoint?: string;
+  reverseSessionTarget?: string;
   runtime: WorkstationRuntimeSection;
   workspaces: Array<{ id: string; displayName: string; root: string; profile: string }>;
   extensions: Array<{ extensionId: string; displayName: string; version: string }>;
@@ -207,6 +210,8 @@ export function createWorkstationInspectorViewModel(
       ...(gateway.publicUrl ? { publicUrl: gateway.publicUrl } : {}),
       ...(gateway.servicePort ? { servicePort: gateway.servicePort } : {}),
       ...(gateway.managementPort ? { managementPort: gateway.managementPort } : {}),
+      ...(gateway.workerSessionMode ? { workerSessionMode: gateway.workerSessionMode } : {}),
+      ...(gateway.workerSessionTarget ? { workerSessionTarget: gateway.workerSessionTarget } : {}),
       runtime: dynamic?.runtime ?? unavailableRuntime(),
       workers: dynamic?.workers ?? unavailableRelationships("Worker membership has not been loaded."),
     };
@@ -222,6 +227,7 @@ export function createWorkstationInspectorViewModel(
       running: worker.running,
       managed: worker.managed,
       ...(worker.endpoint ? { endpoint: worker.endpoint } : {}),
+      ...(worker.reverseSessionTarget ? { reverseSessionTarget: worker.reverseSessionTarget } : {}),
       runtime: dynamic?.runtime ?? unavailableRuntime(),
       workspaces: snapshot.workspaces
         .filter((entry) => entry.workerName === worker.name)
@@ -313,12 +319,15 @@ function gatewayMemberInventory(value: unknown): WorkstationGatewayMemberViewMod
   if (!Array.isArray(candidate.workers)) return [];
   return candidate.workers.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
-    const worker = entry as { workerId?: unknown; environmentId?: unknown; transport?: { endpoint?: unknown } };
+    const worker = entry as { workerId?: unknown; environmentId?: unknown; transports?: Array<{ type?: unknown; endpoint?: unknown }>; transport?: { type?: unknown; endpoint?: unknown } };
     if (typeof worker.workerId !== "string" || typeof worker.environmentId !== "string") return [];
+    const http = Array.isArray(worker.transports)
+      ? worker.transports.find((transport) => transport?.type === "http" && typeof transport.endpoint === "string")
+      : worker.transport?.type === "http" ? worker.transport : undefined;
     return [{
       workerId: worker.workerId,
       environmentId: worker.environmentId,
-      ...(typeof worker.transport?.endpoint === "string" ? { endpoint: worker.transport.endpoint } : {}),
+      ...(typeof http?.endpoint === "string" ? { endpoint: http.endpoint } : {}),
     }];
   });
 }

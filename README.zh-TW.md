@@ -34,7 +34,7 @@ queqiao workstation
 
 ### 1. 設定 Gateway
 
-選 **Gateway (`1`) → Set up Gateway**，輸入 public URL、Gateway port 與本機 management port。
+選 **Gateway (`1`) → Set up Gateway**，輸入 public URL、Gateway port 與本機 management port。**Worker connectivity** 預設為 **Local only**；若另一台主機要加入，選 **Remote workers**，再輸入 Gateway 的 DNS 名稱或 LAN IP，以及專用 TLS gRPC port。
 
 ![Gateway setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/01-gateway-setup.gif)
 
@@ -64,13 +64,13 @@ queqiao workstation
 
 ### 6. Worker 加入 Gateway
 
-開 **Worker (`2`) → Join Gateway**，可選本機 Gateway，或貼上其他主機產生的 self-contained join code。
+開 **Worker (`2`) → Join Gateway**，可選本機 Gateway，或貼上其他主機產生的 self-contained join code。Remote join code 已包含 pinned Gateway certificate 與 Worker-session target，Worker 會主動建立 outbound TLS gRPC session，不需要暴露 LAN inbound execution port。
 
 ![Worker join](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/06-worker-join.gif)
 
 ### 7. 確認 Gateway Detailed Info
 
-回到 Gateway Inspector 按 `i`。Detailed Info 直接顯示 runtime status、connector 資訊與 enrolled Workers。
+回到 Gateway Inspector 按 `i`。Detailed Info 直接顯示 runtime status、connector 資訊、enrolled Workers，以及 Worker transport 是 **Local only** 或 **Remote · TLS gRPC**。
 
 ![Gateway Detailed Info](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/07-gateway-detail.gif)
 

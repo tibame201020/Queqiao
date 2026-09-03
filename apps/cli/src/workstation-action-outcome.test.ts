@@ -145,7 +145,7 @@ describe("Workstation typed action outcomes", () => {
     expect(diagnostics.summary).toMatch(/Review System health/);
   });
 
-  it("reports Gateway membership no-op, endpoint update, and removal cancellation distinctly", async () => {
+  it("reports Gateway membership no-op, inspection, and removal cancellation distinctly", async () => {
     const empty = await executeWorkstationFlowAction(
       { type: "gateway-members", name: "stable" },
       prompts(),
@@ -153,18 +153,16 @@ describe("Workstation typed action outcomes", () => {
     );
     expect(empty).toMatchObject({ status: "noop", title: "No enrolled Workers" });
 
-    const chooseUpdate = vi.fn(async (message: string) => message === "Worker" ? "worker-id" : "update");
-    const updateJoinedWorkerTransport = vi.fn(async () => ({ updated: true }));
-    const updated = await executeWorkstationFlowAction(
+    const chooseInfo = vi.fn(async (message: string) => message === "Worker" ? "worker-id" : "info");
+    const inspected = await executeWorkstationFlowAction(
       { type: "gateway-members", name: "stable" },
-      prompts({ choose: chooseUpdate, text: async () => "http://127.0.0.1:9001/" }),
+      prompts({ choose: chooseInfo }),
       {
-        listJoinedWorkers: async () => ({ workers: [{ workerId: "worker-id", environmentId: "windows", transport: { endpoint: "http://127.0.0.1:9000/" } }] }),
-        updateJoinedWorkerTransport,
+        listJoinedWorkers: async () => ({ workers: [{ workerId: "worker-id", environmentId: "windows", transports: [{ type: "http", endpoint: "http://127.0.0.1:9000/" }] }] }),
       },
     );
-    expect(updated).toMatchObject({ status: "success", title: "Worker endpoint updated" });
-    expect(updated.details).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Endpoint", value: "http://127.0.0.1:9001/" })]));
+    expect(inspected).toMatchObject({ status: "success", title: "Worker windows" });
+    expect(inspected.details).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Worker ID", value: "worker-id" })]));
 
     const chooseRemove = vi.fn(async (message: string) => message === "Worker" ? "worker-id" : "remove");
     const removeJoinedWorker = vi.fn();
@@ -172,7 +170,7 @@ describe("Workstation typed action outcomes", () => {
       { type: "gateway-members", name: "stable" },
       prompts({ choose: chooseRemove, confirm: async () => false }),
       {
-        listJoinedWorkers: async () => ({ workers: [{ workerId: "worker-id", environmentId: "windows", transport: { endpoint: "http://127.0.0.1:9000/" } }] }),
+        listJoinedWorkers: async () => ({ workers: [{ workerId: "worker-id", environmentId: "windows", transports: [{ type: "http", endpoint: "http://127.0.0.1:9000/" }] }] }),
         removeJoinedWorker,
       },
     );
@@ -182,17 +180,20 @@ describe("Workstation typed action outcomes", () => {
 
   it("reports Worker enrollment without exposing its self-contained join code", async () => {
     const joinCode = encodeJoinCode({ v: 1, gateway: "https://remote.example/gateway/", token: "r".repeat(40) });
+    const inspectJoinProtocols = vi.fn(async () => ({ gateway: "https://remote.example/gateway/", offers: [{ type: "http" as const, capable: true }] }));
     const joinWorker = vi.fn(async () => ({ joined: true }));
     const outcome = await executeWorkstationFlowAction(
       { type: "worker-join", workerName: "wins-worker" },
-      prompts({ secret: async () => joinCode }),
-      { listRoleInstances: async () => [], joinWorker },
+      prompts({ secret: async () => joinCode, multi: async () => ["http"] }),
+      { listRoleInstances: async () => [], inspectJoinProtocols, joinWorker },
     );
     expect(outcome).toMatchObject({ status: "success", title: "Worker joined Gateway" });
     expect(outcome.details).toEqual(expect.arrayContaining([
       expect.objectContaining({ label: "Worker", value: "wins-worker" }),
       expect.objectContaining({ label: "Gateway", value: "https://remote.example/gateway/" }),
     ]));
+    expect(inspectJoinProtocols).toHaveBeenCalledWith(joinCode);
+    expect(joinWorker).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining(["--protocols", "http"]));
     expect(JSON.stringify(outcome)).not.toContain(joinCode);
   });
 

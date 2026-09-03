@@ -56,7 +56,7 @@ export function planStaticMembershipMigration(
     additions.push({
       workerId,
       environmentId: environment.environmentId,
-      transport: { type: "http", endpoint: environment.url },
+      transports: [{ type: "http", endpoint: environment.url }],
       credentialRefs: [{ kind: "secret-file", path: environment.tokenFile }],
     });
   }

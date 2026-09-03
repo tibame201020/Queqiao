@@ -27,6 +27,30 @@ describe("Worker local reverse-session enrollment control", () => {
     expect(activate).toHaveBeenCalledWith({ target: "127.0.0.1:7573", credential: credential.value, caCertificate });
   });
 
+  it("requires the local Worker credential for disconnect and deactivates the shared runtime session", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-grpc-control-"));
+    const localCredential = "c".repeat(48);
+    const membershipCredential = "m".repeat(48);
+    const deactivate = vi.fn(async () => undefined);
+    const app = await createWorkerApp({
+      workerId: "11111111-1111-4111-8111-111111111111",
+      environmentId: "linux",
+      workspaces: [{ id: "one", displayName: "One", root: temporary }],
+      workerToken: localCredential,
+      membershipCredentials: {
+        accepts: (presented) => presented === membershipCredential,
+        stage: async () => undefined,
+        commit: async () => undefined,
+        revoke: async () => undefined,
+      },
+      reverseSessionControl: { activate: async () => undefined, deactivate },
+    });
+
+    await request(app).post("/enrollment/reverse-session/disconnect").set("x-queqiao-worker-token", membershipCredential).send({ gateway: "https://gateway.example/" }).expect(401);
+    await request(app).post("/enrollment/reverse-session/disconnect").set("x-queqiao-worker-token", localCredential).send({ gateway: "https://gateway.example/" }).expect(204);
+    expect(deactivate).toHaveBeenCalledWith("https://gateway.example/");
+  });
+
   it("does not acknowledge activation failure", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-grpc-control-"));
     const credential = "b".repeat(48);

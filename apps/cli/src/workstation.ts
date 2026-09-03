@@ -1,5 +1,5 @@
 import { resolveExtensionHubRoot, resolveRuntimeLayoutForNamedRole, type RuntimeRole } from "@queqiao/platform-paths";
-import { createJoinToken, decodeJoinCode, joinWorker, listJoinedWorkers, removeJoinedWorker, updateJoinedWorkerTransport } from "./enrollment-cli.js";
+import { createJoinToken, decodeJoinCode, describeGatewayProtocolOffer, inspectJoinProtocols, joinWorker, listJoinedWorkers, removeJoinedWorker } from "./enrollment-cli.js";
 import { attachExtension, detachExtension, installExtension, listExtensions, uninstallExtension } from "./extension-cli.js";
 import { listRoleInstances, type RoleInstanceInventory } from "./instance-selector.js";
 import { runRoleSetupWizard } from "./setup-wizard.js";
@@ -81,9 +81,9 @@ type WorkstationDependencies = SnapshotDependencies & {
   stopRuntime?: typeof stopRuntime;
   runtimeStatus?: typeof runtimeStatus;
   createJoinToken?: typeof createJoinToken;
+  inspectJoinProtocols?: typeof inspectJoinProtocols;
   joinWorker?: typeof joinWorker;
   listJoinedWorkers?: typeof listJoinedWorkers;
-  updateJoinedWorkerTransport?: typeof updateJoinedWorkerTransport;
   removeJoinedWorker?: typeof removeJoinedWorker;
   installExtension?: typeof installExtension;
   uninstallExtension?: typeof uninstallExtension;
@@ -312,6 +312,7 @@ function setupPrompts(prompts: WorkstationPromptDriver, forcedName?: string) {
   let selectedInstance = false;
   return {
     ...access,
+    protocols: async (message: string, choices: Array<{ value: string; label: string; description?: string; disabled?: boolean }>, initialValues: string[]) => prompts.multi(message, choices, initialValues),
     choose: async (message: string, options: Array<{ value: string; label: string; description?: string }>) => {
       if (forcedName && !selectedInstance && options.some((option) => option.value === forcedName)) {
         selectedInstance = true;
@@ -415,7 +416,6 @@ export async function executeWorkstationFlowAction(
     const selected = workers.find((worker) => worker.workerId === workerId)!;
     const next = await prompts.choose("Worker action", [
       { value: "info", label: "Info" },
-      { value: "update", label: "Update endpoint", description: "Loopback HTTP only" },
       { value: "remove", label: "Remove enrollment" },
     ]);
     if (next === "info") return actionOutcome("success", `Worker ${selected.environmentId}`, {
@@ -425,16 +425,6 @@ export async function executeWorkstationFlowAction(
         ...(selected.endpoint ? [{ label: "Endpoint", value: selected.endpoint }] : []),
       ],
     });
-    if (next === "update") {
-      const endpoint = await prompts.text("Worker endpoint", selected.endpoint || "http://127.0.0.1:7576/");
-      await (dependencies.updateJoinedWorkerTransport || updateJoinedWorkerTransport)(layout.configFile, workerId, endpoint);
-      return actionOutcome("success", "Worker endpoint updated", {
-        details: [
-          { label: "Environment", value: selected.environmentId },
-          { label: "Endpoint", value: endpoint },
-        ],
-      });
-    }
     if (!await prompts.confirm(`Remove enrolled Worker ${selected.environmentId}?`, false, {
       tone: "destructive",
       title: "Remove Gateway enrollment",
@@ -517,9 +507,23 @@ export async function executeWorkstationFlowAction(
       if (typeof issued.joinCode !== "string" || !issued.joinCode) throw new Error("Gateway did not return a self-contained join code");
       joinCode = issued.joinCode;
     }
+    const protocolState = await (dependencies.inspectJoinProtocols || inspectJoinProtocols)(joinCode);
+    const capable = protocolState.offers.filter((offer) => offer.capable);
+    if (!capable.length) throw new Error("Gateway has no available Worker protocols");
+    const selectedProtocols = await prompts.multi(
+      "Worker protocols",
+      protocolState.offers.map((offer) => ({
+        value: offer.type,
+        label: offer.type === "grpc" ? "gRPC" : "HTTP",
+        description: describeGatewayProtocolOffer(offer),
+        disabled: !offer.capable,
+      })),
+      capable.map((offer) => offer.type),
+    );
+    if (!selectedProtocols.length) throw new Error("Select at least one Worker protocol");
     await (dependencies.joinWorker || joinWorker)(
       workerLayout.configFile,
-      ["worker", "join", "--worker", action.workerName, "--join-code", joinCode],
+      ["worker", "join", "--worker", action.workerName, "--join-code", joinCode, "--protocols", selectedProtocols.join(",")],
     );
     const decoded = decodeJoinCode(joinCode);
     return actionOutcome("success", "Worker joined Gateway", {

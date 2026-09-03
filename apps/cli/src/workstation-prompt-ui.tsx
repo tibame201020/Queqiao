@@ -23,7 +23,7 @@ function PromptSelectionViewport({ choices, index, children }: { choices: Array<
 }
 
 export type WorkstationPromptChoice = { value: string; label: string; description?: string };
-export type WorkstationPromptMultiChoice = { value: string; label: string; description?: string };
+export type WorkstationPromptMultiChoice = { value: string; label: string; description?: string; disabled?: boolean };
 export type WorkstationPromptReview = {
   title?: string;
   tone?: "default" | "destructive";
@@ -122,7 +122,9 @@ export function useWorkstationPromptBridge() {
       else if (input === " ") {
         const choice = current.choices[current.index];
         if (choice) {
-          const selected = current.selected.includes(choice.value)
+          const isSelected = current.selected.includes(choice.value);
+          if (choice.disabled && !isSelected) return true;
+          const selected = isSelected
             ? current.selected.filter((value) => value !== choice.value)
             : [...current.selected, choice.value];
           setPrompt({ ...current, selected });
@@ -216,7 +218,7 @@ export function WorkstationPromptPanel({ prompt, targetTitle, compact = false }:
                 const focused = index === prompt.index;
                 return (
                   <Box key={choice.value} flexDirection="column">
-                    <Text bold={focused || selected} {...optionalPromptColor(focused ? promptPalette.accent : selected ? promptPalette.success : undefined)}>{focused ? "› " : "  "}<Text color={selected ? promptPalette.success : promptPalette.muted}>[{selected ? "x" : " "}]</Text> {choice.label}</Text>
+                    <Text dimColor={Boolean(choice.disabled && !selected)} bold={focused || selected} {...optionalPromptColor(focused ? promptPalette.accent : selected ? promptPalette.success : undefined)}>{focused ? "› " : "  "}<Text color={selected ? promptPalette.success : promptPalette.muted}>[{selected ? "x" : " "}]</Text> {choice.label}{choice.disabled ? " ? unavailable" : ""}</Text>
                     {choice.description ? <Text dimColor color={promptPalette.muted}>      {choice.description}</Text> : null}
                   </Box>
                 );

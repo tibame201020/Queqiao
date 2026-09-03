@@ -58,6 +58,21 @@ describe("Worker reverse-session registry", () => {
     expect(() => registry.require(attached.workerId)).toThrow(/no active reverse Worker session/i);
   });
 
+  it("notifies subscribers when reverse sessions attach and detach, and stops after unsubscribe", () => {
+    const registry = new WorkerSessionRegistry();
+    const changed = vi.fn();
+    const unsubscribe = registry.subscribe(changed);
+    const attached = registry.attach(hello("11111111-1111-4111-8111-111111111111", "linux", "22222222-2222-4222-8222-222222222222"), sessionTransport(), { kind: "membership" });
+    expect(changed).toHaveBeenCalledTimes(1);
+
+    expect(registry.detach(attached.sessionId)).toBe(true);
+    expect(changed).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    registry.attach(hello("33333333-3333-4333-8333-333333333333", "windows", "44444444-4444-4444-8444-444444444444"), sessionTransport(), { kind: "membership" });
+    expect(changed).toHaveBeenCalledTimes(2);
+  });
+
   it("can revoke only the provisional session bound to a failed transaction", () => {
     const registry = new WorkerSessionRegistry();
     const transport = sessionTransport();

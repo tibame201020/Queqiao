@@ -18,6 +18,7 @@ type Dependencies = {
   entryPoints?: Partial<Record<RuntimeRole, string>>;
 };
 const execFileAsync = promisify(execFileCallback);
+const MANAGED_PID_STARTUP_GRACE_MS = 5_000;
 function defaultExecFile(file: string, args: readonly string[]) { return execFileAsync(file, [...args], { encoding: "utf8", windowsHide: true }).then(({ stdout, stderr }) => ({ stdout, stderr })); }
 function validateName(value: string) { if (!/^[a-z][a-z0-9-]{0,31}$/.test(value)) throw new Error("Name must match ^[a-z][a-z0-9-]{0,31}$"); return value; }
 function validateRole(value: string): RuntimeRole { if (value !== "gateway" && value !== "worker") throw new Error("Role must be gateway or worker"); return value; }
@@ -73,7 +74,13 @@ async function reconcileManagedPid(layout: RuntimeLayout, role: RuntimeRole, dep
   if (recordedConfig && recordedConfig !== comparablePath(layout.configFile, platform)) { await rm(p.pidFile, { force: true }); return undefined; }
   const ownedEntryPoint = metadata.entryPoint || currentEntryPoint;
   const command = await processCommandLine(metadata.pid, platform, env, execFile);
-  if (!command || !commandOwnsEntryPoint(command, ownedEntryPoint, platform)) { await rm(p.pidFile, { force: true }); return undefined; }
+  if (!command) {
+    const startedAt = metadata.startedAt ? Date.parse(metadata.startedAt) : Number.NaN;
+    if (Number.isFinite(startedAt) && Date.now() - startedAt < MANAGED_PID_STARTUP_GRACE_MS) return metadata.pid;
+    await rm(p.pidFile, { force: true });
+    return undefined;
+  }
+  if (!commandOwnsEntryPoint(command, ownedEntryPoint, platform)) { await rm(p.pidFile, { force: true }); return undefined; }
   return metadata.pid;
 }
 async function stopManaged(layout: RuntimeLayout, role: RuntimeRole, dependencies: Dependencies = {}) {

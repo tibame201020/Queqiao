@@ -89,6 +89,12 @@ describe("Queqiao v0 vertical slice", () => {
       const read = await client.callTool({ name: "read_file", arguments: { workspaceId: "fixture", path: "fixture.txt", offset: 0, limit: 1 } });
       expect(read.isError).not.toBe(true);
       expect(JSON.stringify(read.content)).toContain("hello from native worker");
+      expect((read as any)._meta?.["dev.queqiao/routing"]).toMatchObject({
+        environmentId: "windows",
+        requestedTransport: null,
+        selectedTransport: "http",
+        selectionReason: "configured_order",
+      });
       const directory = await client.callTool({ name: "list_directory", arguments: { workspaceId: "fixture", path: ".", limit: 10 } });
       expect(directory.isError).not.toBe(true);
       expect(JSON.stringify(directory.content)).toContain("fixture.txt");

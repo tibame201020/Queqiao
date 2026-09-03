@@ -1,10 +1,10 @@
 import { WorkerGrpcReverseClient, type WorkerGrpcReverseClientConfig } from "./grpc-reverse-worker-client.js";
 import type { WorkerProtocolService } from "./worker-protocol-service.js";
 
-export type PersistentReverseSession = { target: string; caCertificate: string };
+export type PersistentReverseSession = { target: string; security?: "tls" | "loopback"; caCertificate?: string };
 
 type CredentialSource = { current(): Promise<string> };
-type ReverseClient = Pick<WorkerGrpcReverseClient, "connectTls" | "close">;
+type ReverseClient = Pick<WorkerGrpcReverseClient, "connectTls" | "connectLoopback" | "close">;
 type ReverseClientFactory = (config: WorkerGrpcReverseClientConfig) => ReverseClient;
 
 export type WorkerReverseSessionManagerConfig = {
@@ -30,14 +30,14 @@ export class WorkerReverseSessionManager {
 
   get connected(): boolean { return Boolean(this.current); }
 
-  async activate(input: { target: string; credential: string; caCertificate: string }): Promise<void> {
+  async activate(input: { target: string; credential: string; security?: "tls" | "loopback"; caCertificate?: string }): Promise<void> {
     this.cancelReconnect();
     this.current?.close();
     this.current = undefined;
     const client = this.newClient(input.target, input.credential);
     this.current = client;
     try {
-      await client.connectTls(input.caCertificate);
+      await this.connectClient(client, input);
       this.reconnectAttempt = 0;
     } catch (error) {
       if (this.current === client) this.current = undefined;
@@ -80,6 +80,12 @@ export class WorkerReverseSessionManager {
     return client;
   }
 
+  private async connectClient(client: ReverseClient, connection: { security?: "tls" | "loopback"; caCertificate?: string }): Promise<void> {
+    if (connection.security === "loopback") return client.connectLoopback();
+    if (!connection.caCertificate) throw new Error("Worker gRPC TLS CA certificate is required");
+    return client.connectTls(connection.caCertificate);
+  }
+
   private async connectPersistent(persistent: PersistentReverseSession): Promise<void> {
     if (this.stopped) return;
     this.current?.close();
@@ -87,7 +93,7 @@ export class WorkerReverseSessionManager {
     const client = this.newClient(persistent.target, credential);
     this.current = client;
     try {
-      await client.connectTls(persistent.caCertificate);
+      await this.connectClient(client, persistent);
       this.reconnectAttempt = 0;
     } catch (error) {
       if (this.current === client) this.current = undefined;

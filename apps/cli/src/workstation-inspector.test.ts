@@ -9,11 +9,11 @@ import {
 
 const snapshot = (): WorkstationSnapshot => ({
   gateways: [
-    { name: "stable", configured: true, running: true, managed: true, publicUrl: "https://example.test/stable/", servicePort: 8075, managementPort: 8074 },
+    { name: "stable", configured: true, running: true, managed: true, publicUrl: "https://example.test/stable/", servicePort: 8075, managementPort: 8074, workerSessionMode: "remote", workerSessionTarget: "gateway.local:8073" },
     { name: "lab", configured: true, running: false, managed: false, publicUrl: "https://example.test/lab/", servicePort: 9075, managementPort: 9074 },
   ],
   workers: [
-    { name: "wins-worker", configured: true, running: true, managed: true, endpoint: "http://127.0.0.1:8076/", workspaceCount: 2 },
+    { name: "wins-worker", configured: true, running: true, managed: true, endpoint: "http://127.0.0.1:8076/", workspaceCount: 2, reverseSessionTarget: "gateway.local:8073" },
     { name: "wsl", configured: true, running: true, managed: true, endpoint: "http://127.0.0.1:12976/", workspaceCount: 1 },
   ],
   workspaces: [
@@ -68,6 +68,8 @@ describe("Workstation structured Inspector view models", () => {
       kind: "gateway",
       key: "gateway:stable",
       title: "stable",
+      workerSessionMode: "remote",
+      workerSessionTarget: "gateway.local:8073",
       runtime: { state: "ready", active: true, managed: true, pid: 1234, health: { healthy: true, status: 200 } },
       workers: { state: "ready", items: [{ environmentId: "windows", endpoint: "http://127.0.0.1:8076/" }] },
     });
@@ -82,8 +84,8 @@ describe("Workstation structured Inspector view models", () => {
     const workerIdentity = vi.fn(async () => ({ workerId: "worker-win", environmentId: "windows" }));
     const gatewayMembers = vi.fn(async (name: string) => ({
       workers: name === "stable"
-        ? [{ workerId: "worker-win", environmentId: "windows", transport: { endpoint: "http://127.0.0.1:8076/" } }]
-        : [{ workerId: "different-id", environmentId: "windows", transport: { endpoint: "http://127.0.0.1:8076/" } }],
+        ? [{ workerId: "worker-win", environmentId: "windows", transports: [{ type: "http", endpoint: "http://127.0.0.1:8076/" }] }]
+        : [{ workerId: "different-id", environmentId: "windows", transports: [{ type: "http", endpoint: "http://127.0.0.1:8076/" }] }],
     }));
 
     const target: WorkstationInspectorTarget = { kind: "worker", name: "wins-worker" };
@@ -96,6 +98,7 @@ describe("Workstation structured Inspector view models", () => {
     expect(view).toMatchObject({
       kind: "worker",
       title: "wins-worker",
+      reverseSessionTarget: "gateway.local:8073",
       workspaces: [
         { displayName: "Queqiao", profile: "coding-safe" },
         { displayName: "Sandbox", profile: "Reader" },

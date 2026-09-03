@@ -99,7 +99,7 @@ async function seedVerificationEnrollment(runCli: (args: string[]) => Promise<Cl
 
     const token = await waitForCliJson<{ joinCode?: string }>(runCli, ["gateway", "join-token", "--gateway", VERIFY_GATEWAY, "--expires", "60", "--json"], (value) => typeof value.joinCode === "string" && value.joinCode.startsWith("qjq1:"));
     if (!token.joinCode) throw new Error("Disposable Gateway did not issue a join code");
-    const joined = parseCliJson<{ joined?: boolean }>(await runCli(["worker", "join", "--worker", VERIFY_WORKER, "--join-code", token.joinCode, "--json"]));
+    const joined = parseCliJson<{ joined?: boolean }>(await runCli(["worker", "join", "--worker", VERIFY_WORKER, "--join-code", token.joinCode, "--protocols", "http", "--json"]));
     if (!joined.joined) throw new Error("Disposable Worker enrollment did not commit");
     await waitForCliJson<{ workers?: unknown[] }>(runCli, ["gateway", "workers", "list", "--gateway", VERIFY_GATEWAY, "--json"], (value) => Array.isArray(value.workers) && value.workers.length === 1);
   } finally {
@@ -193,7 +193,7 @@ export async function prepareWorkstationVerification(repositoryRoot = path.resol
       platform: process.platform,
       interactive: true,
       prompts: prompts({
-        choices: ["__create__"],
+        choices: ["__create__", "local"],
         texts: [VERIFY_GATEWAY, `http://127.0.0.1:${gatewayPort}/`, String(gatewayPort), String(managementPort)],
       }),
       portAvailable: async () => true,
@@ -375,9 +375,11 @@ async function launch(): Promise<void> {
   if (process.argv.includes("--smoke")) {
     const vitestCli = path.join(repositoryRoot, "node_modules", "vitest", "vitest.mjs");
     const { stdout, stderr } = await execFileAsync(process.execPath, [
-      vitestCli, "run",
-      "apps/cli/src/workstation-isolated-verify.test.ts",
+      vitestCli, "run", "--config", "scripts/vitest.workstation-acceptance.config.ts",
+      "scripts/workstation-isolated-verify.test.ts",
+      "scripts/cli-protocol-flow-e2e.test.ts",
       "apps/cli/src/workstation-ui-v2.test.tsx",
+      "scripts/workstation-enrollment-e2e.test.tsx",
     ], {
       cwd: repositoryRoot,
       env: { ...process.env, QUEQIAO_WORKSTATION_SMOKE_PRINT: "1" },

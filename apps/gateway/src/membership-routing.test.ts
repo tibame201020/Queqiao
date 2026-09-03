@@ -53,7 +53,19 @@ describe("membership-backed Worker routing", () => {
       environments: [{ environmentId: "windows", online: true }],
       workspaces: [{ workspaceId: "fixture", environmentId: "windows" }],
     });
-    await expect(registry.workspaceInfo("fixture")).resolves.toMatchObject({ workspaceId: "fixture", environmentId: "windows" });
+    await expect(registry.workspaceInfo("fixture")).resolves.toMatchObject({
+      value: {
+        workspaceId: "fixture",
+        environmentId: "windows",
+        transports: [{
+          type: "http",
+          status: "healthy",
+          mode: "direct",
+          traits: { requestResponse: true, streaming: "none", connection: "stateless", topology: "direct" },
+        }],
+      },
+      routing: { environmentId: "windows", requestedTransport: null, selectedTransport: "http", selectionReason: "configured_order" },
+    });
 
     await memberships.updateTransport(workerId, { type: "http", endpoint: "http://127.0.0.1:1/" });
     expect((await source.current()).configuredEnvironmentIds()).toEqual(["windows"]);

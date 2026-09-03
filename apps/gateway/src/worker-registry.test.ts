@@ -41,6 +41,40 @@ describe("Worker routing security", () => {
     await expect(registry.route("shared")).rejects.toThrow(/ambiguous/);
   });
 
+  it("prefers the healthier transport when omitted while an explicit transport remains exact", async () => {
+    const runtime = (healthy: boolean) => ({
+      execute: vi.fn(async (request: { operation: string }) => {
+        if (request.operation === "health") {
+          if (!healthy) throw new Error("unhealthy transport");
+          return { ok: true };
+        }
+        if (request.operation === "hello") return hello("windows");
+        if (request.operation === "list-workspaces") return state("windows", "only");
+        throw new Error(`unexpected operation: ${request.operation}`);
+      }),
+    });
+    const registry = new WorkerRegistry([
+      { environmentId: "windows", transport: { type: "http", endpoint: "http://127.0.0.1:7576" }, token: "secret", runtimeTransport: runtime(false) },
+      { environmentId: "windows", transport: { type: "grpc", mode: "reverse" }, token: "secret", runtimeTransport: runtime(true) },
+    ]);
+
+    await registry.probeLiveness();
+    await expect(registry.route("only")).resolves.toMatchObject({
+      routing: { requestedTransport: null, selectedTransport: "grpc", selectionReason: "health_preferred" },
+    });
+    await expect(registry.route("only", "http")).resolves.toMatchObject({
+      routing: { requestedTransport: "http", selectedTransport: "http", selectionReason: "explicit" },
+    });
+  });
+
+  it("distinguishes an unknown dynamic transport from a registered transport that is not enabled", async () => {
+    vi.stubGlobal("fetch", vi.fn((url: URL | string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("/v1/hello") ? hello("windows") : state("windows", "only")), { status: 200, headers: { "content-type": "application/json" } }))));
+    const registry = new WorkerRegistry([{ environmentId: "windows", transport: { type: "http", endpoint: "http://127.0.0.1:7576" }, token: "secret" }]);
+
+    await expect(registry.route("only", "webrtc")).rejects.toMatchObject({ code: "transport_unknown" });
+    await expect(registry.route("only", "grpc")).rejects.toMatchObject({ code: "transport_not_enabled" });
+  });
+
   it("marks a Worker offline when its claimed environment identity differs", async () => {
     vi.stubGlobal("fetch", vi.fn((url: URL | string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("/v1/hello") ? hello("attacker") : state("attacker")), { status: 200, headers: { "content-type": "application/json" } }))));
     const registry = new WorkerRegistry([{ environmentId: "windows", transport: { type: "http", endpoint: "http://127.0.0.1:7576" }, token: "secret" }]);

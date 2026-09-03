@@ -32,6 +32,7 @@ function createDefaultTransport(config: WorkerClientConfig): WorkerTransport {
 export class WorkerClient {
   readonly environmentId: string;
   readonly workerId: string | undefined;
+  readonly transportDescriptor: WorkerTransportDescriptor;
   private handshakePromise: Promise<WorkerHello> | undefined;
   private handshakeRevision: string | undefined;
 
@@ -42,6 +43,7 @@ export class WorkerClient {
   ) {
     this.environmentId = config.environmentId;
     this.workerId = config.workerId;
+    this.transportDescriptor = config.transport;
   }
 
   private async executeTracked<T>(request: WorkerTransportRequest, signal?: AbortSignal): Promise<T> {

@@ -23,6 +23,9 @@ async function fixture() {
       publicBaseUrl: "https://gateway.example/stable/",
       listen: { host: "127.0.0.1", port: 8075 },
       managementListen: { host: "127.0.0.1", port: 8074 },
+      workerSessionListen: { host: "0.0.0.0", port: 8073 },
+      workerSessionAdvertiseHost: "gateway.local",
+      workerSessionTls: { certFile: path.join(secretsDir, "worker-session.crt"), keyFile: path.join(secretsDir, "worker-session.key") },
       trustProxyHops: 1,
       stateDirectory: path.join(dataDir, "gateway"),
       approvalSecretFile,
@@ -65,6 +68,8 @@ describe("gateway info", () => {
     expect(result.approvalSecret).toBe("owner-approval-secret");
     expect(result.servicePort).toBe(8075);
     expect(result.managementPort).toBe(8074);
+    expect(result.workerSessionMode).toBe("remote");
+    expect(result.workerSessionTarget).toBe("gateway.local:8073");
     expect(result.allowedRedirectOrigins).toEqual(["https://chatgpt.com"]);
   });
 

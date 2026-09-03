@@ -9,7 +9,7 @@
 | Tab | What it shows |
 | --- | --- |
 | **Status** | runtime active/managed state, PID when available, health/reachability, HTTP status, identity match, and probe error when relevant |
-| **Info** | Worker name, lifecycle, managed state, and native endpoint |
+| **Info** | Worker name, lifecycle, managed state, native endpoint, Gateway transport, and durable reverse-session target when enrolled remotely |
 | **Workspaces** | each authorized Workspace: display name, id, root, and persisted profile marker |
 | **Extensions** | Extensions attached to this Worker: display name, id, version |
 | **Gateways** | persisted/known Gateway relationships and endpoint when available |

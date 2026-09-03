@@ -35,12 +35,27 @@ export const workerCredentialReferenceSchema = z.object({
   path: z.string().min(1).max(4096),
 });
 
-export const workerMembershipSchema = z.object({
+export const workerMembershipSchema = z.preprocess((raw) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const candidate = raw as Record<string, unknown>;
+  if (Array.isArray(candidate.transports)) return candidate;
+  if (candidate.transport) {
+    const { transport, ...rest } = candidate;
+    return { ...rest, transports: [transport] };
+  }
+  return candidate;
+}, z.object({
   workerId: workerIdSchema,
   environmentId: environmentIdSchema,
-  transport: workerTransportDescriptorSchema,
+  transports: z.array(workerTransportDescriptorSchema).min(1).max(8),
   credentialRefs: z.array(workerCredentialReferenceSchema).min(1).max(2),
-});
+}).superRefine((worker, ctx) => {
+  const types = new Set<string>();
+  for (const [index, transport] of worker.transports.entries()) {
+    if (types.has(transport.type)) ctx.addIssue({ code: "custom", path: ["transports", index, "type"], message: "Worker transport type must be unique within a membership" });
+    types.add(transport.type);
+  }
+}));
 
 export const workerMembershipRegistrySchema = z.object({
   version: z.literal(1),
@@ -52,11 +67,13 @@ export const workerMembershipRegistrySchema = z.object({
   for (const [index, worker] of registry.workers.entries()) {
     if (workerIds.has(worker.workerId)) ctx.addIssue({ code: "custom", path: ["workers", index, "workerId"], message: "workerId must be unique" });
     if (environmentIds.has(worker.environmentId)) ctx.addIssue({ code: "custom", path: ["workers", index, "environmentId"], message: "environmentId must be unique within a Gateway" });
-    const transportKey = gatewayVisibleTransportKey(worker.transport);
-    if (transportKey && transportKeys.has(transportKey)) ctx.addIssue({ code: "custom", path: ["workers", index, "transport"], message: "Gateway-visible Worker transport endpoint must be unique within a Gateway" });
+    for (const [transportIndex, transport] of worker.transports.entries()) {
+      const transportKey = gatewayVisibleTransportKey(transport);
+      if (transportKey && transportKeys.has(transportKey)) ctx.addIssue({ code: "custom", path: ["workers", index, "transports", transportIndex], message: "Gateway-visible Worker transport endpoint must be unique within a Gateway" });
+      if (transportKey) transportKeys.add(transportKey);
+    }
     workerIds.add(worker.workerId);
     environmentIds.add(worker.environmentId);
-    if (transportKey) transportKeys.add(transportKey);
   }
 });
 
@@ -142,18 +159,22 @@ export class WorkerMembershipStore {
     });
   }
 
-  updateTransport(workerId: string, transport: WorkerTransportDescriptor): Promise<WorkerMembershipRegistry> {
+  updateTransports(workerId: string, transports: WorkerTransportDescriptor[]): Promise<WorkerMembershipRegistry> {
     return this.serialize(async () => {
       const current = await this.read();
       let found = false;
       const workers = current.workers.map((worker) => {
         if (worker.workerId !== workerId) return worker;
         found = true;
-        return workerMembershipSchema.parse({ ...worker, transport });
+        return workerMembershipSchema.parse({ ...worker, transports });
       });
       if (!found) throw new Error(`Worker membership not found: ${workerId}`);
       return this.writeValidated({ ...current, workers });
     });
+  }
+
+  updateTransport(workerId: string, transport: WorkerTransportDescriptor): Promise<WorkerMembershipRegistry> {
+    return this.updateTransports(workerId, [transport]);
   }
 
   remove(workerId: string): Promise<WorkerMembershipRegistry> {

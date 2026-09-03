@@ -7,22 +7,20 @@ import { WorkerSessionRegistry } from "./worker-session-registry.js";
 import { SessionRegistryWorkerTransport } from "./session-registry-worker-transport.js";
 
 async function membershipClients(registry: WorkerMembershipRegistry, sessions?: WorkerSessionRegistry): Promise<MembershipWorkerClientConfig[]> {
-  return Promise.all(registry.workers.map(async (worker) => {
+  const clients: MembershipWorkerClientConfig[] = [];
+  for (const worker of registry.workers) {
     const reference = worker.credentialRefs[0];
     if (!reference || reference.kind !== "secret-file") throw new Error(`Worker credential reference is unavailable: ${worker.workerId}`);
     const token = (await readFile(path.resolve(reference.path), "utf8")).trim();
     if (Buffer.byteLength(token) < 32) throw new Error(`Worker credential is invalid: ${worker.workerId}`);
-    const runtimeTransport = worker.transport.type === "grpc"
-      ? sessions ? new SessionRegistryWorkerTransport(sessions, worker.workerId) : (() => { throw new Error("Worker reverse session registry is required for gRPC membership"); })()
-      : undefined;
-    return {
-      workerId: worker.workerId,
-      environmentId: worker.environmentId,
-      transport: worker.transport,
-      token,
-      ...(runtimeTransport ? { runtimeTransport } : {}),
-    };
-  }));
+    for (const transport of worker.transports) {
+      const runtimeTransport = transport.type === "grpc"
+        ? sessions ? new SessionRegistryWorkerTransport(sessions, worker.workerId) : (() => { throw new Error("Worker reverse session registry is required for gRPC membership"); })()
+        : undefined;
+      clients.push({ workerId: worker.workerId, environmentId: worker.environmentId, transport, token, ...(runtimeTransport ? { runtimeTransport } : {}) });
+    }
+  }
+  return clients;
 }
 
 export class MembershipWorkerRegistry {

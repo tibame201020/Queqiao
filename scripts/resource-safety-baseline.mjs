@@ -88,13 +88,15 @@ async function terminate(child) {
 
 async function waitFor(url, expected, headers = {}) {
   let last = "";
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  // Keep readiness probing below the production /health budget. The Gateway workload
+  // later performs 30 more health requests in the same minute, so reserve headroom.
+  for (let attempt = 0; attempt < 20; attempt += 1) {
     try {
       const response = await fetch(url, { headers });
       last = await response.text();
       if (response.ok && (!expected || last.includes(expected))) return last;
     } catch { /* starting */ }
-    await delay(100);
+    await delay(1000);
   }
   throw new Error(`Service did not become ready: ${url}; last=${last.slice(0, 200)}`);
 }
@@ -167,12 +169,15 @@ try {
   const approvalFile = path.join(secretsDir, "approval.secret");
   const jwtFile = path.join(secretsDir, "jwt.secret");
   const tokenFile = path.join(secretsDir, "worker.secret");
+  const membershipFile = path.join(secretsDir, "gateway-membership.secret");
   const configFile = path.join(temporary, "config.yaml");
   const workerId = "11111111-1111-4111-8111-111111111111";
   const workerToken = "resource-baseline-worker-token-at-least-thirty-two-bytes";
+  const membershipToken = "resource-baseline-membership-token-at-least-thirty-two-bytes";
   await writeFile(approvalFile, "resource-baseline-approval-secret\n");
   await writeFile(jwtFile, "resource-baseline-jwt-secret-at-least-thirty-two-bytes\n");
   await writeFile(tokenFile, `${workerToken}\n`);
+  await writeFile(membershipFile, `${membershipToken}\n`);
   await writeFile(path.join(workspaceDir, "fixture.txt"), "resource baseline fixture\n");
   const config = {
     version: 1,
@@ -186,12 +191,22 @@ try {
       jwtSigningSecretFile: jwtFile,
       allowedRedirectOrigins: ["https://chatgpt.com", "http://127.0.0.1", "http://localhost"],
     },
-    worker: { workerId, environmentId: "resource-ci", listen: { host: "127.0.0.1", port: workerPort }, tokenFile },
+    worker: {
+      workerId,
+      environmentId: "resource-ci",
+      listen: { host: "127.0.0.1", port: workerPort },
+      tokenFile,
+      memberships: [{
+        gateway: `http://127.0.0.1:${gatewayPort}/`,
+        credentialRef: { kind: "secret-file", path: membershipFile },
+        protocols: {},
+      }],
+    },
     workspaces: [{ id: "fixture", displayName: "Fixture", root: workspaceDir, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] }, stepUp: [] }],
   };
   await writeFile(configFile, `${JSON.stringify(config, null, 2)}\n`);
   await mkdir(path.join(dataDir, "gateway"), { recursive: true });
-  await writeFile(path.join(dataDir, "gateway", "worker-memberships.json"), `${JSON.stringify({ version: 1, workers: [{ workerId, environmentId: "resource-ci", transport: { type: "http", endpoint: `http://127.0.0.1:${workerPort}` }, credentialRefs: [{ kind: "secret-file", path: tokenFile }] }] }, null, 2)}\n`);
+  await writeFile(path.join(dataDir, "gateway", "worker-memberships.json"), `${JSON.stringify({ version: 1, workers: [{ workerId, environmentId: "resource-ci", transports: [{ type: "http", endpoint: `http://127.0.0.1:${workerPort}` }], credentialRefs: [{ kind: "secret-file", path: membershipFile }] }] }, null, 2)}\n`);
 
   const workerLog = path.join(temporary, "worker.stdout.log");
   const workerErr = path.join(temporary, "worker.stderr.log");

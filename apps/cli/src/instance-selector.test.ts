@@ -27,6 +27,55 @@ describe("instance selector", () => {
     expect(result[0]?.publicUrl).toBe("https://example.test/path");
   });
 
+  it("reports remote Gateway and durable Worker session transport in inventory", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-selector-transport-"));
+    const env = envFor(root);
+    const gatewayDir = process.platform === "win32"
+      ? path.join(root, "Queqiao", "gateways", "remote", "config")
+      : path.join(root, "config", "queqiao", "gateways", "remote");
+    await mkdir(gatewayDir, { recursive: true });
+    await writeFile(path.join(gatewayDir, "config.yaml"), serializeRuntimeConfig({
+      version: 1,
+      gateway: {
+        publicBaseUrl: "https://example.test/remote/",
+        listen: { host: "127.0.0.1", port: 8075 },
+        managementListen: { host: "127.0.0.1", port: 8074 },
+        workerSessionListen: { host: "0.0.0.0", port: 8073 },
+        workerSessionAdvertiseHost: "gateway.local",
+        workerSessionTls: { certFile: "worker-session.crt", keyFile: "worker-session.key" },
+        trustProxyHops: 1,
+        stateDirectory: "state",
+        approvalSecretFile: "approval",
+        jwtSigningSecretFile: "jwt",
+      },
+      workspaces: [], extensions: [],
+    }));
+
+    const workerDir = process.platform === "win32"
+      ? path.join(root, "Queqiao", "workers", "remote-worker", "config")
+      : path.join(root, "config", "queqiao", "workers", "remote-worker");
+    await mkdir(workerDir, { recursive: true });
+    await writeFile(path.join(workerDir, "config.yaml"), serializeRuntimeConfig({
+      version: 1,
+      worker: {
+        workerId: "11111111-1111-4111-8111-111111111111",
+        environmentId: "remote-worker",
+        listen: { host: "127.0.0.1", port: 8076 },
+        tokenFile: "worker.secret",
+        reverseSession: { target: "gateway.local:8073", caCertificateFile: "gateway.crt" },
+      },
+      workspaces: [{ id: "project", displayName: "Project", root, profile: "read-only" }],
+      extensions: [],
+    }));
+
+    expect(await listRoleInstances("gateway", { env, platform: process.platform })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "remote", workerSessionMode: "remote", workerSessionTarget: "gateway.local:8073" }),
+    ]));
+    expect(await listRoleInstances("worker", { env, platform: process.platform })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "remote-worker", reverseSessionTarget: "gateway.local:8073" }),
+    ]));
+  });
+
   it("selects the only instance in a TTY and requires an explicit selector otherwise", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-selector-one-"));
     await gateway(root, "main");

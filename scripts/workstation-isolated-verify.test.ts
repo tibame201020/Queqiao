@@ -2,7 +2,7 @@ import { access, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { captureWorkstationVerificationFrames, prepareWorkstationVerification } from "../../../scripts/workstation-isolated-verify.js";
+import { captureWorkstationVerificationFrames, prepareWorkstationVerification } from "./workstation-isolated-verify.js";
 
 let cleanup: (() => Promise<void>) | undefined;
 
@@ -99,7 +99,7 @@ describe("Workstation isolated verification harness", () => {
     expect(packageJson.scripts["dev:workstation:verify"]).toBe("tsx scripts/workstation-isolated-verify.ts");
     expect(packageJson.scripts).not.toHaveProperty("dev:shadow:refresh");
 
-    const script = await readFile(new URL("../../../scripts/workstation-isolated-verify.ts", import.meta.url), "utf8");
+    const script = await readFile(new URL("./workstation-isolated-verify.ts", import.meta.url), "utf8");
     expect(script).toContain("QUEQIAO_BUILD_OUTDIR: packageOutdir");
     expect(script).toContain("LOCALAPPDATA: path.join(root, \"local-app-data\")");
     expect(script).toContain("Stable Queqiao runtime: untouched");

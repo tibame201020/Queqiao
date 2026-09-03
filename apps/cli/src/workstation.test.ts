@@ -270,12 +270,21 @@ describe("Queqiao Workstation", () => {
     const joinCode = encodeJoinCode({ v: 1, gateway: "https://remote.example/gateway/", token: "r".repeat(40) });
     const choose = vi.fn(async (message: string, choices: Array<{ value: string }>) => message === "Enrollment source" ? "__join_code__" : choices[0]!.value);
     const secret = vi.fn(async () => joinCode);
+    const multi = vi.fn(async () => ["http"]);
+    const inspectJoinProtocols = vi.fn(async () => ({
+      gateway: "https://remote.example/gateway/",
+      offers: [
+        { type: "http" as const, capable: true },
+        { type: "grpc" as const, capable: true, connection: { target: "remote.example:7573", security: "tls" as const, caCertificate: "certificate" } },
+      ],
+    }));
     const joinWorker = vi.fn(async () => ({ joined: true }));
     const result = await executeWorkstationFlowAction(
       { type: "worker-join", workerName: "wins-worker" },
-      promptDriver({ choose, secret }),
+      promptDriver({ choose, secret, multi }),
       {
         listRoleInstances: async (role) => role === "gateway" ? [gateway("stable")] : [worker("wins-worker")],
+        inspectJoinProtocols,
         joinWorker,
       },
     );
@@ -284,7 +293,12 @@ describe("Queqiao Workstation", () => {
       expect.objectContaining({ value: "__join_code__" }),
     ]));
     expect(secret).toHaveBeenCalledWith("Join code", "", expect.any(Function));
-    expect(joinWorker).toHaveBeenCalledWith(expect.any(String), ["worker", "join", "--worker", "wins-worker", "--join-code", joinCode]);
+    expect(inspectJoinProtocols).toHaveBeenCalledWith(joinCode);
+    expect(multi).toHaveBeenCalledWith("Worker protocols", expect.arrayContaining([
+      expect.objectContaining({ value: "http", label: "HTTP", disabled: false }),
+      expect.objectContaining({ value: "grpc", label: "gRPC", disabled: false }),
+    ]), ["http", "grpc"]);
+    expect(joinWorker).toHaveBeenCalledWith(expect.any(String), ["worker", "join", "--worker", "wins-worker", "--join-code", joinCode, "--protocols", "http"]);
     expect(result).toMatchObject({ status: "success", title: "Worker joined Gateway" });
     expect(JSON.stringify(result)).not.toContain(joinCode);
   });
