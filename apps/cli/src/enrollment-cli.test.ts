@@ -10,7 +10,8 @@ import { EnrollmentService } from "../../gateway/src/enrollment-service.js";
 import { WorkerMembershipStore } from "../../gateway/src/worker-membership-store.js";
 import { createWorkerApp } from "../../worker/src/app.js";
 import { WorkerCredentialSource } from "../../worker/src/worker-credential-source.js";
-import { copyTextToClipboard, createJoinToken, decodeJoinCode, encodeJoinCode, joinWorker, setupGateway, setupWorker, updateWorkerPort } from "./enrollment-cli.js";
+import { WorkerMembershipCredentialRegistry } from "../../worker/src/worker-membership-credentials.js";
+import { copyTextToClipboard, createJoinToken, decodeJoinCode, describeGatewayProtocolOffer, encodeJoinCode, joinWorker, setupGateway, setupWorker, updateWorkerPort } from "./enrollment-cli.js";
 import { addWorkspace } from "./workspace-cli.js";
 
 
@@ -19,6 +20,13 @@ describe("join code envelope", () => {
     const code = encodeJoinCode({ v: 1, gateway: "https://gateway.example/shadow/", token: "one-time-token", expiresAt: "2026-08-19T01:00:00.000Z" });
     expect(code.startsWith("qjq1:")).toBe(true);
     expect(decodeJoinCode(code)).toEqual({ v: 1, gateway: "https://gateway.example/shadow/", token: "one-time-token", expiresAt: "2026-08-19T01:00:00.000Z" });
+  });
+});
+
+describe("protocol offer descriptions", () => {
+  it("distinguishes the HTTP loopback endpoint from the gRPC session target", () => {
+    expect(describeGatewayProtocolOffer({ type: "http", capable: true })).toBe("Available · loopback Worker endpoint");
+    expect(describeGatewayProtocolOffer({ type: "grpc", capable: true, connection: { target: "127.0.0.1:7573", security: "loopback" } })).toBe("Available · session target 127.0.0.1:7573");
   });
 });
 describe("clipboard helper", () => {
@@ -47,7 +55,7 @@ describe("gateway join-token UX", () => {
       fetchSpy.mockRestore();
     }
   });
-  it("embeds the TLS Worker-session endpoint and pinned CA when remote Worker transport is enabled", async () => {
+  it("keeps protocol metadata out of qjq1 even when remote gRPC capability is provisioned", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-join-token-grpc-"));
     const configFile = path.join(root, "config", "config.yaml");
     const stateDirectory = path.join(root, "gateway-state");
@@ -60,14 +68,30 @@ describe("gateway join-token UX", () => {
     let copied = "";
     try {
       await createJoinToken(configFile, ["gateway", "join-token"], async (value) => { copied = value; });
-      const decoded = decodeJoinCode(copied);
-      expect(decoded.workerSession?.target).toBe("192.168.1.10:8073");
-      expect(decoded.workerSession?.caCertificate).toContain("BEGIN CERTIFICATE");
+      const decoded = decodeJoinCode(copied) as any;
+      expect(decoded).toEqual({ v: 1, gateway: "https://gateway.example/stable/", token: "one-time-token", expiresAt: "2026-08-28T14:30:00.000Z" });
+      expect(decoded).not.toHaveProperty("workerSession");
+      expect(decoded).not.toHaveProperty("protocols");
     } finally {
       fetchSpy.mockRestore();
     }
   });
 
+  it("can disable a previously enabled remote Worker-session listener", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-session-disable-"));
+    const configFile = path.join(root, "config", "config.yaml");
+    const stateDirectory = path.join(root, "gateway-state");
+    const secretsDirectory = path.join(root, "secrets");
+    await setupGateway(configFile, ["gateway", "setup", "--public-base-url", "https://gateway.example/stable/", "--worker-session-host", "gateway.local"], stateDirectory, secretsDirectory);
+    const before = await readRuntimeConfig(configFile);
+    expect(before.gateway?.workerSessionListen?.host).toBe("0.0.0.0");
+
+    await setupGateway(configFile, ["gateway", "setup", "--public-base-url", "https://gateway.example/stable/", "--worker-session-mode", "local"], stateDirectory, secretsDirectory);
+    const after = await readRuntimeConfig(configFile);
+    expect(after.gateway?.workerSessionListen).toBeUndefined();
+    expect(after.gateway?.workerSessionAdvertiseHost).toBeUndefined();
+    expect(after.gateway?.workerSessionTls).toBeUndefined();
+  });
   it("rejects hidden token binding flags", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-join-token-options-"));
     const configFile = path.join(root, "config", "config.yaml");
@@ -101,7 +125,8 @@ async function fixture(serverWorkerId?: string) {
   const configFile = path.join(root, "config.yaml");
   await writeFile(configFile, serializeRuntimeConfig({ version: 1, environments: [], workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }], worker: { workerId, environmentId, listen: { host: "127.0.0.1", port: 7576 }, tokenFile } }), "utf8");
   const credential = new WorkerCredentialSource(tokenFile);
-  const workerApp = await createWorkerApp({ workerId: serverWorkerId || workerId, environmentId, workerCredential: credential, workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }] });
+  const membershipCredentials = new WorkerMembershipCredentialRegistry();
+  const workerApp = await createWorkerApp({ workerId: serverWorkerId || workerId, environmentId, workerCredential: credential, membershipCredentials, workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }] });
   const worker = await listen(workerApp);
   const workerPort = Number(new URL(worker.url).port);
   await writeFile(configFile, serializeRuntimeConfig({ version: 1, environments: [], workspaces: [{ id: "default", displayName: "default", root: workerRoot, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }], worker: { workerId, environmentId, listen: { host: "127.0.0.1", port: workerPort }, tokenFile } }), "utf8");
@@ -295,11 +320,42 @@ describe("worker join CLI transaction", () => {
     const f = await fixture();
     const joinToken = f.enrollment.createJoinToken().token;
     const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: joinToken });
-    const result: any = await joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode]);
+    const result: any = await joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode, "--protocols", "http"]);
     expect(result).toMatchObject({ joined: true, workerId: f.workerId, environmentId: f.environmentId });
     expect((await f.memberships.read()).workers).toHaveLength(1);
-    expect((await readFile(f.tokenFile, "utf8")).trim()).not.toBe(f.bootstrap);
-    await expect(readFile(`${f.tokenFile}.join-provisional.json`, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await readFile(f.tokenFile, "utf8")).trim()).toBe(f.bootstrap);
+    const runtime = await readRuntimeConfig(f.configFile);
+    expect(runtime.worker?.memberships).toHaveLength(1);
+    expect(runtime.worker?.memberships[0]?.gateway).toBe(f.gatewayUrl);
+    const credentialPath = runtime.worker?.memberships[0]?.credentialRef.path;
+    expect(credentialPath).toBeTruthy();
+    expect((await readFile(credentialPath!, "utf8")).trim()).not.toBe(f.bootstrap);
+  });
+
+  it("replaces a stale local Gateway relationship after the Gateway removed the Worker, while a real duplicate stays blocked", async () => {
+    const f = await fixture();
+    const firstCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: f.enrollment.createJoinToken().token });
+    await expect(joinWorker(f.configFile, ["worker", "join", "--join-code", firstCode, "--protocols", "http"])).resolves.toMatchObject({ joined: true });
+    const firstRuntime = await readRuntimeConfig(f.configFile);
+    const firstCredentialPath = firstRuntime.worker!.memberships[0]!.credentialRef.path;
+
+    const duplicateCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: f.enrollment.createJoinToken().token });
+    await expect(joinWorker(f.configFile, ["worker", "join", "--join-code", duplicateCode, "--protocols", "http"])).rejects.toThrow(/already enrolled|already joined/i);
+
+    await f.memberships.remove(f.workerId);
+    const rejoinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: f.enrollment.createJoinToken().token });
+    await expect(joinWorker(f.configFile, ["worker", "join", "--join-code", rejoinCode, "--protocols", "http"])).resolves.toMatchObject({ joined: true });
+    const secondRuntime = await readRuntimeConfig(f.configFile);
+    expect(secondRuntime.worker!.memberships).toHaveLength(1);
+    expect(secondRuntime.worker!.memberships[0]!.gateway).toBe(f.gatewayUrl);
+    expect(secondRuntime.worker!.memberships[0]!.credentialRef.path).not.toBe(firstCredentialPath);
+    await expect(readFile(firstCredentialPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("requires an explicit protocol set for non-interactive --join-code automation", async () => {
+    const f = await fixture();
+    const joinCode = encodeJoinCode({ v: 1, gateway: f.gatewayUrl, token: f.enrollment.createJoinToken().token });
+    await expect(joinWorker(f.configFile, ["worker", "join", "--join-code", joinCode])).rejects.toThrow(/--protocols is required with --join-code outside an interactive terminal/);
   });
 
   it("preflights the named Worker before prompting or consuming the one-time join token", async () => {
@@ -332,15 +388,15 @@ describe("worker join CLI transaction", () => {
       ["worker", "join"],
       async (field) => {
         prompted.push(field);
-        return joinCode;
+        return field === "code" ? joinCode : "http";
       },
     );
-    expect(prompted).toEqual(["code"]);
+    expect(prompted).toEqual(["code", "protocols"]);
     expect(result).toMatchObject({ joined: true, workerId: f.workerId, environmentId: f.environmentId });
     expect((await f.memberships.read()).workers).toHaveLength(1);
   });
 
-  it("activates reverse TLS before confirmation and persists the durable Worker session only after commit", async () => {
+  it("discovers gRPC, stages the Gateway credential, activates reverse TLS, and persists per-Gateway state only after commit", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-cli-grpc-join-"));
     const configFile = path.join(root, "config.yaml");
     const tokenFile = path.join(root, "worker.secret");
@@ -348,10 +404,10 @@ describe("worker join CLI transaction", () => {
     await import("node:fs/promises").then(({ mkdir }) => mkdir(workspaceRoot, { recursive: true }));
     const workerId = crypto.randomUUID();
     const environmentId = "linux";
-    const bootstrap = "b".repeat(48);
-    const provisional = "p".repeat(48);
+    const localControl = "b".repeat(48);
+    const membershipCredential = "p".repeat(48);
     const caCertificate = `-----BEGIN CERTIFICATE-----\n${"C".repeat(96)}\n-----END CERTIFICATE-----\n`;
-    await writeFile(tokenFile, `${bootstrap}\n`, { mode: 0o600 });
+    await writeFile(tokenFile, `${localControl}\n`, { mode: 0o600 });
     await writeFile(configFile, serializeRuntimeConfig({
       version: 1,
       workspaces: [{ id: "default", displayName: "default", root: workspaceRoot, profile: "read-only" }],
@@ -363,32 +419,48 @@ describe("worker join CLI transaction", () => {
       const url = new URL(raw);
       if (url.hostname === "127.0.0.1" && url.pathname === "/health") return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
       if (url.hostname === "127.0.0.1" && url.pathname === "/enrollment/identity") return new Response(JSON.stringify({ workerId, environmentId }), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.hostname === "gateway.example" && url.pathname === "/enrollment/protocols") {
+        order.push("discover");
+        return new Response(JSON.stringify({ protocols: [{ type: "grpc", capable: true, connection: { target: "gateway.local:7573", security: "tls", caCertificate } }] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
       if (url.hostname === "gateway.example" && url.pathname === "/enrollment/join/start") {
         order.push("start");
-        expect(JSON.parse(String(init?.body))).toMatchObject({ transport: { type: "grpc", mode: "reverse" } });
-        return new Response(JSON.stringify({ transactionId: "txn-1", credential: provisional }), { status: 201, headers: { "content-type": "application/json" } });
+        expect(JSON.parse(String(init?.body))).toMatchObject({ transports: [{ type: "grpc", mode: "reverse" }] });
+        return new Response(JSON.stringify({ transactionId: "txn-1", credential: membershipCredential }), { status: 201, headers: { "content-type": "application/json" } });
+      }
+      if (url.hostname === "127.0.0.1" && url.pathname === "/enrollment/membership/stage") {
+        order.push("stage");
+        expect(new Headers(init?.headers).get("x-queqiao-worker-token")).toBe(localControl);
+        expect(JSON.parse(String(init?.body))).toEqual({ transactionId: "txn-1", gateway: "https://gateway.example/", credential: membershipCredential });
+        return new Response(null, { status: 204 });
       }
       if (url.hostname === "127.0.0.1" && url.pathname === "/enrollment/reverse-session/connect") {
         order.push("activate");
-        expect(new Headers(init?.headers).get("x-queqiao-worker-token")).toBe(provisional);
-        expect(JSON.parse(String(init?.body))).toEqual({ target: "gateway.local:7573", caCertificate });
+        expect(new Headers(init?.headers).get("x-queqiao-worker-token")).toBe(localControl);
+        expect(JSON.parse(String(init?.body))).toEqual({ target: "gateway.local:7573", security: "tls", caCertificate, gateway: "https://gateway.example/", credential: membershipCredential });
         return new Response(null, { status: 204 });
       }
       if (url.hostname === "gateway.example" && url.pathname === "/enrollment/join/confirm") {
         order.push("confirm");
         return new Response(JSON.stringify({ joined: true, workerId, environmentId }), { status: 200, headers: { "content-type": "application/json" } });
       }
+      if (url.hostname === "127.0.0.1" && url.pathname === "/enrollment/membership/commit") {
+        order.push("local-commit");
+        return new Response(null, { status: 204 });
+      }
       throw new Error(`Unexpected fetch: ${url.href}`);
     });
     try {
-      const joinCode = encodeJoinCode({ v: 1, gateway: "https://gateway.example/", token: "one-time-token", workerSession: { target: "gateway.local:7573", caCertificate } });
-      const result: any = await joinWorker(configFile, ["worker", "join", "--join-code", joinCode]);
+      const joinCode = encodeJoinCode({ v: 1, gateway: "https://gateway.example/", token: "one-time-token" });
+      const result: any = await joinWorker(configFile, ["worker", "join", "--join-code", joinCode, "--protocols", "grpc"]);
       expect(result).toMatchObject({ joined: true, workerId, environmentId });
-      expect(order).toEqual(["start", "activate", "confirm"]);
-      expect((await readFile(tokenFile, "utf8")).trim()).toBe(provisional);
+      expect(order).toEqual(["discover", "start", "stage", "activate", "confirm", "local-commit"]);
+      expect((await readFile(tokenFile, "utf8")).trim()).toBe(localControl);
       const runtime = await readRuntimeConfig(configFile);
-      expect(runtime.worker?.reverseSession?.target).toBe("gateway.local:7573");
-      expect(await readFile(runtime.worker!.reverseSession!.caCertificateFile, "utf8")).toBe(caCertificate);
+      expect(runtime.worker?.memberships).toHaveLength(1);
+      expect(runtime.worker?.memberships[0]?.protocols.grpc).toMatchObject({ target: "gateway.local:7573", security: "tls" });
+      expect(await readFile(runtime.worker!.memberships[0]!.protocols.grpc!.caCertificateFile!, "utf8")).toBe(caCertificate);
+      expect((await readFile(runtime.worker!.memberships[0]!.credentialRef.path, "utf8")).trim()).toBe(membershipCredential);
     } finally {
       fetchSpy.mockRestore();
     }

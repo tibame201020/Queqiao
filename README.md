@@ -34,7 +34,7 @@ Complete the first deployment entirely inside Workstation.
 
 ### 1. Set up the Gateway
 
-Choose **Gateway (`1`) → Set up Gateway**, then enter its public URL, Gateway port, and local management port.
+Choose **Gateway (`1`) → Set up Gateway**, then enter its public URL, Gateway port, and local management port. **Worker connectivity** defaults to **Local only**; choose **Remote workers** when another machine must join, then enter the Gateway DNS name or LAN IP and the dedicated TLS gRPC port.
 
 ![Gateway setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/01-gateway-setup.gif)
 
@@ -64,13 +64,13 @@ Return to **Gateway (`1`)** and run **Create join code**. The short-lived code i
 
 ### 6. Join the Worker
 
-Open **Worker (`2`) → Join Gateway** and choose the local Gateway or paste a self-contained join code from another host.
+Open **Worker (`2`) → Join Gateway** and choose the local Gateway or paste a self-contained join code from another host. Remote join codes carry the pinned Gateway certificate and Worker-session target, so the Worker opens the outbound TLS gRPC session without exposing an inbound LAN execution port.
 
 ![Worker join](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/06-worker-join.gif)
 
 ### 7. Verify Gateway details
 
-Return to the Gateway Inspector and press `i`. Detailed Info exposes runtime status, connector information, and enrolled Workers without leaving Workstation.
+Return to the Gateway Inspector and press `i`. Detailed Info exposes runtime status, connector information, enrolled Workers, and whether Worker transport is **Local only** or **Remote · TLS gRPC** without leaving Workstation.
 
 ![Gateway Detailed Info](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/07-gateway-detail.gif)
 

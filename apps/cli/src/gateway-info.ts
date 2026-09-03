@@ -37,6 +37,8 @@ export type GatewayInfoResult = {
   managed?: boolean;
   servicePort?: number;
   managementPort?: number;
+  workerSessionMode?: "local" | "remote";
+  workerSessionTarget?: string;
   allowedRedirectOrigins?: string[];
 };
 
@@ -106,6 +108,11 @@ export async function getGatewayInfo(
     result.managed = status.managed;
     result.servicePort = config.gateway.listen.port;
     result.managementPort = config.gateway.managementListen.port;
+    result.workerSessionMode = config.gateway.workerSessionListen?.host === "0.0.0.0" ? "remote" : "local";
+    if (result.workerSessionMode === "remote" && config.gateway.workerSessionAdvertiseHost && config.gateway.workerSessionListen) {
+      const host = config.gateway.workerSessionAdvertiseHost;
+      result.workerSessionTarget = `${host.includes(":") ? `[${host}]` : host}:${config.gateway.workerSessionListen.port}`;
+    }
     result.allowedRedirectOrigins = [...config.gateway.allowedRedirectOrigins];
   }
   return result;

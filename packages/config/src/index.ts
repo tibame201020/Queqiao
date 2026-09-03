@@ -1,5 +1,6 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { parse, stringify } from "yaml";
 import {
   approvalMethodSchema,
@@ -192,7 +193,22 @@ const runtimeConfigBaseSchema = z.object({
     workerId: workerIdSchema.optional(),
     environmentId: environmentIdSchema,
     listen: z.object({ host: z.literal("127.0.0.1").default("127.0.0.1"), port: z.number().int().min(1).max(65535).default(7576) }),
+    // Local control credential used only by CLI/Workstation -> local Worker control APIs.
     tokenFile: z.string().min(1),
+    memberships: z.array(z.object({
+      gateway: z.url().transform((value) => new URL(value).href),
+      credentialRef: z.object({ kind: z.literal("secret-file"), path: z.string().min(1).max(4096) }),
+      protocols: z.object({
+        grpc: z.object({
+          target: z.string().min(3).max(512),
+          security: z.enum(["tls", "loopback"]).default("tls"),
+          caCertificateFile: z.string().min(1).optional(),
+        }).superRefine((grpc, ctx) => {
+          if (grpc.security === "tls" && !grpc.caCertificateFile) ctx.addIssue({ code: "custom", path: ["caCertificateFile"], message: "TLS gRPC membership requires a CA certificate file" });
+        }).optional(),
+      }).catchall(z.unknown()).default({}),
+    })).default([]),
+    // Legacy single-Gateway reverse-session state. Readable during migration only.
     reverseSession: z.object({
       target: z.string().min(3).max(512),
       caCertificateFile: z.string().min(1),
@@ -206,6 +222,16 @@ export const runtimeConfigRepairSchema = runtimeConfigBaseSchema.superRefine((co
   if (config.gateway?.workerSessionListen?.host === "0.0.0.0") {
     if (!config.gateway.workerSessionAdvertiseHost) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionAdvertiseHost"], message: "Remote Worker session listener requires an advertised host" });
     if (!config.gateway.workerSessionTls) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionTls"], message: "Remote Worker session listener requires TLS" });
+  }
+  if (config.worker) {
+    const gateways = new Set<string>();
+    for (const [index, membership] of config.worker.memberships.entries()) {
+      if (gateways.has(membership.gateway)) ctx.addIssue({ code: "custom", path: ["worker", "memberships", index, "gateway"], message: "Worker Gateway membership URL must be unique" });
+      gateways.add(membership.gateway);
+      if (path.resolve(membership.credentialRef.path) === path.resolve(config.worker.tokenFile)) {
+        ctx.addIssue({ code: "custom", path: ["worker", "memberships", index, "credentialRef", "path"], message: "Gateway membership credential must be separate from the Worker local control credential" });
+      }
+    }
   }
   const workspaceIds = new Set<string>();
   for (const [index, workspace] of config.workspaces.entries()) {

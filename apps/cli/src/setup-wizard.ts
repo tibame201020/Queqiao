@@ -1,6 +1,7 @@
 import { access, readdir } from "node:fs/promises";
 import path from "node:path";
 import { createServer } from "node:net";
+import { hostname as systemHostname, networkInterfaces as systemNetworkInterfaces, type NetworkInterfaceInfo } from "node:os";
 import { cancel, intro, isCancel, outro } from "@clack/prompts";
 import { readRuntimeConfig, readRuntimeConfigForRepair } from "@queqiao/config";
 import {
@@ -8,7 +9,7 @@ import {
   resolveRuntimeLayoutForNamedRole,
   type RuntimeRole,
 } from "@queqiao/platform-paths";
-import { setupGateway as setupGatewayPrimitive, setupWorker as setupWorkerPrimitive, type WorkerSetupOptions } from "./enrollment-cli.js";
+import { changeWorkerMembershipProtocols, describeGatewayProtocolOffer, inspectWorkerMembershipProtocols, reconcileWorkerMembershipProtocols, setupGateway as setupGatewayPrimitive, setupWorker as setupWorkerPrimitive, type WorkerSetupOptions } from "./enrollment-cli.js";
 import { accessConfigurationToWorkspacePolicy } from "./access-configuration.js";
 import { collectAccessConfiguration, type AccessConfigurationPrompts } from "./access-configuration-flow.js";
 import { createAccessConfigurationPrompts } from "./access-configuration-prompts.js";
@@ -17,13 +18,22 @@ import { resolveWorkspaceAuthorityRoot } from "./workspace-authority.js";
 import { workspacePath } from "./workspace-path-prompt.js";
 import { suggestedWorkspaceId, workspaceConfigFromAnswers, type WorkspaceProfile } from "./workspace-cli.js";
 import { createQueqiaoTheme } from "./tui-theme.js";
+import { queqiaoMultiselect } from "./tui-multiselect.js";
 
 const CREATE_NEW = "__create__";
 
-export type RoleSetupPrompts = AccessConfigurationPrompts;
+export type RoleSetupPrompts = AccessConfigurationPrompts & {
+  protocols?: (message: string, choices: Array<{ value: string; label: string; description?: string; disabled?: boolean }>, initialValues: string[]) => Promise<string[]>;
+};
 
 type SetupGatewayFn = typeof setupGatewayPrimitive;
 type SetupWorkerFn = typeof setupWorkerPrimitive;
+
+export type WorkerSessionHostCandidate = {
+  value: string;
+  label: string;
+  description: string;
+};
 
 type RoleSetupDependencies = {
   env?: NodeJS.ProcessEnv;
@@ -32,8 +42,64 @@ type RoleSetupDependencies = {
   prompts?: RoleSetupPrompts;
   setupGateway?: SetupGatewayFn;
   setupWorker?: SetupWorkerFn;
+  inspectWorkerProtocols?: typeof inspectWorkerMembershipProtocols;
+  reconcileWorkerProtocols?: typeof reconcileWorkerMembershipProtocols;
+  changeWorkerProtocols?: typeof changeWorkerMembershipProtocols;
   portAvailable?: (port: number) => Promise<boolean>;
+  workerSessionHostCandidates?: () => WorkerSessionHostCandidate[];
 };
+
+const CUSTOM_WORKER_SESSION_HOST = "__custom_worker_session_host__";
+
+function workerSessionInterfaceRank(name: string): number {
+  if (/vethernet|wsl|docker|hyper-v|vmware|virtualbox|loopback/i.test(name)) return 80;
+  if (/wi-?fi|wireless|wlan/i.test(name)) return 10;
+  if (/ethernet|\beth\d*\b/i.test(name)) return 20;
+  if (/tailscale/i.test(name)) return 30;
+  if (/vpn|wireguard|zerotier/i.test(name)) return 40;
+  return 50;
+}
+
+function usableWorkerSessionAddress(entry: NetworkInterfaceInfo): boolean {
+  const family = String(entry.family);
+  if (entry.internal || (family !== "IPv4" && family !== "4")) return false;
+  if (entry.address.startsWith("169.254.") || entry.address === "0.0.0.0") return false;
+  return true;
+}
+
+export function discoverWorkerSessionHostCandidates(
+  interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = systemNetworkInterfaces(),
+  hostName: string = systemHostname(),
+): WorkerSessionHostCandidate[] {
+  const candidates: Array<WorkerSessionHostCandidate & { rank: number; interfaceName: string }> = [];
+  const seen = new Set<string>();
+  for (const [interfaceName, entries] of Object.entries(interfaces)) {
+    for (const entry of entries || []) {
+      if (!usableWorkerSessionAddress(entry) || seen.has(entry.address)) continue;
+      seen.add(entry.address);
+      const rank = workerSessionInterfaceRank(interfaceName);
+      const virtual = rank >= 80;
+      candidates.push({
+        value: entry.address,
+        label: entry.address,
+        description: `${interfaceName} · detected${virtual ? " · virtual interface" : ""}`,
+        rank,
+        interfaceName,
+      });
+    }
+  }
+  candidates.sort((left, right) => left.rank - right.rank || left.interfaceName.localeCompare(right.interfaceName) || left.value.localeCompare(right.value));
+  const result: WorkerSessionHostCandidate[] = candidates.map(({ rank: _rank, interfaceName: _interfaceName, ...candidate }) => candidate);
+  const normalizedHostname = hostName.trim();
+  if (normalizedHostname && !seen.has(normalizedHostname)) {
+    result.push({
+      value: normalizedHostname,
+      label: normalizedHostname,
+      description: "Hostname · detected · requires name resolution from the Worker",
+    });
+  }
+  return result;
+}
 
 function hint(label: string, description: string): string {
   return `${label} ${createQueqiaoTheme().muted(description)}`;
@@ -110,6 +176,7 @@ async function configuredPortReservations(
       if (role === "gateway" && runtime.gateway) {
         reservations.push({ port: runtime.gateway.listen.port, owner: `Gateway ${instanceName}` });
         reservations.push({ port: runtime.gateway.managementListen.port, owner: `Gateway ${instanceName}` });
+        if (runtime.gateway.workerSessionListen) reservations.push({ port: runtime.gateway.workerSessionListen.port, owner: `Gateway ${instanceName} Worker session` });
       }
       if (role === "worker" && runtime.worker) {
         reservations.push({ port: runtime.worker.listen.port, owner: `Worker ${instanceName}` });
@@ -120,11 +187,19 @@ async function configuredPortReservations(
 }
 
 function defaultPrompts(role: RuntimeRole, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): RoleSetupPrompts {
-  return createAccessConfigurationPrompts({
+  const access = createAccessConfigurationPrompts({
     cancelMessage: `${role === "gateway" ? "Gateway" : "Worker"} setup cancelled`,
     env,
     platform,
   });
+  return {
+    ...access,
+    protocols: async (message, choices, initialValues) => {
+      const value = await queqiaoMultiselect({ message, choices, initialValues, required: true, validate: (selected) => selected?.length ? undefined : "Please select at least one protocol.", summary: (selected) => selected.join(", ") });
+      if (isCancel(value)) { cancel("Worker setup cancelled"); throw new Error("Worker setup cancelled"); }
+      return value.map(String);
+    },
+  };
 }
 
 export async function listNamedRoleInstances(
@@ -216,7 +291,7 @@ export async function runRoleSetupWizard(
   const reservedPorts = await configuredPortReservations(env, platform, role, name);
   const reservedBy = (port: number) => reservedPorts.find((entry) => entry.port === port)?.owner;
 
-  let setupArgs = stripOption(stripOption(stripOption(stripOption(args, "public-base-url"), "port"), "management-port"), "environment-id");
+  let setupArgs = stripOption(stripOption(stripOption(stripOption(stripOption(stripOption(stripOption(args, "public-base-url"), "port"), "management-port"), "worker-session-mode"), "worker-session-host"), "worker-session-port"), "environment-id");
   let result: unknown;
 
   if (role === "gateway") {
@@ -260,12 +335,63 @@ export async function runRoleSetupWizard(
       throw new Error(`Management port ${managementPort} is already in use`);
     }
 
+    const currentRemote = current?.gateway?.workerSessionListen?.host === "0.0.0.0";
+    const localExposure = { value: "local", label: "This machine only", description: "Keep the gRPC Worker-session listener on loopback. Worker protocols are selected per membership." };
+    const remoteExposure = { value: "remote", label: "Network-accessible", description: "Expose a TLS gRPC Worker-session listener for remote Workers. Worker protocols are selected per membership." };
+    const workerConnectivity = (await prompts.choose("Worker session exposure", currentRemote
+      ? [remoteExposure, localExposure]
+      : [localExposure, remoteExposure])) || (currentRemote ? "remote" : "local");
+
     setupArgs = [
       ...setupArgs,
       "--public-base-url", publicBaseUrl,
       "--port", String(gatewayPort),
       "--management-port", String(managementPort),
+      "--worker-session-mode", workerConnectivity,
     ];
+    if (workerConnectivity === "remote") {
+      const detectedHosts = (dependencies.workerSessionHostCandidates ?? discoverWorkerSessionHostCandidates)();
+      const currentWorkerSessionHost = current?.gateway?.workerSessionAdvertiseHost?.trim();
+      const hostChoices: WorkerSessionHostCandidate[] = [
+        ...(currentWorkerSessionHost ? [{ value: currentWorkerSessionHost, label: currentWorkerSessionHost, description: "Current configuration" }] : []),
+        ...detectedHosts.filter((candidate) => candidate.value !== currentWorkerSessionHost),
+      ];
+      const selectedWorkerSessionHost = await prompts.choose(
+        hint("Worker session host", "Address remote Workers use to reach this Gateway."),
+        [
+          ...hostChoices,
+          { value: CUSTOM_WORKER_SESSION_HOST, label: "Custom DNS name or IP", description: "Enter another reachable address" },
+        ],
+      );
+      const workerSessionHost = selectedWorkerSessionHost === CUSTOM_WORKER_SESSION_HOST
+        ? (await prompts.text(
+          hint("Custom Worker session host", "DNS name or IP address reachable from remote Workers."),
+          currentWorkerSessionHost,
+          (value) => {
+            const host = value.trim();
+            if (!host) return "Worker session host is required";
+            return host.includes("://") || host.includes("/") || /\s/.test(host) ? "Enter a DNS name or IP address without a scheme or path" : undefined;
+          },
+        )).trim()
+        : selectedWorkerSessionHost.trim();
+      if (!workerSessionHost) throw new Error("Worker session host is required");
+      const currentWorkerSessionPort = current?.gateway?.workerSessionListen?.port;
+      const workerSessionPortText = await prompts.text(
+        hint("Worker session port", "TLS gRPC port for remote Worker sessions."),
+        String(currentWorkerSessionPort ?? gatewayPort - 2),
+        (value) => {
+          const error = validatePort(value, "Worker session port");
+          if (error) return error;
+          const port = Number(value);
+          return port === gatewayPort || port === managementPort ? "Worker session port must differ from Gateway and Management ports" : undefined;
+        },
+      );
+      const workerSessionPort = Number(workerSessionPortText);
+      const workerSessionPortOwner = reservedBy(workerSessionPort);
+      if (workerSessionPortOwner) throw new Error(`Worker session port ${workerSessionPort} is reserved by ${workerSessionPortOwner}`);
+      if (currentWorkerSessionPort !== workerSessionPort && !await portAvailable(workerSessionPort)) throw new Error(`Worker session port ${workerSessionPort} is already in use`);
+      setupArgs.push("--worker-session-host", workerSessionHost, "--worker-session-port", workerSessionPortText);
+    }
     const primitive = dependencies.setupGateway ?? setupGatewayPrimitive;
     result = await primitive(layout.configFile, setupArgs, layout.gatewayStateDir, layout.secretsDir);
   } else {
@@ -281,7 +407,7 @@ export async function runRoleSetupWizard(
     if (currentWorkerPort !== workerPort && !await portAvailable(workerPort)) {
       throw new Error(`Worker port ${workerPort} is already in use`);
     }
-    setupArgs = [...setupArgs, "--port", workerPortText];
+    setupArgs = [...setupArgs, "--port", workerPortText, ...(creating ? ["--environment-id", name] : [])];
     const setupOptions: WorkerSetupOptions = {};
     const configuredWorkspaces = current?.workspaces || [];
     if (creating || !configuredWorkspaces.length) {
@@ -289,6 +415,25 @@ export async function runRoleSetupWizard(
     }
     const primitive = dependencies.setupWorker ?? setupWorkerPrimitive;
     result = await primitive(layout.configFile, setupArgs, layout.secretsDir, undefined, setupOptions);
+    if (!creating && current?.worker?.memberships?.length) {
+      for (const membership of current.worker.memberships) {
+        await (dependencies.reconcileWorkerProtocols ?? reconcileWorkerMembershipProtocols)(layout.configFile, membership.gateway);
+        if (currentWorkerPort !== workerPort) continue;
+        const state = await (dependencies.inspectWorkerProtocols ?? inspectWorkerMembershipProtocols)(layout.configFile, membership.gateway);
+        const choices = state.offers.map((offer) => ({
+          value: offer.type,
+          label: offer.type === "grpc" ? "gRPC" : "HTTP",
+          description: describeGatewayProtocolOffer(offer),
+          disabled: !offer.capable,
+        }));
+        const protocolPrompt = prompts.protocols;
+        if (!protocolPrompt) continue;
+        const selectedProtocols = await protocolPrompt(`Protocols - ${new URL(membership.gateway).host}`, choices, state.enabled);
+        const before = [...state.enabled].sort().join(",");
+        const after = [...selectedProtocols].sort().join(",");
+        if (before !== after) await (dependencies.changeWorkerProtocols ?? changeWorkerMembershipProtocols)(layout.configFile, membership.gateway, selectedProtocols);
+      }
+    }
   }
 
   if (!injectedPrompts) outro(`${roleLabel} ${creating ? "created" : "updated"}: ${name}`);

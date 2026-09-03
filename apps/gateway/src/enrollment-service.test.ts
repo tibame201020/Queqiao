@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir } from "node:fs/promises";
+﻿import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Server } from "node:http";
@@ -86,7 +86,7 @@ describe("Worker enrollment transaction", () => {
     expect(membership.workerId).toBe(workerId);
     const registry = await store.read();
     expect(registry.workers).toHaveLength(1);
-    expect(registry.workers[0]?.transport).toEqual({ type: "http", endpoint });
+    expect(registry.workers[0]?.transports).toEqual([{ type: "http", endpoint }]);
     const persisted = (await readFile(registry.workers[0]!.credentialRefs[0]!.path, "utf8")).trim();
     expect(persisted).toBe(started.credential);
   });
@@ -144,8 +144,8 @@ describe("Worker enrollment transaction", () => {
     await service.confirmJoin(started.transactionId, started.credential);
     const secondEndpoint = await workerServer(workerId, "windows", credential);
     const updated = await service.updateTransport(workerId, { type: "http", endpoint: secondEndpoint });
-    expect(updated.transport).toEqual({ type: "http", endpoint: secondEndpoint });
-    expect((await store.read()).workers[0]?.transport).toEqual({ type: "http", endpoint: secondEndpoint });
+    expect(updated.transports).toEqual([{ type: "http", endpoint: secondEndpoint }]);
+    expect((await store.read()).workers[0]?.transports).toEqual([{ type: "http", endpoint: secondEndpoint }]);
   });
 
   it("rejects an explicit transport update that collides with another enrolled Worker", async () => {
@@ -155,7 +155,7 @@ describe("Worker enrollment transaction", () => {
     await store.add({ workerId: firstWorkerId, environmentId: "windows", transport: { type: "http", endpoint: "http://127.0.0.1:7576/" }, credentialRefs: [{ kind: "secret-file", path: path.join("secrets", "first.secret") }] });
     await store.add({ workerId: secondWorkerId, environmentId: "linux", transport: { type: "http", endpoint: "http://127.0.0.1:7577/" }, credentialRefs: [{ kind: "secret-file", path: path.join("secrets", "second.secret") }] });
     await expect(service.updateTransport(firstWorkerId, { type: "http", endpoint: "http://localhost:7577/" })).rejects.toMatchObject({ status: 409, code: "worker_transport_conflict" });
-    expect((await store.read()).workers.find((worker) => worker.workerId === firstWorkerId)?.transport.endpoint).toBe("http://127.0.0.1:7576/");
+    expect(((await store.read()).workers.find((worker) => worker.workerId === firstWorkerId)?.transports.find((transport) => transport.type === "http") as { type: "http"; endpoint: string } | undefined)?.endpoint).toBe("http://127.0.0.1:7576/");
   });
 
   it("keeps the prior transport when an explicit update points at the wrong Worker identity", async () => {
@@ -168,7 +168,30 @@ describe("Worker enrollment transaction", () => {
     await service.confirmJoin(started.transactionId, started.credential);
     const wrongEndpoint = await workerServer(crypto.randomUUID(), "windows", credential);
     await expect(service.updateTransport(workerId, { type: "http", endpoint: wrongEndpoint })).rejects.toMatchObject({ code: "worker_identity_mismatch" });
-    expect((await store.read()).workers[0]?.transport).toEqual({ type: "http", endpoint: firstEndpoint });
+    expect((await store.read()).workers[0]?.transports).toEqual([{ type: "http", endpoint: firstEndpoint }]);
+  });
+});
+
+describe("membership gRPC staging", () => {
+  it("authenticates a reverse session with the existing membership credential before gRPC becomes routable", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "queqiao-grpc-stage-"));
+    const store = new WorkerMembershipStore(directory);
+    const sessions = new WorkerSessionRegistry();
+    const service = new EnrollmentService(store, directory, sessions);
+    const workerId = crypto.randomUUID();
+    const credential = "s".repeat(48);
+    const credentialFile = path.join(directory, "stage.secret");
+    await writeFile(credentialFile, `${credential}\n`, { mode: 0o600 });
+    await store.add({
+      workerId,
+      environmentId: "stage-worker",
+      transports: [{ type: "http", endpoint: "http://127.0.0.1:7576/" }],
+      credentialRefs: [{ kind: "secret-file", path: credentialFile }],
+    });
+    const hello = { protocolVersion: "3.0" as const, workerId, environmentId: "stage-worker", instanceId: crypto.randomUUID(), platform: "windows" as const, capabilities: [] };
+
+    await expect(service.authenticateWorkerSession(hello, credential)).resolves.toEqual({ kind: "membership" });
+    expect((await store.read()).workers[0]?.transports).toEqual([{ type: "http", endpoint: "http://127.0.0.1:7576/" }]);
   });
 });
 
@@ -195,7 +218,7 @@ describe("reverse gRPC Worker enrollment", () => {
     sessions.attach(hello, transport, authentication);
 
     const membership = await service.confirmJoin(started.transactionId, started.credential);
-    expect(membership.transport).toEqual({ type: "grpc", mode: "reverse" });
+    expect(membership.transports).toEqual([{ type: "grpc", mode: "reverse" }]);
     expect(sessions.require(workerId).authentication).toEqual({ kind: "membership" });
     expect((await store.read()).workers).toHaveLength(1);
     await expect(service.authenticateWorkerSession(hello, started.credential)).resolves.toEqual({ kind: "membership" });

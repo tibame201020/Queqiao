@@ -30,7 +30,6 @@ const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "gateway info": "packaged-process-connector-info",
   "gateway join-token": "packaged-live-enrollment",
   "gateway workers list": "packaged-live-enrollment",
-  "gateway workers update": "packaged-live-enrollment",
   "gateway workers remove": "packaged-live-enrollment",
   "worker list": "packaged-process-state",
   "worker setup": "interactive-setup",
@@ -276,7 +275,7 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       platform: process.platform,
       interactive: true,
       prompts: prompts({
-        choices: ["__create__"],
+        choices: ["__create__", "local"],
         texts: [GATEWAY, `http://127.0.0.1:${gatewayPort}/`, String(gatewayPort), String(managementPort)],
       }),
       portAvailable: async () => true,
@@ -391,11 +390,9 @@ describe.sequential("isolated packaged CLI acceptance", () => {
 
       const joinToken = await waitForJson<any>(["gateway", "join-token", "--gateway", GATEWAY, "--expires", "60", "--json"], (value) => typeof value.joinCode === "string");
       expect(joinToken.joinCode).toMatch(/^qjq1:/);
-      expect(parseJson<any>(await runCli(["worker", "join", "--worker", WORKER, "--join-code", joinToken.joinCode, "--json"]))).toMatchObject({ joined: true, workerId: workerConfig.worker.workerId, environmentId: workerConfig.worker.environmentId });
+      expect(parseJson<any>(await runCli(["worker", "join", "--worker", WORKER, "--join-code", joinToken.joinCode, "--protocols", "http", "--json"]))).toMatchObject({ joined: true, workerId: workerConfig.worker.workerId, environmentId: workerConfig.worker.environmentId });
 
       expect(parseJson<any>(await runCli(["gateway", "workers", "list", "--gateway", GATEWAY, "--json"])).workers).toHaveLength(1);
-      const endpoint = `http://127.0.0.1:${workerPort}/`;
-      expect(parseJson<any>(await runCli(["gateway", "workers", "update", "--gateway", GATEWAY, "--worker-id", workerConfig.worker.workerId, "--endpoint", endpoint, "--json"]))).toMatchObject({ updated: true, workerId: workerConfig.worker.workerId });
 
       const runningGateway = await waitForJson<any>(["gateway", "status", "--gateway", GATEWAY, "--json"], (value) => value.active === true && value.managed === true && value.health?.healthy === true, 30_000);
       expect(runningGateway.pid).toBe(gatewayStart.pid);

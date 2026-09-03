@@ -9,7 +9,7 @@ import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import { resolveExtensionHubRoot } from "@queqiao/platform-paths";
 import { assertCommandOwnership, resolveCommandLayout } from "./command-layout.js";
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
-import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, updateJoinedWorkerTransport, updateWorkerPort } from "./enrollment-cli.js";
+import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, updateWorkerPort } from "./enrollment-cli.js";
 import { runRoleSetupWizard } from "./setup-wizard.js";
 import { removeRoleInstance } from "./role-remove.js";
 import { uninstallQueqiao } from "./uninstall-cli.js";
@@ -139,7 +139,6 @@ async function main() {
   if (dispatch?.handler === "gateway-join-token") return print(await createJoinToken(configFile, outputArgs));
   if (dispatch?.handler === "worker-join") return print(await joinWorker(configFile, args));
   if (dispatch?.handler === "membership-list") return print(await listJoinedWorkers(configFile));
-  if (dispatch?.handler === "membership-update") return print(await updateJoinedWorkerTransport(configFile, requiredOption(args, "worker-id"), requiredOption(args, "endpoint")));
   if (dispatch?.handler === "membership-remove") return print(await removeJoinedWorker(configFile, requiredOption(args, "worker-id")));
   if (dispatch?.handler === "workspace-list") return print(await listManagedWorkspaces(configFile));
   if (dispatch?.handler === "workspace-add") { requiredOption(args, "worker"); return print(await addWorkspace(configFile, args)); }

@@ -19,7 +19,10 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
   // Reject the former flat public surface before translating canonical commands
   // to the existing internal handler routes.
   if (domain === "worker" && action === "update") {
-    return removedRoute(`queqiao gateway workers ${action}`);
+    return removedRoute("queqiao worker setup");
+  }
+  if (domain === "gateway" && action === "workers" && resource === "update") {
+    return removedRoute("queqiao worker setup");
   }
   if (domain === "profile" && action === "set") return removedRoute("queqiao workspace");
   if (domain === "tool" && ["allow", "deny"].includes(action || "")) return removedRoute("queqiao workspace");
@@ -30,7 +33,7 @@ export function normalizeCliArgs(input: readonly string[]): string[] {
   if (domain === "tool" && action === "explain") return removedRoute("queqiao doctor tool explain <tool> --gateway <name>");
   if (domain === "config" && action === "paths") return removedRoute("queqiao doctor paths");
 
-  if (domain === "gateway" && action === "workers" && ["list", "update", "remove"].includes(resource || "")) {
+  if (domain === "gateway" && action === "workers" && ["list", "remove"].includes(resource || "")) {
     return replacePrefix(args, 3, ["membership", resource!]);
   }
 
@@ -67,7 +70,7 @@ export const COMMAND_TREE: CommandNode = {
         status: terminal,
         info: terminal,
         "join-token": terminal,
-        workers: { children: { list: terminal, update: terminal, remove: terminal } },
+        workers: { children: { list: terminal, remove: terminal } },
       },
     },
     worker: {
@@ -119,7 +122,7 @@ export const COMMAND_TREE: CommandNode = {
 
 export type CliHandlerKey =
   | "list-role-instances" | "role-setup" | "role-remove" | "runtime-serve" | "runtime-stop" | "runtime-status"
-  | "gateway-info" | "gateway-join-token" | "membership-list" | "membership-update" | "membership-remove" | "worker-port" | "worker-join"
+  | "gateway-info" | "gateway-join-token" | "membership-list" | "membership-remove" | "worker-port" | "worker-join"
   | "workspace-manager" | "workspace-add" | "workspace-list" | "workspace-info" | "workspace-edit" | "workspace-remove" | "workspace-profiles-list" | "workspace-profiles-info" | "workspace-profiles-create" | "workspace-profiles-edit" | "workspace-profiles-rename" | "workspace-profiles-delete"
   | "extension-install" | "extension-attach" | "extension-detach" | "extension-uninstall" | "extension-list" | "extension-show" | "extension-doctor"
   | "version" | "completion" | "workstation" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
@@ -147,7 +150,6 @@ export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "gateway info", handler: "gateway-info", options: ["gateway", "detail", "copy-url", "copy-secret"], valueOptions: ["gateway"] },
   { route: "gateway join-token", handler: "gateway-join-token", options: ["gateway", "expires"], valueOptions: ["gateway", "expires"] },
   { route: "gateway workers list", handler: "membership-list", options: ["gateway"], valueOptions: ["gateway"] },
-  { route: "gateway workers update", handler: "membership-update", options: ["gateway", "worker-id", "endpoint"], valueOptions: ["gateway", "worker-id", "endpoint"] },
   { route: "gateway workers remove", handler: "membership-remove", options: ["gateway", "worker-id"], valueOptions: ["gateway", "worker-id"] },
   { route: "worker list", handler: "list-role-instances", options: [] },
   { route: "worker setup", handler: "role-setup", options: [] },
@@ -156,7 +158,7 @@ export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "worker serve", handler: "runtime-serve", options: ["bg", "worker"], valueOptions: ["worker"] },
   { route: "worker stop", handler: "runtime-stop", options: ["worker"], valueOptions: ["worker"] },
   { route: "worker status", handler: "runtime-status", options: ["worker"], valueOptions: ["worker"] },
-  { route: "worker join", handler: "worker-join", options: ["worker", "join-code"], valueOptions: ["worker", "join-code"] },
+  { route: "worker join", handler: "worker-join", options: ["worker", "join-code", "protocols"], valueOptions: ["worker", "join-code", "protocols"] },
   { route: "workspace", handler: "workspace-manager", options: [] },
   { route: "workspace add", handler: "workspace-add", options: ["worker", "root", "display-name", "access-profile"], valueOptions: ["worker", "root", "display-name", "access-profile"] },
   { route: "workspace list", handler: "workspace-list", options: ["worker"], valueOptions: ["worker"] },
@@ -412,16 +414,15 @@ const GATEWAY_JOIN_TOKEN_HELP = `Usage: queqiao gateway join-token [--gateway <g
 Creates a self-contained one-time join code and copies it to the clipboard.
 Default expiry: 300 seconds. Allowed range: 30-3600 seconds.`;
 
-const WORKER_JOIN_HELP = `Usage: queqiao worker join [--worker <worker>] [--join-code <code>] [--json]
+const WORKER_JOIN_HELP = `Usage: queqiao worker join [--worker <worker>] [--join-code <code>] [--protocols <http,grpc>] [--json]
 
-Without --join-code, prompts securely for one self-contained join code.
-Gateway URL and Worker endpoint are derived automatically.`;
+Interactive use discovers Gateway capabilities and prompts for one or more Worker protocols.
+For non-interactive use with --join-code, --protocols is required. Gateway URL and protocol bootstrap metadata are discovered automatically.`;
 
 const GATEWAY_WORKERS_HELP = `Usage: queqiao gateway workers <command> [options]
 
 Commands:
   list
-  update --worker-id <id> --endpoint <loopback-worker-url>
   remove --worker-id <id>`;
 
 const WORKER_HELP = `Usage: queqiao worker <command> [options]
@@ -487,7 +488,6 @@ Advanced compatibility commands:
   migrate runtime-v1 [--execute]`;
 
 const REQUIRED_OPTIONS: Readonly<Record<string, readonly string[]>> = {
-  "gateway workers update": ["worker-id", "endpoint"],
   "gateway workers remove": ["worker-id"],
 };
 

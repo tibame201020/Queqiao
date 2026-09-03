@@ -8,7 +8,8 @@ import { createWorkerApp } from "./app.js";
 import { WorkerCredentialSource } from "./worker-credential-source.js";
 import { ReloadableExtensionHost } from "./reloadable-extension-host.js";
 import { createWorkerProtocolService } from "./worker-protocol-service.js";
-import { WorkerReverseSessionManager } from "./reverse-session-manager.js";
+import { WorkerGatewaySessionManager } from "./worker-gateway-session-manager.js";
+import { WorkerMembershipCredentialRegistry } from "./worker-membership-credentials.js";
 
 const configFile = requireRuntimeConfigFile();
 const runtime = await readRuntimeConfig(configFile);
@@ -18,6 +19,18 @@ if (runtime.workspaces.length < 1) throw new Error("Worker has no Workspace; run
 const credentialFile = path.resolve(runtime.worker.tokenFile);
 const credential = new WorkerCredentialSource(credentialFile);
 await credential.current();
+const membershipCredentials = new WorkerMembershipCredentialRegistry();
+const loadMembershipCredentials = async () => {
+  const latest = await readRuntimeConfig(configFile);
+  const records = [];
+  for (const membership of latest.worker?.memberships ?? []) {
+    if (membership.credentialRef.kind !== "secret-file") continue;
+    const membershipCredential = (await readFile(path.resolve(membership.credentialRef.path), "utf8")).trim();
+    records.push({ gateway: membership.gateway, credential: membershipCredential });
+  }
+  membershipCredentials.replaceDurable(records);
+};
+await loadMembershipCredentials();
 const extensionRuntime = new ReloadableExtensionHost(
   configFile,
   runtime.worker.environmentId,
@@ -33,30 +46,22 @@ const protocolService = await createWorkerProtocolService({
   processes,
   extensionRuntime,
 });
-const reverseSessions = new WorkerReverseSessionManager({
-  service: protocolService,
-  credential,
-  loadPersistent: async () => {
-    const latest = await readRuntimeConfig(configFile);
-    const reverse = latest.worker?.reverseSession;
-    if (!reverse) return undefined;
-    const caCertificate = await readFile(path.resolve(reverse.caCertificateFile), "utf8");
-    return { target: reverse.target, caCertificate };
-  },
-});
+const reverseSessions = new WorkerGatewaySessionManager(configFile, protocolService);
 const app = await createWorkerApp({
   ...(runtime.worker.workerId ? { workerId: runtime.worker.workerId } : {}),
   environmentId: runtime.worker.environmentId,
   workspacesFile: configFile,
   workerCredential: credential,
+  membershipCredentials,
   processes,
   extensionRuntime,
   protocolService,
-  reverseSessionControl: { activate: (input) => reverseSessions.activate(input) },
+  reverseSessionControl: { activate: (input) => reverseSessions.activate(input), deactivate: (gateway) => reverseSessions.deactivate(gateway) },
 });
 const server = app.listen(port, "127.0.0.1", () => {
   console.log(`Queqiao Worker listening on http://127.0.0.1:${port}`);
   void reverseSessions.startPersistent().catch((error) => console.error("Worker reverse-session startup failed", error));
+  void reverseSessions.reconcileMembershipTransports(port).catch((error) => console.error("Worker membership transport reconciliation failed", error));
 });
 
 let stopping = false;

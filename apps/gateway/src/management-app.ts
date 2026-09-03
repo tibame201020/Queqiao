@@ -5,6 +5,7 @@ import express, { type Express } from "express";
 import rateLimit from "express-rate-limit";
 import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
+import type { WorkerSessionRegistry } from "./worker-session-registry.js";
 
 function safeEqual(left: string, right: string): boolean {
   return timingSafeEqual(createHash("sha256").update(left).digest(), createHash("sha256").update(right).digest());
@@ -15,7 +16,7 @@ function contained(base: string, candidate: string): boolean {
   return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
-export function createGatewayManagementApp(options: { secret: string; enrollment: EnrollmentService; memberships: WorkerMembershipStore; stateDirectory: string }): Express {
+export function createGatewayManagementApp(options: { secret: string; enrollment: EnrollmentService; memberships: WorkerMembershipStore; stateDirectory: string; sessions?: Pick<WorkerSessionRegistry, "detachWorker"> }): Express {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "64kb" }));
@@ -38,21 +39,13 @@ export function createGatewayManagementApp(options: { secret: string; enrollment
     }
   });
   app.get("/workers", async (_req, res) => res.json(await options.memberships.read()));
-  app.patch("/workers/:workerId/transport", async (req, res) => {
-    try {
-      const membership = await options.enrollment.updateTransport(req.params.workerId, req.body?.transport);
-      res.json({ updated: true, workerId: membership.workerId, environmentId: membership.environmentId, transport: membership.transport });
-    } catch (error) {
-      const failure = error instanceof EnrollmentError ? error : new EnrollmentError(400, "worker_transport_update_failed", error instanceof Error ? error.message : "Worker transport update failed");
-      res.status(failure.status).json({ error: failure.code, message: failure.message });
-    }
-  });
   app.delete("/workers/:workerId", async (req, res) => {
     try {
       const before = await options.memberships.read();
       const existing = before.workers.find((worker) => worker.workerId === req.params.workerId);
       if (!existing) return res.status(404).json({ error: "worker_not_found" });
       await options.memberships.remove(existing.workerId);
+      options.sessions?.detachWorker(existing.workerId, new Error("Worker membership removed by Gateway management"));
       const managedDirectory = path.join(options.stateDirectory, "worker-credentials");
       for (const reference of existing.credentialRefs) {
         if (reference.kind === "secret-file" && contained(managedDirectory, reference.path)) await rm(reference.path, { force: true }).catch(() => undefined);

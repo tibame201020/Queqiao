@@ -13,7 +13,10 @@ export type RoleInstanceInventory = {
   publicUrl?: string;
   servicePort?: number;
   managementPort?: number;
+  workerSessionMode?: "local" | "remote";
+  workerSessionTarget?: string;
   endpoint?: string;
+  reverseSessionTarget?: string;
   workspaceCount?: number;
 };
 
@@ -64,6 +67,10 @@ export async function listRoleInstances(
         publicUrl: safeUrl(config.gateway.publicBaseUrl),
         servicePort: config.gateway.listen.port,
         managementPort: config.gateway.managementListen.port,
+        workerSessionMode: config.gateway.workerSessionListen?.host === "0.0.0.0" ? "remote" : "local",
+        ...(config.gateway.workerSessionListen?.host === "0.0.0.0" && config.gateway.workerSessionAdvertiseHost
+          ? { workerSessionTarget: `${config.gateway.workerSessionAdvertiseHost.includes(":") ? `[${config.gateway.workerSessionAdvertiseHost}]` : config.gateway.workerSessionAdvertiseHost}:${config.gateway.workerSessionListen.port}` }
+          : {}),
       });
     }
     if (role === "worker" && config.worker) {
@@ -73,6 +80,7 @@ export async function listRoleInstances(
         running: status.active,
         managed: status.managed,
         endpoint: safeUrl(`http://${config.worker.listen.host}:${config.worker.listen.port}/`),
+        ...(config.worker.reverseSession?.target ? { reverseSessionTarget: config.worker.reverseSession.target } : {}),
         workspaceCount: config.workspaces.length,
       });
     }

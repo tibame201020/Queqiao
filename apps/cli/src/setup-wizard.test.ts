@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
-import { listNamedRoleInstances, runRoleSetupWizard, type RoleSetupPrompts } from "./setup-wizard.js";
+import { discoverWorkerSessionHostCandidates, listNamedRoleInstances, runRoleSetupWizard, type RoleSetupPrompts } from "./setup-wizard.js";
 
 function prompts(answers: Array<string>): RoleSetupPrompts {
   return {
@@ -117,15 +117,17 @@ describe("role setup wizard", () => {
     const workspaceRoot = path.join(root, "project");
     await mkdir(workspaceRoot);
     let setupOptions: any;
+    let setupArgs: string[] = [];
     const result = await runRoleSetupWizard("worker", ["worker", "setup"], {
       env,
       platform: process.platform,
       prompts: prompts(["__create__", "windows", "7576", workspaceRoot, "Project", "__custom_access__", "read_file,search_text", "no"]),
       portAvailable: async () => true,
-      setupWorker: async (_config, _args, _secrets, _prompt, options) => { calls.push("windows"); setupOptions = options; return { mode: "create" }; },
+      setupWorker: async (_config, args, _secrets, _prompt, options) => { calls.push("windows"); setupArgs = args; setupOptions = options; return { mode: "create" }; },
     });
 
     expect(calls).toEqual(["windows"]);
+    expect(setupArgs).toEqual(expect.arrayContaining(["--environment-id", "windows"]));
     expect(setupOptions).toMatchObject({ initialWorkspace: { id: "project", displayName: "Project", profile: "coding" } });
     expect(result).toMatchObject({ name: "windows", mode: "create" });
   });
@@ -208,6 +210,71 @@ describe("role setup wizard", () => {
     expect(result).toMatchObject({ name: "wins-worker", mode: "edit", workerId: "11111111-1111-4111-8111-111111111111" });
   });
 
+  it("configures network-accessible Worker session exposure from a detected host candidate", async () => {
+    const root = await mkdirFixture();
+    const env = fixtureEnv(root);
+    let capturedArgs: string[] = [];
+    let workerSessionChoices: Array<{ value: string; label: string; description?: string }> = [];
+    const answers = ["__create__", "stable", "https://gateway.example/stable/", "8075", "8074", "remote", "192.168.1.42", "8073"];
+    const testPrompts: RoleSetupPrompts = {
+      choose: async (message, options) => {
+        if (message.startsWith("Worker session host")) workerSessionChoices = options;
+        return answers.shift() || "";
+      },
+      multi: async () => { throw new Error("Gateway setup must not prompt for access tools"); },
+      commandText: async () => { throw new Error("Gateway setup must not prompt for commands"); },
+      text: async (_message, initialValue) => answers.shift() || initialValue || "",
+    };
+    await runRoleSetupWizard("gateway", ["gateway", "setup"], {
+      env,
+      platform: process.platform,
+      prompts: testPrompts,
+      workerSessionHostCandidates: () => [
+        { value: "192.168.1.42", label: "192.168.1.42", description: "Wi-Fi · detected" },
+        { value: "100.64.0.8", label: "100.64.0.8", description: "Tailscale · detected" },
+      ],
+      portAvailable: async () => true,
+      setupGateway: async (_config, args) => { capturedArgs = args; return { mode: "create" }; },
+    });
+    expect(workerSessionChoices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: "192.168.1.42", description: "Wi-Fi · detected" }),
+      expect.objectContaining({ value: "100.64.0.8", description: "Tailscale · detected" }),
+      expect.objectContaining({ value: "__custom_worker_session_host__", label: "Custom DNS name or IP" }),
+    ]));
+    expect(capturedArgs).toContain("--worker-session-mode");
+    expect(capturedArgs).toContain("remote");
+    expect(capturedArgs).toContain("--worker-session-host");
+    expect(capturedArgs).toContain("192.168.1.42");
+    expect(capturedArgs).toContain("--worker-session-port");
+    expect(capturedArgs).toContain("8073");
+  });
+
+  it("asks for free text only after Custom Worker session host is selected", async () => {
+    const root = await mkdirFixture();
+    const env = fixtureEnv(root);
+    let capturedArgs: string[] = [];
+    const answers = ["__create__", "stable", "https://gateway.example/stable/", "8075", "8074", "remote", "__custom_worker_session_host__", "gateway.example.lan", "8073"];
+    await runRoleSetupWizard("gateway", ["gateway", "setup"], {
+      env,
+      platform: process.platform,
+      prompts: prompts(answers),
+      workerSessionHostCandidates: () => [{ value: "192.168.1.42", label: "192.168.1.42", description: "Wi-Fi · detected" }],
+      portAvailable: async () => true,
+      setupGateway: async (_config, args) => { capturedArgs = args; return { mode: "create" }; },
+    });
+    expect(capturedArgs).toEqual(expect.arrayContaining(["--worker-session-host", "gateway.example.lan"]));
+  });
+
+  it("ranks physical adapters ahead of virtual adapters when detecting Worker session hosts", () => {
+    const candidates = discoverWorkerSessionHostCandidates({
+      "vEthernet (WSL)": [{ address: "172.30.0.1", netmask: "255.255.240.0", family: "IPv4", mac: "00:00:00:00:00:01", internal: false, cidr: "172.30.0.1/20" }],
+      Tailscale: [{ address: "100.64.0.8", netmask: "255.192.0.0", family: "IPv4", mac: "00:00:00:00:00:02", internal: false, cidr: "100.64.0.8/10" }],
+      "Wi-Fi": [{ address: "192.168.1.42", netmask: "255.255.255.0", family: "IPv4", mac: "00:00:00:00:00:03", internal: false, cidr: "192.168.1.42/24" }],
+      Loopback: [{ address: "127.0.0.1", netmask: "255.0.0.0", family: "IPv4", mac: "00:00:00:00:00:00", internal: true, cidr: "127.0.0.1/8" }],
+    }, "desktop-test");
+    expect(candidates.map((candidate) => candidate.value)).toEqual(["192.168.1.42", "100.64.0.8", "172.30.0.1", "desktop-test"]);
+    expect(candidates[2]?.description).toContain("virtual interface");
+  });
   it("rejects --name so interactive setup has one consistent selection model", async () => {
     const root = await mkdirFixture();
     await expect(runRoleSetupWizard("gateway", ["gateway", "setup", "--name", "stable"], {

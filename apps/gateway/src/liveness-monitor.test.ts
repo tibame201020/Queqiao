@@ -24,18 +24,23 @@ describe("GatewayLivenessMonitor", () => {
     monitor.stop();
   });
 
-  it("coalesces overlapping probes instead of starting one loop per Worker or request", async () => {
-    let release!: () => void;
-    const pending = new Promise<void>((resolve) => { release = resolve; });
-    const probeLiveness = vi.fn(async () => pending);
+  it("coalesces overlapping probes but preserves one requested reprobe after the active probe finishes", async () => {
+    let releaseFirst!: () => void;
+    const firstPending = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const probeLiveness = vi.fn()
+      .mockImplementationOnce(async () => firstPending)
+      .mockResolvedValue([]);
     const source = { current: vi.fn(async () => ({ probeLiveness, livenessSnapshot: () => [] })) } as unknown as MembershipWorkerRegistry;
     const monitor = new GatewayLivenessMonitor(source, 30_000);
 
     const first = monitor.probeNow();
     const second = monitor.probeNow();
+    const third = monitor.probeNow();
     await Promise.resolve();
     expect(probeLiveness).toHaveBeenCalledTimes(1);
-    release();
-    await Promise.all([first, second]);
+
+    releaseFirst();
+    await Promise.all([first, second, third]);
+    expect(probeLiveness).toHaveBeenCalledTimes(2);
   });
 });

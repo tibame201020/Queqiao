@@ -31,7 +31,13 @@ describe("Gateway public extension projection", () => {
       async defaultRoute() { return { workspaceId: "coding" }; },
       async workspaceRoute(workspaceId: string) { return { workspaceId, environmentId: "windows", displayName: "Coding", root: "redacted", profile: "coding", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: ["git"] }, online: true as const }; },
       async requireTool() {},
-      async invokeTool(tool: string, input: unknown) { invoked.push({ tool, input }); return { ok: true, repositoryPath: "repo" }; },
+      async invokeTool(tool: string, input: unknown) {
+        invoked.push({ tool, input });
+        return {
+          value: { ok: true, repositoryPath: "repo" },
+          routing: { environmentId: "windows", requestedTransport: null, selectedTransport: "http", selectionReason: "configured_order" },
+        };
+      },
     } as unknown as WorkerRegistry;
     const adapter = createMcpNodeAdapter(workers, ["queqiao:access"], undefined, [installed]);
     const app = express(); app.use(express.json()); app.post("/mcp", (req, res) => { void adapter.handle(req, res, req.body); });

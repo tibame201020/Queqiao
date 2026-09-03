@@ -8,7 +8,7 @@ Each control below has its own recording from the packaged Workstation. The GIFs
 
 ![Gateways control](../assets/workstation/controls/01-gateways.gif)
 
-Gateway is the public control plane. Inventory/Inspector expose lifecycle, public endpoint, service/management ports, health, and enrolled Worker count. Context actions include **Start/Stop**, **Configure**, **Copy MCP URL**, **Copy approval secret**, **Manage Workers**, **Create join code**, and **Remove Gateway**. Preconditions are enforced before execution; for example, join-code creation requires a running Gateway and removal requires it to be stopped.
+Gateway is the public control plane. Inventory/Inspector expose lifecycle, public endpoint, service/management ports, Worker transport mode/target, health, and enrolled Worker count. The shared **Configure** flow also selects **Local only** or **Remote workers** connectivity; remote mode configures the dedicated pinned-TLS gRPC Worker-session listener. Context actions include **Start/Stop**, **Configure**, **Copy MCP URL**, **Copy approval secret**, **Manage Workers**, **Create join code**, and **Remove Gateway**. Preconditions are enforced before execution; for example, join-code creation requires a running Gateway and removal requires it to be stopped.
 
 ## 2. Workers
 

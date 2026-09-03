@@ -10,7 +10,16 @@ export type WorkerAppConfig = WorkerProtocolServiceConfig & {
   workerToken?: string;
   workerCredential?: { current(): Promise<string> };
   protocolService?: WorkerProtocolService;
-  reverseSessionControl?: { activate(input: { target: string; credential: string; caCertificate: string }): Promise<void> };
+  membershipCredentials?: {
+    accepts(credential: string): boolean | Promise<boolean>;
+    stage(input: { transactionId: string; gateway: string; credential: string }): void | Promise<void>;
+    commit(transactionId: string): void | Promise<void>;
+    revoke(transactionId: string): void | Promise<void>;
+  };
+  reverseSessionControl?: {
+    activate(input: { gateway?: string; target: string; credential: string; security?: "tls" | "loopback"; caCertificate?: string }): Promise<void>;
+    deactivate?(gateway: string): void | Promise<void>;
+  };
 };
 
 const readRequestSchema = z.object({ workspaceId: z.string().min(1), path: z.string().min(1).max(4096), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(5000).default(500) });
@@ -28,11 +37,19 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "6mb" }));
+  const localCredential = async () => config.workerCredential ? config.workerCredential.current() : Promise.resolve(config.workerToken || "");
   app.use(async (req: Request, res: Response, next: NextFunction) => {
     if (req.path === "/health") return next();
     try {
-      const expected = config.workerCredential ? await config.workerCredential.current() : config.workerToken || "";
-      if (!safeEqual(req.header("x-queqiao-worker-token") || "", expected)) return res.status(401).json({ error: "unauthorized" });
+      const presented = req.header("x-queqiao-worker-token") || "";
+      const local = await localCredential();
+      const localAuthorized = safeEqual(presented, local);
+      const membershipAuthorized = config.membershipCredentials ? await config.membershipCredentials.accepts(presented) : localAuthorized;
+      const controlOnly = req.path.startsWith("/enrollment/reverse-session/") || req.path.startsWith("/enrollment/membership/");
+      const identity = req.path === "/enrollment/identity";
+      if (controlOnly ? !localAuthorized : identity ? !(localAuthorized || membershipAuthorized) : !membershipAuthorized) {
+        return res.status(401).json({ error: "unauthorized" });
+      }
       next();
     } catch {
       res.status(503).json({ error: "worker_credential_unavailable" });
@@ -44,13 +61,38 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
     catch (error) { sendWorkerError(res, error, "worker_error"); }
   });
   app.get("/enrollment/identity", (_req, res) => res.json({ workerId: config.workerId, environmentId: config.environmentId, protocolVersion: config.workerId ? QUEQIAO_WORKER_PROTOCOL_VERSION : QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION }));
+  if (config.membershipCredentials) {
+    app.post("/enrollment/membership/stage", async (req, res) => {
+      const parsed = z.object({ transactionId: z.string().min(1).max(128), gateway: z.url(), credential: z.string().min(32).max(256) }).strict().safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
+      try { await config.membershipCredentials!.stage(parsed.data); res.status(204).end(); }
+      catch (error) { res.status(409).json({ error: "membership_stage_failed", message: error instanceof Error ? error.message : "Membership staging failed" }); }
+    });
+    app.post("/enrollment/membership/commit", async (req, res) => {
+      const parsed = z.object({ transactionId: z.string().min(1).max(128) }).strict().safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
+      try { await config.membershipCredentials!.commit(parsed.data.transactionId); res.status(204).end(); }
+      catch (error) { res.status(409).json({ error: "membership_commit_failed", message: error instanceof Error ? error.message : "Membership commit failed" }); }
+    });
+    app.post("/enrollment/membership/revoke", async (req, res) => {
+      const parsed = z.object({ transactionId: z.string().min(1).max(128) }).strict().safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
+      await config.membershipCredentials!.revoke(parsed.data.transactionId); res.status(204).end();
+    });
+  }
   if (config.reverseSessionControl) {
+    app.post("/enrollment/reverse-session/disconnect", async (req, res) => {
+      const parsed = z.object({ gateway: z.url() }).strict().safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "invalid_request", message: "gateway is required" });
+      try { await config.reverseSessionControl!.deactivate?.(parsed.data.gateway); res.status(204).end(); }
+      catch (error) { res.status(502).json({ error: "worker_session_disconnect_failed", message: error instanceof Error ? error.message : "Worker reverse session disconnect failed" }); }
+    });
     app.post("/enrollment/reverse-session/connect", async (req, res) => {
-      const parsed = z.object({ target: z.string().min(1).max(512), caCertificate: z.string().min(64).max(32_768) }).strict().safeParse(req.body);
+      const parsed = z.object({ gateway: z.url().optional(), target: z.string().min(1).max(512), credential: z.string().min(32).max(256).optional(), security: z.enum(["tls", "loopback"]).optional(), caCertificate: z.string().min(64).max(32_768).optional() }).strict().safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "invalid_request", message: "target is required" });
       try {
-        const credential = config.workerCredential ? await config.workerCredential.current() : config.workerToken || "";
-        await config.reverseSessionControl!.activate({ target: parsed.data.target, credential, caCertificate: parsed.data.caCertificate });
+        const credential = parsed.data.credential ?? await localCredential();
+        await config.reverseSessionControl!.activate({ ...(parsed.data.gateway ? { gateway: parsed.data.gateway } : {}), target: parsed.data.target, credential, ...(parsed.data.security ? { security: parsed.data.security } : {}), ...(parsed.data.caCertificate ? { caCertificate: parsed.data.caCertificate } : {}) });
         res.status(204).end();
       } catch (error) {
         res.status(502).json({ error: "worker_session_connect_failed", message: error instanceof Error ? error.message : "Worker reverse session activation failed" });

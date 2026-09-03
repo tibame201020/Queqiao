@@ -1,7 +1,7 @@
 import { McpServer, fromJsonSchema, type JsonSchemaType } from "@modelcontextprotocol/server";
 import { ToolRuntime, extensionActiveForWorkspace, resolveExtensionComposition } from "@queqiao/tool-runtime";
 import type { InstalledExtensionConfig } from "@queqiao/config";
-import { coreWorkspaceTools, type GatewayToolContext } from "./core-tools.js";
+import { coreWorkspaceTools, type GatewayToolContext, unwrapRoutedToolValue } from "./core-tools.js";
 import type { WorkerRegistry } from "./worker-registry.js";
 import { CORE_PUBLIC_TOOL_ORDER, CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core-manifest";
 import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "@queqiao/mcp-compat";
@@ -13,8 +13,11 @@ import { toQueqiaoErrorEnvelope } from "./errors.js";
 export const QUEQIAO_V0_TOOL_NAMES = ["workspace_info", "read_file"] as const;
 export const QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES = CORE_PUBLIC_TOOL_ORDER;
 
-function result(value: unknown) {
-  return { content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }] };
+function result(value: unknown, routing?: import("./worker-registry.js").WorkerRoutingReceipt) {
+  return {
+    content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }],
+    ...(routing ? { _meta: { "dev.queqiao/routing": routing } } : {}),
+  };
 }
 
 function failure(error: unknown) {
@@ -57,7 +60,8 @@ export function createMcpServer(workers: WorkerRegistry, scopes: readonly string
         try {
           const correlated = cancellation?.registry.signalFor(cancellation.principalId, extra.mcpReq.id);
           const signal = correlated ? AbortSignal.any([extra.mcpReq.signal, correlated]) : extra.mcpReq.signal;
-          return result(await runtime.execute(definition.name, input, { ...context, signal }));
+          const executed = unwrapRoutedToolValue(await runtime.execute(definition.name, input, { ...context, signal }));
+          return result(executed.value, executed.routing);
         } catch (error) {
           return failure(error);
         }
@@ -92,7 +96,8 @@ export function createMcpServer(workers: WorkerRegistry, scopes: readonly string
           const correlated = cancellation?.registry.signalFor(cancellation.principalId, extra.mcpReq.id);
           const signal = correlated ? AbortSignal.any([extra.mcpReq.signal, correlated]) : extra.mcpReq.signal;
           const forwarded = input && typeof input === "object" && !Array.isArray(input) ? { ...(input as Record<string, unknown>), workspaceId: selected } : { workspaceId: selected };
-          return result(await context.workers.invokeTool(contribution.tool, forwarded, signal));
+          const routed = await context.workers.invokeTool(contribution.tool, forwarded, signal);
+          return result(routed.value, routed.routing);
         } catch (error) {
           return failure(error);
         }

@@ -22,7 +22,7 @@ console.log(`Queqiao Worker gRPC session listener: ${workerSessionTarget}${confi
 const app = await createGatewayApp(config, enrollment, sessions);
 const host = config.host ?? "127.0.0.1";
 listenGateway(app, config, () => { console.log(`Queqiao Gateway listening on http://${host}:${config.port}`); console.log(`Public MCP URL: ${config.resourceUrl}`); });
-const managementApp = createGatewayManagementApp({ secret: managementSecret.secret, enrollment, memberships, stateDirectory: config.stateDir });
+const managementApp = createGatewayManagementApp({ secret: managementSecret.secret, enrollment, memberships, stateDirectory: config.stateDir, sessions });
 const managementServer = managementApp.listen(config.managementPort, "127.0.0.1", () => console.log(`Queqiao Gateway management listening on http://127.0.0.1:${config.managementPort}`));
 
 let stopping = false;

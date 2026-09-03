@@ -20,7 +20,7 @@ export async function seedTestWorkerMembership(input: {
   await store.replace({ version: 1, workers: [{
     workerId: workerIdSchema.parse(input.workerId ?? TEST_WORKER_ID),
     environmentId: environmentIdSchema.parse(input.environmentId),
-    transport: { type: "http", endpoint: input.endpoint },
+    transports: [{ type: "http", endpoint: input.endpoint }],
     credentialRefs: [{ kind: "secret-file", path: credentialFile }],
   }] });
 }

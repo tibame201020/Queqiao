@@ -36,10 +36,53 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
   app.use(oauth.router);
 
   const liveness = new GatewayLivenessMonitor(workerSource, config.livenessIntervalMs ?? 30_000);
+  sessions?.subscribe(() => {
+    void liveness.probeNow().catch(() => undefined);
+  });
   await liveness.start();
 
   if (enrollment) {
     const enrollmentLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false });
+    app.get("/enrollment/protocols", enrollmentLimiter, async (req, res) => {
+      try {
+        const authorization = req.header("authorization") || "";
+        const bearer = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+        const workerId = typeof req.query.workerId === "string" ? req.query.workerId : "";
+        const membershipCredential = req.header("x-queqiao-worker-token") || "";
+        let enabled: string[] = [];
+        if (bearer) enrollment.authorizeJoinToken(bearer);
+        else if (workerId && membershipCredential) enabled = (await enrollment.authenticateMembership(workerId, membershipCredential)).transports.map((transport) => transport.type);
+        else throw new EnrollmentError(401, "protocol_discovery_unauthorized", "Join token or Worker membership credential is required");
+
+        const protocols: Array<Record<string, unknown>> = [{ type: "http", capable: true }];
+        if (Number.isInteger(config.workerSessionPort) && config.workerSessionPort >= 1 && config.workerSessionPort <= 65535) {
+          if (config.workerSessionTls && config.workerSessionAdvertiseHost) {
+            const host = config.workerSessionAdvertiseHost.includes(":") ? `[${config.workerSessionAdvertiseHost}]` : config.workerSessionAdvertiseHost;
+            protocols.push({ type: "grpc", capable: true, connection: { target: `${host}:${config.workerSessionPort}`, security: "tls", caCertificate: config.workerSessionTls.cert.toString("utf8") } });
+          } else {
+            protocols.push({ type: "grpc", capable: true, connection: { target: `127.0.0.1:${config.workerSessionPort}`, security: "loopback" } });
+          }
+        }
+        res.json({ protocols, ...(enabled.length ? { enabled } : {}) });
+      } catch (error) {
+        const failure = error instanceof EnrollmentError ? error : new EnrollmentError(400, "protocol_discovery_failed", error instanceof Error ? error.message : "Protocol discovery failed");
+        res.status(failure.status).json({ error: failure.code, message: failure.message });
+      }
+    });
+    app.put("/enrollment/protocols", enrollmentLimiter, async (req, res) => {
+      try {
+        const workerId = typeof req.body?.workerId === "string" ? req.body.workerId : "";
+        const credential = req.header("x-queqiao-worker-token") || "";
+        if (!workerId || !credential) throw new EnrollmentError(401, "protocol_update_unauthorized", "Worker membership credential is required");
+        await enrollment.authenticateMembership(workerId, credential);
+        const membership = await enrollment.updateTransports(workerId, req.body?.transports);
+        await liveness.probeNow().catch(() => undefined);
+        res.json({ updated: true, workerId: membership.workerId, environmentId: membership.environmentId, enabled: membership.transports.map((transport) => transport.type), transports: membership.transports });
+      } catch (error) {
+        const failure = error instanceof EnrollmentError ? error : new EnrollmentError(400, "protocol_update_failed", error instanceof Error ? error.message : "Protocol update failed");
+        res.status(failure.status).json({ error: failure.code, message: failure.message });
+      }
+    });
     app.post("/enrollment/join/start", enrollmentLimiter, async (req, res) => {
       try { res.status(201).json(await enrollment.startJoin(req.body)); }
       catch (error) { const failure = error instanceof EnrollmentError ? error : new EnrollmentError(400, "invalid_join_request", error instanceof Error ? error.message : "Invalid join request"); res.status(failure.status).json({ error: failure.code, message: failure.message }); }

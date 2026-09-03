@@ -173,7 +173,7 @@ describe("loopback gRPC Worker session binding", () => {
     try {
       await client.connectLoopback();
       await vi.waitFor(() => expect(sessions.require(workerId).authentication).toEqual({ kind: "provisional", transactionId: started.transactionId }));
-      await expect(enrollment.confirmJoin(started.transactionId, started.credential)).resolves.toMatchObject({ workerId, transport: { type: "grpc", mode: "reverse" } });
+      await expect(enrollment.confirmJoin(started.transactionId, started.credential)).resolves.toMatchObject({ workerId, transports: [{ type: "grpc", mode: "reverse" }] });
       expect(sessions.require(workerId).authentication).toEqual({ kind: "membership" });
       expect((await memberships.read()).workers).toHaveLength(1);
     } finally {

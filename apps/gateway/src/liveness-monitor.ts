@@ -4,6 +4,7 @@ import type { WorkerLivenessState } from "./worker-registry.js";
 export class GatewayLivenessMonitor {
   private timer: NodeJS.Timeout | undefined;
   private probing: Promise<void> | undefined;
+  private reprobeRequested = false;
 
   constructor(
     private readonly source: MembershipWorkerRegistry,
@@ -22,10 +23,16 @@ export class GatewayLivenessMonitor {
   }
 
   async probeNow(): Promise<void> {
-    if (this.probing) return this.probing;
+    if (this.probing) {
+      this.reprobeRequested = true;
+      return this.probing;
+    }
     this.probing = (async () => {
-      const registry = await this.source.current();
-      await registry.probeLiveness();
+      do {
+        this.reprobeRequested = false;
+        const registry = await this.source.current();
+        await registry.probeLiveness();
+      } while (this.reprobeRequested);
     })().finally(() => { this.probing = undefined; });
     return this.probing;
   }

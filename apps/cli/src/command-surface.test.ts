@@ -5,7 +5,6 @@ import { selectorRoleForCliArgs, withRoleSelector } from "./instance-selector.js
 type LeafContract = (typeof CLI_LEAF_CONTRACTS)[number];
 
 const REQUIRED_SAMPLE_ARGS: Readonly<Record<string, readonly string[]>> = {
-  "gateway workers update": ["--worker-id", "worker-1", "--endpoint", "http://127.0.0.1:7576/"],
   "gateway workers remove": ["--worker-id", "worker-1"],
 };
 
@@ -27,7 +26,6 @@ function canonicalLeafInvocation(contract: LeafContract): string[] {
 describe("CLI hierarchy consolidation", () => {
   it.each([
     [["gateway", "workers", "list", "--gateway", "stable"], ["membership", "list", "--gateway", "stable"]],
-    [["gateway", "workers", "update", "--worker-id", "w1", "--endpoint", "http://127.0.0.1:7576/"], ["membership", "update", "--worker-id", "w1", "--endpoint", "http://127.0.0.1:7576/"]],
     [["gateway", "workers", "remove", "--worker-id", "w1"], ["membership", "remove", "--worker-id", "w1"]],
     [["workspace", "add", "--worker", "windows"], ["workspace", "add", "--worker", "windows"]],
     [["workspace", "list", "--worker", "windows"], ["workspace", "list", "--worker", "windows"]],
@@ -41,7 +39,8 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it.each([
-    [["worker", "update"], "queqiao gateway workers update"],
+    [["worker", "update"], "queqiao worker setup"],
+    [["gateway", "workers", "update"], "queqiao worker setup"],
     [["profile", "set"], "queqiao workspace"],
     [["worker", "workspace"], "queqiao workspace"],
     [["worker", "workspace", "profile", "set"], "queqiao workspace"],
@@ -94,6 +93,7 @@ describe("CLI hierarchy consolidation", () => {
     expect(tokenHelp).not.toContain("--environment-id");
     const joinHelp = renderCliHelp(["worker", "join", "--help"]);
     expect(joinHelp).toContain("--join-code <code>");
+    expect(joinHelp).toContain("--protocols <http,grpc>");
     expect(joinHelp).not.toContain("--gateway");
     expect(joinHelp).not.toContain("--token");
     expect(joinHelp).not.toContain("--endpoint");
@@ -145,7 +145,7 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it("freezes every public leaf in one parser contract", () => {
-    expect(CLI_LEAF_CONTRACTS).toHaveLength(48);
+    expect(CLI_LEAF_CONTRACTS).toHaveLength(47);
     expect(new Set(CLI_LEAF_CONTRACTS.map(({ route }) => route)).size).toBe(CLI_LEAF_CONTRACTS.length);
     expect(CLI_LEAF_CONTRACTS.map(({ route }) => route).sort()).toEqual(listCanonicalCliRoutes());
   });
@@ -194,13 +194,12 @@ describe("CLI hierarchy consolidation", () => {
     [["worker", "serve", "--worker"], /requires a value/],
     [["extension", "list", "extra"], /Unexpected argument/],
     [["gateway", "--bogus"], /Unknown global option/],
-    [["gateway", "workers", "update", "--worker-id", "w1"], /--endpoint is required/],
   ])("rejects malformed leaf arguments %j", (input, message) => {
     expect(() => validateCliArgs(input)).toThrow(message);
   });
 
   it("accepts global flags and documented leaf arguments", () => {
-    expect(() => validateCliArgs(["--json", "gateway", "workers", "update", "--gateway", "stable", "--worker-id", "w1", "--endpoint", "http://127.0.0.1:7576/"])).not.toThrow();
+    expect(() => validateCliArgs(["--json", "worker", "join", "--worker", "windows", "--join-code", "qjq1:test", "--protocols", "http,grpc"])).not.toThrow();
   });
 
   it("renders Workspace manager help at the group and precise help for deep leaves", () => {

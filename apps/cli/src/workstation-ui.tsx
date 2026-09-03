@@ -483,6 +483,8 @@ function InspectorSummary({ model, detailState }: { model: WorkstationInspectorV
     {model.publicUrl ? <InspectorField label="Public URL" wrap="truncate-middle">{model.publicUrl}</InspectorField> : null}
     <InspectorField label="Service">{model.servicePort ? `:${model.servicePort}` : "\u2014"}</InspectorField>
     <InspectorField label="Management">{model.managementPort ? `:${model.managementPort}` : "\u2014"}</InspectorField>
+    <InspectorField label="Worker session">{model.workerSessionMode === "remote" ? "Network · TLS gRPC" : "Loopback gRPC"}</InspectorField>
+    {model.workerSessionTarget ? <InspectorField label="Session target" wrap="truncate-middle">{model.workerSessionTarget}</InspectorField> : null}
     <RuntimeProbe runtime={model.runtime} compact />
     <RelationshipSection label="Workers" section={model.workers} renderItem={() => null} />
     {loadMarker}
@@ -491,6 +493,9 @@ function InspectorSummary({ model, detailState }: { model: WorkstationInspectorV
   if (model.kind === "worker") return <Box flexDirection="column">
     <Text><Text bold color={runtimeColor(model.running, palette)}>{runtimeGlyph(model.running)} {model.running ? "RUNNING" : "STOPPED"}</Text> · {model.managed ? "managed" : "unmanaged"}</Text>
     {model.endpoint ? <InspectorField label="Endpoint" wrap="truncate-middle">{model.endpoint}</InspectorField> : null}
+    <InspectorField label="Local control">HTTP</InspectorField>
+    <InspectorField label="gRPC session">{model.reverseSessionTarget ? "Configured" : "Not configured"}</InspectorField>
+    {model.reverseSessionTarget ? <InspectorField label="gRPC target" wrap="truncate-middle">{model.reverseSessionTarget}</InspectorField> : null}
     <RuntimeProbe runtime={model.runtime} compact />
     <InspectorField label="Workspaces">{model.workspaces.length}</InspectorField>
     <InspectorField label="Extensions">{model.extensions.length}</InspectorField>

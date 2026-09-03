@@ -19,6 +19,16 @@ export class WorkerSessionRegistry {
   private readonly byWorkerId = new Map<string, ActiveWorkerSession>();
   private readonly byEnvironmentId = new Map<string, ActiveWorkerSession>();
   private readonly bySessionId = new Map<string, ActiveWorkerSession>();
+  private readonly changeListeners = new Set<() => void>();
+
+  subscribe(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
+  }
+
+  private notifyChange(): void {
+    for (const listener of this.changeListeners) listener();
+  }
 
   attach(
     rawHello: WorkerHelloV3,
@@ -43,6 +53,7 @@ export class WorkerSessionRegistry {
     this.byWorkerId.set(session.workerId, session);
     this.byEnvironmentId.set(session.environmentId, session);
     this.bySessionId.set(session.sessionId, session);
+    this.notifyChange();
     return session;
   }
 
@@ -61,6 +72,11 @@ export class WorkerSessionRegistry {
     return session;
   }
 
+  detachWorker(workerId: string, reason = new Error("Worker membership removed")): boolean {
+    const session = this.byWorkerId.get(workerId);
+    return session ? this.detach(session.sessionId, reason) : false;
+  }
+
   detachProvisional(transactionId: string, reason = new Error("provisional Worker session revoked")): boolean {
     const session = [...this.bySessionId.values()].find((candidate) => candidate.authentication.kind === "provisional" && candidate.authentication.transactionId === transactionId);
     return session ? this.detach(session.sessionId, reason) : false;
@@ -73,6 +89,7 @@ export class WorkerSessionRegistry {
     this.byWorkerId.delete(session.workerId);
     this.byEnvironmentId.delete(session.environmentId);
     session.transport.close?.(reason);
+    this.notifyChange();
     return true;
   }
 

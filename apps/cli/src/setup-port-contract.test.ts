@@ -35,7 +35,7 @@ describe("interactive setup port contract", () => {
     const result = await runRoleSetupWizard("gateway", ["gateway", "setup"], {
       env,
       platform: process.platform,
-      prompts: scriptedPrompts(["__create__", "stable", "https://gateway.example/stable/", "7775", "7774"], messages),
+      prompts: scriptedPrompts(["__create__", "stable", "https://gateway.example/stable/", "7775", "7774", "local"], messages),
       portAvailable: async () => true,
       setupGateway: async (_config, args, _state, _secrets, prompt) => {
         setupArgs = [...args];
@@ -49,7 +49,8 @@ describe("interactive setup port contract", () => {
     expect(messages[2]).toBe("Public Gateway URL []");
     expect(messages[3]).toMatch(/^Gateway port .*Local port behind the public Gateway URL\..* \[7575\]$/);
     expect(messages[4]).toMatch(/^Management port .*Local-only port for Gateway management\..* \[7574\]$/);
-    expect(setupArgs).toEqual(["gateway", "setup", "--public-base-url", "https://gateway.example/stable/", "--port", "7775", "--management-port", "7774"]);
+    expect(messages[5]).toBe("Worker session exposure");
+    expect(setupArgs).toEqual(["gateway", "setup", "--public-base-url", "https://gateway.example/stable/", "--port", "7775", "--management-port", "7774", "--worker-session-mode", "local"]);
     expect(result).toMatchObject({ name: "stable", mode: "create" });
   });
 
@@ -64,7 +65,7 @@ describe("interactive setup port contract", () => {
     await runRoleSetupWizard("gateway", ["gateway", "setup"], {
       env,
       platform: process.platform,
-      prompts: scriptedPrompts(["stable", "https://old.example/", "7775", "7774"], messages),
+      prompts: scriptedPrompts(["stable", "https://old.example/", "7775", "7774", "local"], messages),
       portAvailable: async () => { throw new Error("unchanged ports should not be probed"); },
       setupGateway: async (_config, _args, _state, _secrets, prompt) => { await prompt?.("public-base-url", "Public Gateway URL", "https://old.example/"); return { setup: true }; },
     });
@@ -74,6 +75,7 @@ describe("interactive setup port contract", () => {
       "Public Gateway URL [https://old.example/]",
       expect.stringMatching(/^Gateway port .*\[7775\]$/),
       expect.stringMatching(/^Management port .*\[7774\]$/),
+      "Worker session exposure",
     ]);
   });
 

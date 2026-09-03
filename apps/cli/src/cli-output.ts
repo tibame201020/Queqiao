@@ -200,7 +200,9 @@ function renderGatewayInfo(args: readonly string[], value: unknown, theme: Queqi
       field(theme, "Managed", result.managed === true ? "Yes" : "No", 2),
       field(theme, "Service Port", result.servicePort, 2),
       field(theme, "Management Port", result.managementPort, 2),
+      field(theme, "Worker Session", result.workerSessionMode === "remote" ? "Network · TLS gRPC" : "Loopback gRPC", 2),
     );
+    if (typeof result.workerSessionTarget === "string") lines.push(field(theme, "Session Target", result.workerSessionTarget, 2));
     if (Array.isArray(result.allowedRedirectOrigins)) {
       lines.push(`${theme.subtle("  Redirect origins:")}`);
       for (const origin of result.allowedRedirectOrigins) lines.push(`    ${theme.link(scalar(origin))}`);

@@ -8,7 +8,7 @@
 
 ![Gateways control](../assets/workstation/controls/01-gateways.gif)
 
-Gateway 是公開 control plane。Inventory／Inspector 顯示 lifecycle、public endpoint、service／management ports、health 與 enrolled Worker 數量。Actions 包含 **Start/Stop**、**Configure**、**Copy MCP URL**、**Copy approval secret**、**Manage Workers**、**Create join code**、**Remove Gateway**。Workstation 先檢查 precondition，例如 join-code creation 要求 Gateway running，Remove 則要求先停止。
+Gateway 是公開 control plane。Inventory／Inspector 顯示 lifecycle、public endpoint、service／management ports、Worker transport mode/target、health 與 enrolled Worker 數量。共用的 **Configure** flow 也可選 **Local only** 或 **Remote workers**；remote mode 會設定專用 pinned-TLS gRPC Worker-session listener。Actions 包含 **Start/Stop**、**Configure**、**Copy MCP URL**、**Copy approval secret**、**Manage Workers**、**Create join code**、**Remove Gateway**。Workstation 先檢查 precondition，例如 join-code creation 要求 Gateway running，Remove 則要求先停止。
 
 ## 2. Workers
 
