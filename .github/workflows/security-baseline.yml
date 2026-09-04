@@ -45,4 +45,18 @@ jobs:
           cache: npm
       - run: npm install --global npm@11.16.0
       - run: npm ci --ignore-scripts
-      - run: npm audit --package-lock-only --omit=dev --audit-level=high
+      - name: Audit runtime dependencies
+        shell: bash
+        run: |
+          status=1
+          for attempt in 1 2 3; do
+            if npm audit --package-lock-only --omit=dev --audit-level=high --fetch-timeout=30000 --fetch-retries=1; then
+              exit 0
+            else
+              status=$?
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          exit "$status"
