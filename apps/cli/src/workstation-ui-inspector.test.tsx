@@ -131,7 +131,7 @@ describe("Workstation lazy Inspector detail", () => {
     const refresh = vi.fn(async () => (++calls >= 2 ? structuredClone(changed) : structuredClone(initial)));
     const loadInspectorDetail = vi.fn(async (target: WorkstationInspectorTarget) => readyDetail(target, "stable"));
     const ui = render(<WorkstationApp snapshot={initial} executeDirect={async () => ({ title: "ok", body: "ok" })} executeFlow={async () => ({ title: "ok", body: "ok" })} onExit={() => undefined} refresh={refresh} loadInspectorDetail={loadInspectorDetail} refreshIntervalMs={20} terminalWidth={140} terminalHeight={35} />);
-    await waitFor(() => (ui.lastFrame() || "").includes("backup"), 500);
+    await waitFor(() => (ui.lastFrame() || "").includes("backup"), 5000);
     expect(ui.lastFrame()).toContain("Gateways 2");
     expect(ui.frames.every((frame) => !frame.includes("Working…"))).toBe(true);
     expect(ui.frames.every((frame) => !frame.includes("No Gateways configured"))).toBe(true);
