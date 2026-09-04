@@ -34,7 +34,7 @@ const manifest = defineExtensionManifest({
 });
 
 async function useRuntime(context: WorkerExtensionContext) {
-  const session = await context.runtime.stdio.open({ executable: "node", args: ["server.js"], cwd: ".", timeoutMs: 1000 });
+  const session = await context.runtime.stdio.open({ executable: "node", args: ["server.js"], cwd: ".", timeoutMs: null });
   await session.write("{}\\n");
   const event = await session.next();
   const response = await context.runtime.http.request({ url: "https://mcp.example.com/mcp", method: "POST", body: "{}", timeoutMs: 1000 });
