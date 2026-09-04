@@ -92,6 +92,7 @@ describe("Worker extension runtime MCP Streamable HTTP integration", () => {
   it("injects Worker-owned fetch into the official MCP transport and preserves streamed responses", async () => {
     const origin = await listenMcp();
     const runtime = await runtimeFor(origin);
+    expect(runtime.http.fetch).toBeTypeOf("function");
     const client = new Client({ name: "queqiao-runtime-test", version: "1.0.0" });
     const transport = new StreamableHTTPClientTransport(new URL(`${origin}/mcp`), { fetch: runtime.http.fetch });
     try {
