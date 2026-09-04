@@ -12,10 +12,11 @@ afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, fo
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
 
 describe("published extension runtime types", () => {
-  it("compiles an external consumer using only @tibame201020/queqiao/extension", async () => {
+  it("compiles an external ESM consumer using only @tibame201020/queqiao/extension", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-sdk-types-"));
     const fixture = path.join(temporary, "consumer.ts");
     const tsconfig = path.join(temporary, "tsconfig.json");
+    await writeFile(path.join(temporary, "package.json"), JSON.stringify({ name: "runtime-consumer-fixture", private: true, type: "module" }), "utf8");
     await writeFile(fixture, `
 import { defineExtension, defineExtensionManifest, type WorkerExtensionContext } from "@tibame201020/queqiao/extension";
 
