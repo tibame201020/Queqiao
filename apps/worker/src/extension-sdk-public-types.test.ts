@@ -52,7 +52,7 @@ export default defineExtension<WorkerExtensionContext>({
       skipLibCheck: false,
       baseUrl: repoRoot,
       paths: { "@tibame201020/queqiao/extension": ["extension.d.ts"] },
-      types: ["node"],
+      types: [],
     });
     const diagnostics = ts.getPreEmitDiagnostics(program);
     const messages = diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
