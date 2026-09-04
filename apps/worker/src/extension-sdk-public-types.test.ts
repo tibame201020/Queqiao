@@ -10,13 +10,38 @@ afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, fo
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const tsc = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
 
-async function compileFixture(source: string, compilerOptions: Record<string, unknown>): Promise<void> {
+type FixturePaths = Record<string, readonly string[]>;
+
+function relativeForTsconfig(from: string, target: string): string {
+  const relative = path.relative(from, target).split(path.sep).join("/");
+  return relative.startsWith(".") ? relative : `./${relative}`;
+}
+
+async function compileFixture(
+  source: string,
+  compilerOptions: Record<string, unknown>,
+  aliases: FixturePaths,
+): Promise<void> {
   temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-sdk-types-"));
   const fixture = path.join(temporary, "consumer.ts");
   const tsconfig = path.join(temporary, "tsconfig.json");
+  const repoFromFixture = relativeForTsconfig(temporary, repoRoot);
+  const paths = Object.fromEntries(Object.entries(aliases).map(([specifier, targets]) => [
+    specifier,
+    targets.map((target) => `${repoFromFixture}/${target}`),
+  ]));
+  const types = compilerOptions["types"];
+  const resolvedCompilerOptions = {
+    ...compilerOptions,
+    paths,
+    ...(Array.isArray(types) && types.length > 0
+      ? { typeRoots: [`${repoFromFixture}/node_modules/@types`] }
+      : {}),
+  };
+
   await writeFile(path.join(temporary, "package.json"), JSON.stringify({ name: "runtime-consumer-fixture", private: true, type: "module" }), "utf8");
   await writeFile(fixture, source, "utf8");
-  await writeFile(tsconfig, JSON.stringify({ compilerOptions, files: [fixture] }, null, 2), "utf8");
+  await writeFile(tsconfig, JSON.stringify({ compilerOptions: resolvedCompilerOptions, files: [fixture] }, null, 2), "utf8");
   const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     execFile(process.execPath, [tsc, "--project", tsconfig, "--pretty", "false"], { cwd: repoRoot }, (error, stdout, stderr) => {
       if (error) {
@@ -69,10 +94,10 @@ export default defineExtension<WorkerExtensionContext>({
       exactOptionalPropertyTypes: true,
       noEmit: true,
       skipLibCheck: false,
-      baseUrl: repoRoot,
-      paths: { "@tibame201020/queqiao/extension": ["extension.d.ts"] },
       types: [],
       lib: ["ES2022", "DOM"],
+    }, {
+      "@tibame201020/queqiao/extension": ["extension.d.ts"],
     });
   });
 
@@ -94,13 +119,11 @@ void proof;
       exactOptionalPropertyTypes: true,
       noEmit: true,
       skipLibCheck: false,
-      baseUrl: repoRoot,
-      paths: {
-        "@tibame201020/queqiao/extension": ["extension.d.ts"],
-        "@queqiao/*": ["packages/*/src/index.ts"],
-      },
       types: ["node"],
       lib: ["ES2023", "DOM"],
+    }, {
+      "@tibame201020/queqiao/extension": ["extension.d.ts"],
+      "@queqiao/*": ["packages/*/src/index.ts"],
     });
   });
 });
