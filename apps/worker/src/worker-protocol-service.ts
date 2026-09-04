@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { ProcessRunner } from "@queqiao/process-runtime";
+import { extensionRuntimePolicyFor } from "@queqiao/config";
+import { ProcessRunner, type ManagedStdioSession, type StdioSessionRequest } from "@queqiao/process-runtime";
 import {
   QUEQIAO_WORKER_LEGACY_CAPABILITIES,
   QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION,
@@ -10,6 +11,7 @@ import {
 import type { ExtensionHost, ToolRuntime } from "@queqiao/tool-runtime";
 import { createWorkerToolRuntime, createWorkerToolRuntimeForWorkspace, WorkerToolError, type WorkerToolContext } from "./core-tools.js";
 import { WorkerCoreCapabilities, type WorkerProcessExecutor } from "./core-capabilities.js";
+import { WorkerExtensionRuntimeServices } from "./extension-runtime-services.js";
 import type { ReloadableExtensionHost } from "./reloadable-extension-host.js";
 import { WorkspaceCatalog, type WorkerWorkspaceConfig, workspaceAllowsTool } from "./workspace-catalog.js";
 
@@ -39,6 +41,13 @@ export async function createWorkerProtocolService(config: WorkerProtocolServiceC
   const coreToolNames = new Set(coreTools.definitions().map(({ name }) => name));
   const toolRuntimes = new Map<string, { generation: number; runtime: ToolRuntime<WorkerToolContext> }>();
   const processes = config.processes ?? new ProcessRunner();
+  const stdioProcesses = {
+    openStdio: (request: StdioSessionRequest): Promise<ManagedStdioSession> => {
+      const candidate = processes as WorkerProcessExecutor & { openStdio?: (request: StdioSessionRequest) => Promise<ManagedStdioSession> };
+      if (typeof candidate.openStdio !== "function") throw new WorkerToolError(503, "extension_runtime_unavailable", "Managed stdio runtime is unavailable");
+      return candidate.openStdio.call(processes, request);
+    },
+  };
   const instanceId = randomUUID();
   const platform = process.platform === "win32" ? "windows" as const : process.platform === "darwin" ? "darwin" as const : "linux" as const;
   const hello = config.workerId
@@ -52,6 +61,11 @@ export async function createWorkerProtocolService(config: WorkerProtocolServiceC
     const runtime = createWorkerToolRuntimeForWorkspace(state.host, workspaceId);
     toolRuntimes.set(workspaceId, { generation: state.generation, runtime });
     return runtime;
+  };
+
+  const extensionPolicyFor = (toolName: string, workspaceId: string, state: RequestExtensionState) => {
+    const owner = state.host?.activeManifests(workspaceId).find((manifest) => manifest.contributions.some((contribution) => contribution.operation === "register" && contribution.tool === toolName));
+    return extensionRuntimePolicyFor(owner?.runtime ? { runtime: owner.runtime } : {});
   };
 
   const contextFor = (toolName: string, workspaceId: string, state: RequestExtensionState, signal?: AbortSignal, authority: "core" | "extension" = "core"): WorkerToolContext => {
@@ -68,12 +82,16 @@ export async function createWorkerProtocolService(config: WorkerProtocolServiceC
         contextFor(targetTool, workspaceId, state, signal, "extension"),
       ),
     } : {};
+    const extensionRuntimeContext = authority === "extension" ? {
+      runtime: new WorkerExtensionRuntimeServices({ workspace, processes: stdioProcesses, policy: extensionPolicyFor(toolName, workspaceId, state), ...(signal ? { signal } : {}) }),
+    } : {};
     return {
       workspaceId,
       capabilities: new WorkerCoreCapabilities({ toolName, grantedCapabilities: contract.requiredCapabilities, workspace, processes, authority, ...(signal ? { signal } : {}) }),
       ...extensionContext,
+      ...extensionRuntimeContext,
       ...(signal ? { signal } : {}),
-    };
+    } as WorkerToolContext;
   };
 
   const descriptors = () => catalog.list().map(({ config: entry, reader }) => ({

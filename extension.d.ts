@@ -14,7 +14,48 @@ export type WorkerExtensionCapabilities = {
   resolveNewDirectoryTarget(path: string): Promise<string>;
   run(input: { executable: string; args: readonly string[]; cwd: string; timeoutMs: number; mode: WorkerExtensionProcessMode }): Promise<unknown>;
 };
-export type WorkerExtensionContext = { workspaceId: string; capabilities: WorkerExtensionCapabilities; signal?: AbortSignal };
+export type WorkerExtensionProcessStreamEvent = { type: "stdout" | "stderr"; data: string };
+export type WorkerExtensionManagedProcessClose = {
+  exitCode: number | null;
+  signal: string | null;
+  durationMs: number;
+  timedOut: boolean;
+  aborted: boolean;
+  outputLimitExceeded: boolean;
+};
+export type WorkerExtensionStdioSession = {
+  pid: number;
+  write(data: string): Promise<void>;
+  next(): Promise<WorkerExtensionProcessStreamEvent>;
+  close(): Promise<void>;
+  readonly closed: Promise<WorkerExtensionManagedProcessClose>;
+};
+export type WorkerExtensionHttpResponse = { status: number; headers: Record<string, string>; body: string };
+export type WorkerExtensionFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+export type WorkerExtensionRuntime = {
+  stdio: {
+    open(input: {
+      executable: string;
+      args?: readonly string[];
+      cwd?: string;
+      /** null keeps the managed session alive until close, explicit cancellation, or Worker shutdown. */
+      timeoutMs?: number | null;
+      /** Optional session-lifetime cancellation; tool invocation cancellation is not implicitly inherited. */
+      signal?: AbortSignal;
+    }): Promise<WorkerExtensionStdioSession>;
+  };
+  http: {
+    request(input: {
+      url: string;
+      method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+      headers?: Readonly<Record<string, string>>;
+      body?: string;
+      timeoutMs?: number;
+    }): Promise<WorkerExtensionHttpResponse>;
+    fetch: WorkerExtensionFetch;
+  };
+};
+export type WorkerExtensionContext = { workspaceId: string; capabilities: WorkerExtensionCapabilities; runtime: WorkerExtensionRuntime; signal?: AbortSignal };
 export type ToolRisk = "read" | "write" | "execute";
 export type ToolAnnotations = {
   readOnlyHint: boolean;
@@ -86,6 +127,10 @@ export type ExtensionContribution = ExtensionRegisterContribution | {
   preservesContract: true;
   requiredCapabilities: ToolCapability[];
 };
+export type ExtensionRuntimePolicy = {
+  processes: { allow: string[] };
+  outboundHttp: { allowOrigins: string[] };
+};
 export type ExtensionManifestConfig = {
   id: string;
   version: string;
@@ -93,6 +138,7 @@ export type ExtensionManifestConfig = {
   host: ExtensionHost;
   ordering: { requires: string[]; before: string[]; after: string[] };
   contributions: ExtensionContribution[];
+  runtime?: ExtensionRuntimePolicy;
 };
 export type ExtensionPackageMetadata = {
   apiVersion: 1;

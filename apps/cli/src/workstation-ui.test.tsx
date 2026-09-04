@@ -6,6 +6,15 @@ import { WorkstationApp, workstationAreas, workstationRenderOptions, workstation
 import { resolveWorkstationPalette } from "./workstation-theme.js";
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 30));
+const nextEventLoopTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
+async function waitForFrameText(ui: ReturnType<typeof render>, text: string): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if ((ui.lastFrame() || "").includes(text)) return;
+    await nextEventLoopTurn();
+  }
+  throw new Error(`Workstation did not render expected text: ${text}`);
+}
+
 const snapshot = (overrides: Partial<WorkstationSnapshot> = {}): WorkstationSnapshot => ({
   gateways: [{ name: "stable", configured: true, running: true, managed: true, publicUrl: "https://example.test/stable/", servicePort: 8075, managementPort: 8074 }],
   workers: [{ name: "wins-worker", configured: true, running: true, managed: true, endpoint: "http://127.0.0.1:8076/", workspaceCount: 1 }],
@@ -47,15 +56,22 @@ describe("Workstation Ink control plane", () => {
   });
 
   it("executes runtime lifecycle actions from the Inspector and stays mounted", async () => {
-    const executeDirect = vi.fn(async () => ({ title: "Gateway stable", body: '{"stopped":true}' }));
+    let actionStarted!: () => void;
+    const started = new Promise<void>((resolve) => { actionStarted = resolve; });
+    const executeDirect = vi.fn(async () => {
+      actionStarted();
+      return { title: "Gateway stable", body: '{"stopped":true}' };
+    });
     const ui = app({
       executeDirect,
       refresh: async () => snapshot({ gateways: [{ name: "stable", configured: true, running: false, managed: false }], runningGatewayCount: 0 }),
     });
-    ui.stdin.write("\t"); await delay();
-    ui.stdin.write("s"); await delay();
+    ui.stdin.write("\t");
+    await waitForFrameText(ui, "› [s] Stop");
+    ui.stdin.write("s");
+    await started;
+    await waitForFrameText(ui, "✓ Gateway stable");
     expect(executeDirect).toHaveBeenCalledWith({ type: "role-stop", role: "gateway", name: "stable" });
-    expect(ui.lastFrame()).toContain("✓ Gateway stable");
     expect(ui.lastFrame()).toContain("Queqiao Workstation");
     expect(ui.lastFrame()).not.toContain('{"stopped":true}');
   });
