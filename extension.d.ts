@@ -17,7 +17,7 @@ export type WorkerExtensionCapabilities = {
 export type WorkerExtensionProcessStreamEvent = { type: "stdout" | "stderr"; data: string };
 export type WorkerExtensionManagedProcessClose = {
   exitCode: number | null;
-  signal: NodeJS.Signals | null;
+  signal: string | null;
   durationMs: number;
   timedOut: boolean;
   aborted: boolean;
