@@ -1,9 +1,11 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import ts from "typescript";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
+const execFileAsync = promisify(execFile);
 let temporary: string | undefined;
 afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); temporary = undefined; });
 
@@ -13,6 +15,7 @@ describe("published extension runtime types", () => {
   it("compiles an external consumer using only @tibame201020/queqiao/extension", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-sdk-types-"));
     const fixture = path.join(temporary, "consumer.ts");
+    const tsconfig = path.join(temporary, "tsconfig.json");
     await writeFile(fixture, `
 import { defineExtension, defineExtensionManifest, type WorkerExtensionContext } from "@tibame201020/queqiao/extension";
 
@@ -42,20 +45,23 @@ export default defineExtension<WorkerExtensionContext>({
   activate() { void useRuntime; },
 });
 `, "utf8");
+    await writeFile(tsconfig, JSON.stringify({
+      compilerOptions: {
+        target: "ES2022",
+        module: "NodeNext",
+        moduleResolution: "NodeNext",
+        strict: true,
+        noEmit: true,
+        skipLibCheck: false,
+        baseUrl: repoRoot,
+        paths: { "@tibame201020/queqiao/extension": ["extension.d.ts"] },
+        types: [],
+      },
+      files: [fixture],
+    }, null, 2), "utf8");
 
-    const program = ts.createProgram([fixture], {
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext,
-      strict: true,
-      noEmit: true,
-      skipLibCheck: false,
-      baseUrl: repoRoot,
-      paths: { "@tibame201020/queqiao/extension": ["extension.d.ts"] },
-      types: [],
-    });
-    const diagnostics = ts.getPreEmitDiagnostics(program);
-    const messages = diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
-    expect(messages).toEqual([]);
+    const tsc = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
+    const result = await execFileAsync(process.execPath, [tsc, "--project", tsconfig, "--pretty", "false"], { cwd: repoRoot });
+    expect(result.stderr).toBe("");
   });
 });
