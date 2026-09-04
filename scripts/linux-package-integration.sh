@@ -26,6 +26,7 @@ mkdir -p "$test_root/home/.config/queqiao" "$test_root/data/secrets" "$test_root
 printf '%s\n' 'approval-secret-for-linux-integration' > "$test_root/data/secrets/approval.secret"
 printf '%s\n' 'jwt-signing-secret-for-linux-integration-at-least-32-bytes' > "$test_root/data/secrets/jwt.secret"
 printf '%s\n' 'worker-token-for-linux-integration-at-least-32-bytes' > "$test_root/data/secrets/worker.secret"
+printf '%s\n' 'membership-token-for-linux-integration-at-least-32-bytes' > "$test_root/data/secrets/membership.secret"
 printf '%s\n' 'linux package integration' > "$test_root/workspace/fixture.txt"
 cat > "$test_root/home/.config/queqiao/config.yaml" <<EOF
 version: 1
@@ -41,6 +42,10 @@ worker:
   environmentId: linux-ci
   listen: { host: 127.0.0.1, port: 17576 }
   tokenFile: $test_root/data/secrets/worker.secret
+  memberships:
+    - gateway: http://127.0.0.1:17575/
+      credentialRef: { kind: secret-file, path: $test_root/data/secrets/membership.secret }
+      protocols: {}
 workspaces:
   - id: fixture
     displayName: Fixture
@@ -55,7 +60,7 @@ cat > "$test_root/data/gateway/worker-memberships.json" <<EOF
     "workerId": "11111111-1111-4111-8111-111111111111",
     "environmentId": "linux-ci",
     "transport": { "type": "http", "endpoint": "http://127.0.0.1:17576" },
-    "credentialRefs": [{ "kind": "secret-file", "path": "$test_root/data/secrets/worker.secret" }]
+    "credentialRefs": [{ "kind": "secret-file", "path": "$test_root/data/secrets/membership.secret" }]
   }]
 }
 EOF
@@ -63,16 +68,16 @@ config_file="$test_root/home/.config/queqiao/config.yaml"
 QUEQIAO_CONFIG_FILE="$config_file" node "$test_root/install/node_modules/@tibame201020/queqiao/dist/queqiao-worker.js" >"$test_root/worker.log" 2>&1 & worker_pid=$!
 QUEQIAO_CONFIG_FILE="$config_file" node "$test_root/install/node_modules/@tibame201020/queqiao/dist/queqiao-gateway.js" >"$test_root/gateway.log" 2>&1 & gateway_pid=$!
 health=
-for attempt in $(seq 1 120); do
+for attempt in $(seq 1 30); do
   kill -0 "$worker_pid" 2>/dev/null || exit 1
   kill -0 "$gateway_pid" 2>/dev/null || exit 1
   health=$(curl -fsS http://127.0.0.1:17575/health 2>/dev/null || true)
   echo "$health" | grep -q '"reachable":true' && break
-  sleep 0.5
+  sleep 2
 done
 echo "$health" | grep -q '"environmentId":"linux-ci"'
 echo "$health" | grep -q '"reachable":true'
-hello=$(curl -fsS -H 'x-queqiao-worker-token: worker-token-for-linux-integration-at-least-32-bytes' http://127.0.0.1:17576/v1/hello)
+hello=$(curl -fsS -H 'x-queqiao-worker-token: membership-token-for-linux-integration-at-least-32-bytes' http://127.0.0.1:17576/v1/hello)
 echo "$hello" | grep -q '"protocolVersion":"3.0"'
 echo "$hello" | grep -q '"platform":"linux"'
 test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:17576/v1/hello)" = 401

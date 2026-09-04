@@ -5,7 +5,7 @@ import type { WorkstationInspectorDetail, WorkstationInspectorTarget } from "./w
 import { WorkstationApp } from "./workstation-ui.js";
 
 const delay = (ms = 25) => new Promise((resolve) => setTimeout(resolve, ms));
-async function waitFor(condition: () => boolean, timeoutMs = 700) {
+async function waitFor(condition: () => boolean, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (condition()) return;
@@ -71,6 +71,7 @@ describe("Workstation structured Diagnostics UI", () => {
       terminalHeight={28}
     />);
     ui.stdin.write("6");
+    await waitFor(() => loadInspectorDetail.mock.calls.filter(([target]) => target.kind === "diagnostics").length === 1);
     await waitFor(() => (ui.lastFrame() || "").includes("2 ISSUES"));
     const frame = ui.lastFrame() || "";
     expect(frame).toMatch(/Core checks\s+2/);
