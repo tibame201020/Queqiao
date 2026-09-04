@@ -10,12 +10,20 @@ export const MAX_PROCESS_OUTPUT_BYTES = 256 * 1024;
 export const MAX_PROCESS_INPUT_CHUNK_BYTES = 1024 * 1024;
 export const DEFAULT_PROCESS_CONCURRENCY = 2;
 
-export type ProcessRequest = {
+type ProcessBaseRequest = {
   executable: string;
   args: readonly string[];
   cwd: string;
-  timeoutMs?: number;
   signal?: AbortSignal;
+};
+
+export type ProcessRequest = ProcessBaseRequest & {
+  timeoutMs?: number;
+};
+
+export type StdioSessionRequest = ProcessBaseRequest & {
+  /** null keeps the managed session alive until close(), cancellation, output failure, or Worker shutdown. */
+  timeoutMs?: number | null;
 };
 
 export type ProcessResult = {
@@ -109,12 +117,13 @@ export class ProcessRunner {
   }
 
   /**
-   * Open a request-bound native stdio session. Unlike async start(), cancellation,
-   * timeout, output bounds, concurrency and shutdown tracking remain authoritative
-   * for the entire session lifetime.
+   * Open a managed native stdio session. Numeric timeoutMs applies an explicit
+   * lifetime bound. timeoutMs:null makes the session lifecycle-bound instead:
+   * explicit close/cancellation, output bounds, concurrency and Worker shutdown
+   * remain authoritative for the entire session lifetime.
    */
-  async openStdio(request: ProcessRequest): Promise<ManagedStdioSession> {
-    const prepared = await this.prepare(request);
+  async openStdio(request: StdioSessionRequest): Promise<ManagedStdioSession> {
+    const prepared = await this.prepareStdio(request);
     this.acquire();
     let handedOff = false;
     try {
@@ -132,16 +141,29 @@ export class ProcessRunner {
     for (const child of this.stdioChildren.values()) terminateTree(child);
   }
 
-  private async prepare(request: ProcessRequest): Promise<ProcessRequest & { executable: string; timeoutMs: number }> {
+  private async prepareBase<T extends ProcessBaseRequest>(request: T): Promise<T & { executable: string }> {
     validateExecutable(request.executable);
     if (request.args.length > 256) throw new Error("Too many process arguments");
     for (const argument of request.args) if (argument.includes("\0")) throw new Error("Process arguments must not contain NUL");
     if (request.signal?.aborted) throw request.signal.reason ?? new Error("Process request aborted");
-    const timeoutMs = request.timeoutMs ?? DEFAULT_PROCESS_TIMEOUT_MS;
-    if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > MAX_PROCESS_TIMEOUT_MS) throw new Error(`timeoutMs must be between 100 and ${MAX_PROCESS_TIMEOUT_MS}`);
     const executable = await resolveExecutable(request.executable);
     if (request.signal?.aborted) throw request.signal.reason ?? new Error("Process request aborted");
-    return { ...request, executable, timeoutMs };
+    return { ...request, executable };
+  }
+
+  private async prepare(request: ProcessRequest): Promise<ProcessRequest & { executable: string; timeoutMs: number }> {
+    const prepared = await this.prepareBase(request);
+    const timeoutMs = request.timeoutMs ?? DEFAULT_PROCESS_TIMEOUT_MS;
+    validateTimeout(timeoutMs);
+    return { ...prepared, timeoutMs };
+  }
+
+  private async prepareStdio(request: StdioSessionRequest): Promise<StdioSessionRequest & { executable: string; timeoutMs: number | null }> {
+    const prepared = await this.prepareBase(request);
+    if (request.timeoutMs === null) return { ...prepared, timeoutMs: null };
+    const timeoutMs = request.timeoutMs ?? DEFAULT_PROCESS_TIMEOUT_MS;
+    validateTimeout(timeoutMs);
+    return { ...prepared, timeoutMs };
   }
 
   private acquire(): void {
@@ -153,7 +175,7 @@ export class ProcessRunner {
     this.active = Math.max(0, this.active - 1);
   }
 
-  private spawnAndCollect(request: ProcessRequest & { timeoutMs: number }): Promise<ProcessResult> {
+  private spawnAndCollect(request: ProcessRequest & { executable: string; timeoutMs: number }): Promise<ProcessResult> {
     return new Promise((resolve, reject) => {
       const startedAt = Date.now();
       let stdout = Buffer.alloc(0);
@@ -200,7 +222,7 @@ export class ProcessRunner {
     });
   }
 
-  private spawnAndAccept(request: ProcessRequest & { timeoutMs: number }): Promise<AsyncProcessResult> {
+  private spawnAndAccept(request: ProcessRequest & { executable: string; timeoutMs: number }): Promise<AsyncProcessResult> {
     return new Promise((resolve, reject) => {
       const startedAt = new Date();
       const child = spawnNative(request, ["ignore", "ignore", "ignore"]);
@@ -259,7 +281,7 @@ export class ProcessRunner {
     });
   }
 
-  private spawnStdioSession(request: ProcessRequest & { timeoutMs: number }): Promise<ManagedStdioSession> {
+  private spawnStdioSession(request: StdioSessionRequest & { executable: string; timeoutMs: number | null }): Promise<ManagedStdioSession> {
     return new Promise((resolve, reject) => {
       const startedAt = Date.now();
       const child = spawnNative(request, ["pipe", "pipe", "pipe"]);
@@ -352,7 +374,7 @@ export class ProcessRunner {
         accepted = true;
         openSettled = true;
         this.stdioChildren.set(child.pid, child);
-        timer = setTimeout(() => { timedOut = true; terminate(); }, request.timeoutMs);
+        if (request.timeoutMs !== null) timer = setTimeout(() => { timedOut = true; terminate(); }, request.timeoutMs);
         const session: ManagedStdioSession = {
           pid: child.pid,
           closed,
@@ -390,7 +412,13 @@ export class ProcessRunner {
   }
 }
 
-function spawnNative(request: ProcessRequest & { executable: string }, stdio: ["ignore" | "pipe", "pipe" | "ignore", "pipe" | "ignore"]): ChildProcess {
+function validateTimeout(timeoutMs: number): void {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > MAX_PROCESS_TIMEOUT_MS) {
+    throw new Error(`timeoutMs must be between 100 and ${MAX_PROCESS_TIMEOUT_MS}`);
+  }
+}
+
+function spawnNative(request: ProcessBaseRequest & { executable: string }, stdio: ["ignore" | "pipe", "pipe" | "ignore", "pipe" | "ignore"]): ChildProcess {
   return spawn(request.executable, [...request.args], {
     cwd: request.cwd,
     shell: false,
