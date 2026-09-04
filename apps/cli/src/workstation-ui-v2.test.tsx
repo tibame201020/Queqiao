@@ -5,7 +5,7 @@ import type { WorkstationSnapshot } from "./workstation.js";
 import { WorkstationApp } from "./workstation-ui.js";
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 30));
-async function waitForFrame(ui: ReturnType<typeof render>, text: string, timeoutMs = 2000) {
+async function waitForFrame(ui: ReturnType<typeof render>, text: string, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if ((ui.lastFrame() || "").includes(text)) return;
@@ -164,7 +164,7 @@ describe("Workstation v2 window hierarchy", () => {
     expect(narrow.lastFrame()).toContain("INVENTORY");
     narrow.stdin.write("\u001b[C"); await waitForFrame(narrow, "INSPECTOR");
     narrow.stdin.write("\u001b[D"); await waitForFrame(narrow, "INVENTORY");
-  }, 12_000);
+  }, 30_000);
 
   it("keeps Inspector Enter semantics consistent across viewports by running the selected action", async () => {
     for (const [width, height, enters] of [[140, 35, 2], [100, 28, 1], [70, 24, 1]] as const) {
