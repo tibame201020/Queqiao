@@ -31,6 +31,7 @@ export type WorkerExtensionStdioSession = {
   readonly closed: Promise<WorkerExtensionManagedProcessClose>;
 };
 export type WorkerExtensionHttpResponse = { status: number; headers: Record<string, string>; body: string };
+export type WorkerExtensionFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 export type WorkerExtensionRuntime = {
   stdio: {
     open(input: { executable: string; args?: readonly string[]; cwd?: string; timeoutMs?: number }): Promise<WorkerExtensionStdioSession>;
@@ -43,6 +44,7 @@ export type WorkerExtensionRuntime = {
       body?: string;
       timeoutMs?: number;
     }): Promise<WorkerExtensionHttpResponse>;
+    fetch: WorkerExtensionFetch;
   };
 };
 export type WorkerExtensionContext = { workspaceId: string; capabilities: WorkerExtensionCapabilities; runtime: WorkerExtensionRuntime; signal?: AbortSignal };
