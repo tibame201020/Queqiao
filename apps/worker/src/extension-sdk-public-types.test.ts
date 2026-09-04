@@ -2,10 +2,8 @@ import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
-const execFileAsync = promisify(execFile);
 let temporary: string | undefined;
 afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); temporary = undefined; });
 
@@ -19,7 +17,16 @@ async function compileFixture(source: string, compilerOptions: Record<string, un
   await writeFile(path.join(temporary, "package.json"), JSON.stringify({ name: "runtime-consumer-fixture", private: true, type: "module" }), "utf8");
   await writeFile(fixture, source, "utf8");
   await writeFile(tsconfig, JSON.stringify({ compilerOptions, files: [fixture] }, null, 2), "utf8");
-  const result = await execFileAsync(process.execPath, [tsc, "--project", tsconfig, "--pretty", "false"], { cwd: repoRoot });
+  const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+    execFile(process.execPath, [tsc, "--project", tsconfig, "--pretty", "false"], { cwd: repoRoot }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`TypeScript fixture compilation failed:\n${stdout}${stderr}`));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+  expect(result.stdout).toBe("");
   expect(result.stderr).toBe("");
 }
 
