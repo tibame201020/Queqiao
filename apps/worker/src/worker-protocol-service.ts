@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { extensionRuntimePolicyFor } from "@queqiao/config";
-import { ProcessRunner, type ManagedStdioSession, type ProcessRequest } from "@queqiao/process-runtime";
+import { ProcessRunner, type ManagedStdioSession, type StdioSessionRequest } from "@queqiao/process-runtime";
 import {
   QUEQIAO_WORKER_LEGACY_CAPABILITIES,
   QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION,
@@ -42,8 +42,8 @@ export async function createWorkerProtocolService(config: WorkerProtocolServiceC
   const toolRuntimes = new Map<string, { generation: number; runtime: ToolRuntime<WorkerToolContext> }>();
   const processes = config.processes ?? new ProcessRunner();
   const stdioProcesses = {
-    openStdio: (request: ProcessRequest): Promise<ManagedStdioSession> => {
-      const candidate = processes as WorkerProcessExecutor & { openStdio?: (request: ProcessRequest) => Promise<ManagedStdioSession> };
+    openStdio: (request: StdioSessionRequest): Promise<ManagedStdioSession> => {
+      const candidate = processes as WorkerProcessExecutor & { openStdio?: (request: StdioSessionRequest) => Promise<ManagedStdioSession> };
       if (typeof candidate.openStdio !== "function") throw new WorkerToolError(503, "extension_runtime_unavailable", "Managed stdio runtime is unavailable");
       return candidate.openStdio.call(processes, request);
     },
