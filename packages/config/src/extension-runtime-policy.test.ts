@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extensionManifestSchema } from "./index.js";
+import { extensionManifestSchema, extensionRuntimePolicyFor } from "./index.js";
 
 const manifest = {
   id: "dev.queqiao.runtime-probe",
@@ -11,8 +11,8 @@ const manifest = {
 
 describe("Extension runtime policy", () => {
   it("defaults downstream process and network authority to deny", () => {
-    const parsed = extensionManifestSchema.parse(manifest) as typeof manifest & { runtime: unknown };
-    expect(parsed.runtime).toEqual({ processes: { allow: [] }, outboundHttp: { allowOrigins: [] } });
+    const parsed = extensionManifestSchema.parse(manifest);
+    expect(extensionRuntimePolicyFor(parsed)).toEqual({ processes: { allow: [] }, outboundHttp: { allowOrigins: [] } });
   });
 
   it("accepts bounded executable basenames and exact HTTP origins", () => {
@@ -22,9 +22,11 @@ describe("Extension runtime policy", () => {
         processes: { allow: ["node", "python3"] },
         outboundHttp: { allowOrigins: ["https://mcp.example.com", "http://127.0.0.1:8123"] },
       },
-    }) as typeof manifest & { runtime: { processes: { allow: string[] }; outboundHttp: { allowOrigins: string[] } } };
-    expect(parsed.runtime.processes.allow).toEqual(["node", "python3"]);
-    expect(parsed.runtime.outboundHttp.allowOrigins).toEqual(["https://mcp.example.com", "http://127.0.0.1:8123"]);
+    });
+    expect(extensionRuntimePolicyFor(parsed)).toEqual({
+      processes: { allow: ["node", "python3"] },
+      outboundHttp: { allowOrigins: ["https://mcp.example.com", "http://127.0.0.1:8123"] },
+    });
   });
 
   it("rejects shell/path executables and non-origin network grants", () => {
