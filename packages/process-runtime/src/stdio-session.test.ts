@@ -57,6 +57,17 @@ describe("ProcessRunner managed stdio sessions", () => {
     expect(runner.activeCount()).toBe(0);
   });
 
+  it("reaps lifecycle-bound sessions during Worker shutdown", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-stdio-shutdown-"));
+    const runner = new ProcessRunner(1);
+    const session = await openStdio(runner, { args: ["-e", "setInterval(()=>{},1000)"], timeoutMs: null });
+    expect(runner.stdioCount()).toBe(1);
+    runner.shutdown();
+    await expect(session.closed).resolves.toMatchObject({ timedOut: false });
+    expect(runner.stdioCount()).toBe(0);
+    expect(runner.activeCount()).toBe(0);
+  });
+
   it("enforces an explicit session timeout and output bound", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-stdio-bounds-"));
     const runner = new ProcessRunner(1, 32);
