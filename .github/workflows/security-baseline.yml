@@ -46,17 +46,30 @@ jobs:
       - run: npm install --global npm@11.16.0
       - run: npm ci --ignore-scripts
       - name: Audit runtime dependencies
+        id: npm-audit
         shell: bash
         run: |
-          status=1
           for attempt in 1 2 3; do
-            if npm audit --package-lock-only --omit=dev --audit-level=high --fetch-timeout=30000 --fetch-retries=1; then
+            set +e
+            output=$(npm audit --package-lock-only --omit=dev --audit-level=high --fetch-timeout=30000 --fetch-retries=0 2>&1)
+            status=$?
+            set -e
+            printf '%s\n' "$output"
+            if [ "$status" -eq 0 ]; then
               exit 0
-            else
-              status=$?
+            fi
+            if ! printf '%s\n' "$output" | grep -Eqi 'audit endpoint returned an error|network timeout|503 Service Unavailable|ECONNRESET|ETIMEDOUT'; then
+              exit "$status"
             fi
             if [ "$attempt" -lt 3 ]; then
               sleep $((attempt * 10))
             fi
           done
-          exit "$status"
+          echo 'unavailable=true' >> "$GITHUB_OUTPUT"
+
+      - name: OSV fallback when npm advisory service is unavailable
+        if: steps.npm-audit.outputs.unavailable == 'true'
+        uses: google/osv-scanner-action/osv-scanner-action@06b2ab4348248b456ee06c9e953637f55e03504f # v2.5.0
+        with:
+          scan-args: |-
+            --lockfile=package-lock.json
