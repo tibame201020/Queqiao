@@ -16,7 +16,8 @@ type ExtensionStdioRequest = {
   executable: string;
   args?: readonly string[];
   cwd?: string;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
+  signal?: AbortSignal;
 };
 
 type ExtensionHttpRequest = {
@@ -68,7 +69,7 @@ export class WorkerExtensionRuntimeServices {
       args: request.args ?? [],
       cwd,
       ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
-      ...(this.input.signal ? { signal: this.input.signal } : {}),
+      ...(request.signal ? { signal: request.signal } : {}),
     });
   }
 
