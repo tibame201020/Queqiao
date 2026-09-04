@@ -9,10 +9,14 @@ const manifest = {
   contributions: [],
 };
 
+function policyFor(parsed: ReturnType<typeof extensionManifestSchema.parse>) {
+  return extensionRuntimePolicyFor(parsed.runtime ? { runtime: parsed.runtime } : {});
+}
+
 describe("Extension runtime policy", () => {
   it("defaults downstream process and network authority to deny", () => {
     const parsed = extensionManifestSchema.parse(manifest);
-    expect(extensionRuntimePolicyFor(parsed)).toEqual({ processes: { allow: [] }, outboundHttp: { allowOrigins: [] } });
+    expect(policyFor(parsed)).toEqual({ processes: { allow: [] }, outboundHttp: { allowOrigins: [] } });
   });
 
   it("accepts bounded executable basenames and exact HTTP origins", () => {
@@ -23,7 +27,7 @@ describe("Extension runtime policy", () => {
         outboundHttp: { allowOrigins: ["https://mcp.example.com", "http://127.0.0.1:8123"] },
       },
     });
-    expect(extensionRuntimePolicyFor(parsed)).toEqual({
+    expect(policyFor(parsed)).toEqual({
       processes: { allow: ["node", "python3"] },
       outboundHttp: { allowOrigins: ["https://mcp.example.com", "http://127.0.0.1:8123"] },
     });
