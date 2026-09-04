@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import * as ts from "typescript";
+import ts from "typescript";
 import { afterEach, describe, expect, it } from "vitest";
 
 let temporary: string | undefined;
