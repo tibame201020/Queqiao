@@ -8,13 +8,14 @@ let temporary: string | undefined;
 afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); temporary = undefined; });
 const nodeExecutable = path.basename(process.execPath);
 
-const openStdio = (runner: ProcessRunner, input: { args: string[]; signal?: AbortSignal; timeoutMs?: number }) =>
-  (runner as unknown as { openStdio(request: { executable: string; args: string[]; cwd: string; signal?: AbortSignal; timeoutMs?: number }): Promise<any> }).openStdio({
+type StdioInput = { args: string[]; signal?: AbortSignal; timeoutMs?: number | null };
+const openStdio = (runner: ProcessRunner, input: StdioInput) =>
+  (runner as unknown as { openStdio(request: { executable: string; args: string[]; cwd: string; signal?: AbortSignal; timeoutMs?: number | null }): Promise<any> }).openStdio({
     executable: nodeExecutable,
     args: input.args,
     cwd: temporary!,
     ...(input.signal ? { signal: input.signal } : {}),
-    ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+    ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
   });
 
 describe("ProcessRunner managed stdio sessions", () => {
@@ -32,19 +33,31 @@ describe("ProcessRunner managed stdio sessions", () => {
     expect(runner.activeCount()).toBe(0);
   });
 
-  it("keeps session cancellation request-bound and releases capacity", async () => {
+  it("keeps explicit session cancellation authoritative and releases capacity", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-stdio-abort-"));
     const runner = new ProcessRunner(1);
     const abort = new AbortController();
     const session = await openStdio(runner, { args: ["-e", "setInterval(()=>{},1000)"], signal: abort.signal, timeoutMs: 2000 });
     expect(runner.activeCount()).toBe(1);
     await expect(openStdio(runner, { args: ["-e", "0"] })).rejects.toBeInstanceOf(ProcessCapacityError);
-    abort.abort(new Error("request cancelled"));
+    abort.abort(new Error("session cancelled"));
     await expect(session.closed).resolves.toMatchObject({ aborted: true });
     expect(runner.activeCount()).toBe(0);
   });
 
-  it("enforces the session lifetime and output bound", async () => {
+  it("supports lifecycle-bound sessions without an arbitrary request timeout", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-stdio-managed-"));
+    const runner = new ProcessRunner(1);
+    const session = await openStdio(runner, { args: ["-e", "setInterval(()=>{},1000)"], timeoutMs: null });
+    expect(runner.activeCount()).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(runner.activeCount()).toBe(1);
+    await session.close();
+    await expect(session.closed).resolves.toMatchObject({ timedOut: false, aborted: false });
+    expect(runner.activeCount()).toBe(0);
+  });
+
+  it("enforces an explicit session timeout and output bound", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-stdio-bounds-"));
     const runner = new ProcessRunner(1, 32);
     const noisy = await openStdio(runner, { args: ["-e", "process.stdout.write('x'.repeat(128));setInterval(()=>{},1000)"], timeoutMs: 2000 });
