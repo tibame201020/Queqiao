@@ -364,9 +364,12 @@ describe.sequential("isolated packaged CLI acceptance", () => {
     const workerConfig = await readRuntimeConfig(workerLayout.configFile);
     if (!gatewayConfig.gateway || !workerConfig.worker) throw new Error("Acceptance runtime config missing");
 
-    await writeFile(gatewayLayout.configFile, serializeRuntimeConfig({
-      ...gatewayConfig,
-      gateway: { ...gatewayConfig.gateway, livenessIntervalMs: 5_000 },
+    // freePort() is a probe, not a reservation. Refresh runtime ports immediately before launch
+    // so parallel Vitest files cannot claim ports persisted earlier by the setup acceptance.
+    workerPort = await freePort();
+    await writeFile(workerLayout.configFile, serializeRuntimeConfig({
+      ...workerConfig,
+      worker: { ...workerConfig.worker, listen: { ...workerConfig.worker.listen, port: workerPort } },
     }), "utf8");
 
     let workerStarted = false;
@@ -378,6 +381,18 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       workerStarted = true;
       const runningWorker = await waitForJson<any>(["worker", "status", "--worker", WORKER, "--json"], (value) => value.active === true && value.managed === true, 30_000);
       expect(runningWorker.pid).toBe(workerStart.pid);
+
+      [gatewayPort, managementPort] = await Promise.all([freePort(), freePort()]);
+      await writeFile(gatewayLayout.configFile, serializeRuntimeConfig({
+        ...gatewayConfig,
+        gateway: {
+          ...gatewayConfig.gateway,
+          publicBaseUrl: `http://127.0.0.1:${gatewayPort}/`,
+          listen: { ...gatewayConfig.gateway.listen, port: gatewayPort },
+          managementListen: { ...gatewayConfig.gateway.managementListen, port: managementPort },
+          livenessIntervalMs: 5_000,
+        },
+      }), "utf8");
 
       const gatewayStart = parseJson<any>(await runCli(["gateway", "serve", "--bg", "--gateway", GATEWAY, "--json"]));
       expect(gatewayStart).toMatchObject({ started: true, role: "gateway", name: GATEWAY });
