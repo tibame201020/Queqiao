@@ -4,8 +4,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { extensionManifestSchema, installedExtensionSchema } from "@queqiao/config";
+import type { WorkerExtensionRuntime } from "@queqiao/extension-sdk";
 import { ExtensionHost, type ToolDefinition } from "@queqiao/tool-runtime";
-import type { ManagedStdioSession } from "@queqiao/process-runtime";
 import { createWorkerProtocolService } from "./worker-protocol-service.js";
 import type { WorkerToolContext } from "./core-tools.js";
 
@@ -23,8 +23,8 @@ function registeredTool(executable: string): ToolDefinition<WorkerToolContext> {
     risk: "execute",
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async execute(_input, context) {
-      const runtime = (context as WorkerToolContext & { runtime: { stdio: { open(input: { executable: string; args?: readonly string[]; cwd?: string; timeoutMs?: number }): Promise<ManagedStdioSession> } } }).runtime;
-      const session = await runtime.stdio.open({ executable, args: ["-e", "process.stdin.once('data',d=>{process.stdout.write(d.toString().toUpperCase());process.exit(0)})"], cwd: ".", timeoutMs: 2000 });
+      const runtime = (context as WorkerToolContext & { runtime: WorkerExtensionRuntime }).runtime;
+      const session = await runtime.stdio.open({ executable, args: ["-e", "process.stdin.once('data',d=>{process.stdout.write(d.toString().toUpperCase());process.exit(0)})"], cwd: ".", timeoutMs: null });
       await session.write("extension runtime\n");
       const event = await session.next();
       await session.closed;
