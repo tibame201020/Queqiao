@@ -17,6 +17,21 @@ const quickstartAssets = [
   "docs/assets/workstation/quickstart/09-copy-approval-secret.gif",
 ] as const;
 
+const rootQuickstartAssets = [
+  "docs/assets/workstation/quickstart/01-gateway-setup.gif",
+  "docs/assets/workstation/quickstart/03-worker-setup.gif",
+  "docs/assets/workstation/quickstart/06-worker-join.gif",
+] as const;
+
+const rootExcludedQuickstartAssets = [
+  "docs/assets/workstation/quickstart/02-gateway-start.gif",
+  "docs/assets/workstation/quickstart/04-worker-start.gif",
+  "docs/assets/workstation/quickstart/05-create-join-code.gif",
+  "docs/assets/workstation/quickstart/07-gateway-detail.gif",
+  "docs/assets/workstation/quickstart/08-copy-mcp-url.gif",
+  "docs/assets/workstation/quickstart/09-copy-approval-secret.gif",
+] as const;
+
 const controlAssets = [
   "docs/assets/workstation/controls/01-gateways.gif",
   "docs/assets/workstation/controls/02-workers.gif",
@@ -88,7 +103,8 @@ describe("CLI visual documentation", () => {
     expect(readme).toContain("docs/configuration-persistence.md");
     expect(readme).toContain("docs/cli/reference.md");
     expect(readme).toContain("docs/operations.md");
-    for (const asset of quickstartAssets) expect(readme).toContain(asset);
+    for (const asset of rootQuickstartAssets) expect(readme).toContain(asset);
+    for (const asset of rootExcludedQuickstartAssets) expect(readme).not.toContain(asset);
     expect(readme).toContain(connectorScreenshot);
     for (const asset of controlAssets) expect(readme).not.toContain(asset);
     expect(readme).not.toContain("docs/assets/workstation/01-overview.gif");
@@ -107,7 +123,8 @@ describe("CLI visual documentation", () => {
       expect(readme).toContain("queqiao workstation");
       expect(readme).toContain("queqiao doctor paths");
       expect(readme).not.toContain("queqiao.cmd");
-      for (const asset of quickstartAssets) expect(readme).toContain(asset);
+      for (const asset of rootQuickstartAssets) expect(readme).toContain(asset);
+      for (const asset of rootExcludedQuickstartAssets) expect(readme).not.toContain(asset);
       expect(readme).toContain(connectorScreenshot);
     }
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
