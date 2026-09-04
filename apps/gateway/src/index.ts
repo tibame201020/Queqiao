@@ -21,16 +21,28 @@ const workerSessionTarget = config.workerSessionTls
 console.log(`Queqiao Worker gRPC session listener: ${workerSessionTarget}${config.workerSessionTls ? " (TLS)" : " (loopback-only)"}`);
 const app = await createGatewayApp(config, enrollment, sessions);
 const host = config.host ?? "127.0.0.1";
-listenGateway(app, config, () => { console.log(`Queqiao Gateway listening on http://${host}:${config.port}`); console.log(`Public MCP URL: ${config.resourceUrl}`); });
+const gatewayServer = listenGateway(app, config, () => { console.log(`Queqiao Gateway listening on http://${host}:${config.port}`); console.log(`Public MCP URL: ${config.resourceUrl}`); });
 const managementApp = createGatewayManagementApp({ secret: managementSecret.secret, enrollment, memberships, stateDirectory: config.stateDir, sessions });
 const managementServer = managementApp.listen(config.managementPort, "127.0.0.1", () => console.log(`Queqiao Gateway management listening on http://127.0.0.1:${config.managementPort}`));
+
+function closeHttpServer(server: typeof gatewayServer): Promise<void> {
+  return new Promise((resolve) => {
+    server.close((error) => {
+      if (error) console.error("Gateway HTTP server shutdown failed", error);
+      resolve();
+    });
+  });
+}
 
 let stopping = false;
 const shutdown = () => {
   if (stopping) return;
   stopping = true;
-  void workerSessionServer.close().catch((error) => console.error("Worker gRPC session shutdown failed", error));
-  managementServer.close();
+  void Promise.all([
+    closeHttpServer(gatewayServer),
+    closeHttpServer(managementServer),
+    workerSessionServer.close().catch((error) => console.error("Worker gRPC session shutdown failed", error)),
+  ]).catch((error) => console.error("Gateway shutdown failed", error));
 };
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
