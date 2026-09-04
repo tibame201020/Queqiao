@@ -9,6 +9,8 @@ Queqiao is a secure bridge between AI clients and local coding environments. A p
 
 ## Install
 
+Requirements: Node.js `>=22.19 <25` and npm `>=9`.
+
 ```shell
 npm install --global @tibame201020/queqiao
 queqiao --version
@@ -22,6 +24,15 @@ queqiao --version
 - **Access Profile** — reusable authority template copied into a Workspace when applied.
 - **Extension** — installed in the host Extension Hub, then explicitly attached to Workers.
 
+## Before you start
+
+For an AI client outside the Gateway host, prepare an HTTPS URL that reaches the Gateway. The URL is entered during Gateway setup and becomes the MCP endpoint copied later.
+
+Worker networking is separate:
+
+- **Same-host Worker** — keep **Worker connectivity: Local only**.
+- **Worker on another machine** — choose **Remote workers** and expose the dedicated pinned-TLS gRPC Worker-session listener to that Worker. The remote Worker connects outbound; it does not expose an inbound execution port.
+
 ## Quick start — Workstation
 
 Launch the persistent operator UI:
@@ -30,69 +41,70 @@ Launch the persistent operator UI:
 queqiao workstation
 ```
 
-Complete the first deployment entirely inside Workstation.
+The complete first deployment is Gateway → Worker → membership → AI client.
 
-### 1. Set up the Gateway
+### 1. Set up and start the Gateway
 
-Choose **Gateway (`1`) → Set up Gateway**, then enter its public URL, Gateway port, and local management port. **Worker connectivity** defaults to **Local only**; choose **Remote workers** when another machine must join, then enter the Gateway DNS name or LAN IP and the dedicated TLS gRPC port.
+Choose **Gateway (`1`) → Set up Gateway** and enter the public URL, Gateway port, and local management port. Select **Local only** or **Remote workers** according to the topology above. Then select the configured Gateway and run **Start**.
 
 ![Gateway setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/01-gateway-setup.gif)
 
-### 2. Start the Gateway
+### 2. Set up and start the Worker
 
-Select the configured Gateway and run **Start**.
-
-![Gateway start](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/02-gateway-start.gif)
-
-### 3. Set up the Worker
-
-Choose **Worker (`2`) → Set up Worker**. Setup creates the Worker and its first Workspace/authority policy together.
+Choose **Worker (`2`) → Set up Worker**. Setup creates the Worker and its first Workspace/authority policy together. Then select the Worker and run **Start**.
 
 ![Worker setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/03-worker-setup.gif)
 
-### 4. Start the Worker
+### 3. Join the Worker to the Gateway
 
-Select the configured Worker and run **Start**.
+On the Gateway, run **Create join code**. On the Worker, run **Join Gateway** and either choose the local Gateway or paste a self-contained join code from another host.
 
-![Worker start](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/04-worker-start.gif)
-
-### 5. Create a join code
-
-Return to **Gateway (`1`)** and run **Create join code**. The short-lived code is copied when clipboard access is available.
-
-![Create join code](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/05-create-join-code.gif)
-
-### 6. Join the Worker
-
-Open **Worker (`2`) → Join Gateway** and choose the local Gateway or paste a self-contained join code from another host. Remote join codes carry the pinned Gateway certificate and Worker-session target, so the Worker opens the outbound TLS gRPC session without exposing an inbound LAN execution port.
+Remote join codes carry the pinned Gateway certificate and Worker-session target, so the Worker can establish its outbound TLS gRPC session.
 
 ![Worker join](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/06-worker-join.gif)
 
-### 7. Verify Gateway details
+### 4. Verify the deployment
 
-Return to the Gateway Inspector and press `i`. Detailed Info exposes runtime status, connector information, enrolled Workers, and whether Worker transport is **Local only** or **Remote · TLS gRPC** without leaving Workstation.
+Return to the Gateway Inspector and press `i`. **Detailed Info** should show:
 
-![Gateway Detailed Info](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/07-gateway-detail.gif)
+- Gateway runtime healthy;
+- the Worker enrolled;
+- Worker transport as **Local only** or **Remote · TLS gRPC**;
+- connector information for the public Gateway.
 
-### 8. Copy the MCP URL
+If one of these is missing, do not continue to connector setup; use **Diagnostics (`6`)** or the Workstation result/remediation text first.
 
-Back in the Gateway Inspector, press `c` (**Copy MCP URL**). Workstation copies the public `/mcp` endpoint without adding it to terminal output.
+### 5. Add Queqiao to ChatGPT
 
-![Copy MCP URL](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/08-copy-mcp-url.gif)
+In the Gateway Inspector:
 
-### 9. Copy the approval secret and add Queqiao to ChatGPT
+1. press `c` — **Copy MCP URL**;
+2. press `p` — **Copy approval secret**;
+3. in ChatGPT, create a custom app/connector with the copied MCP URL and **OAuth** authentication;
+4. connect, then paste the approval secret only into Queqiao's OAuth approval page.
 
-Press `p` (**Copy approval secret**). In ChatGPT, create a custom app/connector, paste the MCP URL from step 8 as the server URL, keep **OAuth** authentication, then connect. When Queqiao opens its approval page, paste the approval secret copied by `p`. Never put the approval secret in documentation, logs, or issue reports.
-
-![Copy approval secret](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/09-copy-approval-secret.gif)
+Never put the approval secret in documentation, logs, repositories, or issue reports.
 
 ![Add Queqiao connector in ChatGPT](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/10-chatgpt-add-connector.png)
 
-If a future Queqiao release changes the public MCP tool schema, use ChatGPT's **Refresh** action and validate from a new conversation. Reconnect is for the connection/OAuth lifecycle, not schema discovery.
+A successful first deployment now has the complete path:
+
+```text
+AI client → HTTPS Gateway → enrolled Worker → Workspace
+```
+
+If a future Queqiao release changes the public MCP tool schema, use ChatGPT's **Refresh** action and validate from a new conversation. **Reconnect** is for connection/OAuth recovery, not schema discovery.
+
+## Next steps
+
+- Add or adjust Workspace authority from **Workspace (`3`)** / **Access Profile (`4`)**.
+- Install and attach optional Worker capabilities from **Extension (`5`)**. See [Extensions](https://github.com/tibame201020/Queqiao/blob/main/docs/extensions.md).
+- Run **Diagnostics (`6`)** after topology, membership, or Extension changes.
+- For scripts/CI, use the [Classic / leaf CLI](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md) instead of driving the TUI.
 
 `1..6` switch domains, arrows move/select, `Enter` inspects or runs an action, `i` opens Detailed Info, `?` opens Help, `,` opens Appearance Settings, and `q` exits when no modal owns input.
 
-For every control, action behavior, Appearance, and per-domain Detailed Info screenshots/GIFs, see the **[Workstation guide](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.md)**. For deterministic scripting/automation, use the **[Classic / leaf CLI](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md)**.
+The root README intentionally keeps only the recordings that explain multi-step or topology-sensitive flows. Per-control recordings, Appearance behavior, and Detailed Info screenshots/GIFs live in the [Workstation guide](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.md).
 
 ## Configuration and persistence
 
@@ -102,7 +114,7 @@ Queqiao separates **config**, **durable data**, **operational state**, and **eph
 queqiao doctor paths
 ```
 
-See **[Configuration & persistence](https://github.com/tibame201020/Queqiao/blob/main/docs/configuration-persistence.md)** for Windows/Linux/WSL paths, secrets, membership, Extension Hub storage, logs/PIDs, backup guidance, and `QUEQIAO_*` path overrides.
+See [Configuration & persistence](https://github.com/tibame201020/Queqiao/blob/main/docs/configuration-persistence.md) for Windows/Linux/WSL paths, secrets, membership, Extension Hub storage, logs/PIDs, backup guidance, and `QUEQIAO_*` path overrides.
 
 ## Documentation
 
