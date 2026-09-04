@@ -2,10 +2,12 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { constants } from "node:fs";
 import { access, realpath, stat } from "node:fs/promises";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 export const DEFAULT_PROCESS_TIMEOUT_MS = 30_000;
 export const MAX_PROCESS_TIMEOUT_MS = 120_000;
 export const MAX_PROCESS_OUTPUT_BYTES = 256 * 1024;
+export const MAX_PROCESS_INPUT_CHUNK_BYTES = 1024 * 1024;
 export const DEFAULT_PROCESS_CONCURRENCY = 2;
 
 export type ProcessRequest = {
@@ -39,6 +41,28 @@ export type AsyncProcessResult = {
   stderr: "discarded";
 };
 
+export type ProcessStreamEvent = {
+  type: "stdout" | "stderr";
+  data: string;
+};
+
+export type ManagedProcessClose = {
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  durationMs: number;
+  timedOut: boolean;
+  aborted: boolean;
+  outputLimitExceeded: boolean;
+};
+
+export type ManagedStdioSession = {
+  pid: number;
+  write(data: string): Promise<void>;
+  next(): Promise<ProcessStreamEvent>;
+  close(): Promise<void>;
+  readonly closed: Promise<ManagedProcessClose>;
+};
+
 export class ProcessCapacityError extends Error {
   constructor() { super("Worker process concurrency limit reached"); }
 }
@@ -46,6 +70,7 @@ export class ProcessCapacityError extends Error {
 export class ProcessRunner {
   private active = 0;
   private readonly asyncChildren = new Map<number, { child: ChildProcess; timer: NodeJS.Timeout }>();
+  private readonly stdioChildren = new Map<number, ChildProcess>();
 
   constructor(
     private readonly concurrency = DEFAULT_PROCESS_CONCURRENCY,
@@ -56,6 +81,7 @@ export class ProcessRunner {
 
   activeCount(): number { return this.active; }
   asyncCount(): number { return this.asyncChildren.size; }
+  stdioCount(): number { return this.stdioChildren.size; }
 
   async run(request: ProcessRequest): Promise<ProcessResult> {
     const prepared = await this.prepare(request);
@@ -82,9 +108,28 @@ export class ProcessRunner {
     }
   }
 
-  /** Terminate tracked async process trees during an orderly Worker shutdown. */
+  /**
+   * Open a request-bound native stdio session. Unlike async start(), cancellation,
+   * timeout, output bounds, concurrency and shutdown tracking remain authoritative
+   * for the entire session lifetime.
+   */
+  async openStdio(request: ProcessRequest): Promise<ManagedStdioSession> {
+    const prepared = await this.prepare(request);
+    this.acquire();
+    let handedOff = false;
+    try {
+      const session = await this.spawnStdioSession(prepared);
+      handedOff = true;
+      return session;
+    } finally {
+      if (!handedOff) this.release();
+    }
+  }
+
+  /** Terminate tracked process trees during an orderly Worker shutdown. */
   shutdown(): void {
     for (const { child } of this.asyncChildren.values()) terminateTree(child);
+    for (const child of this.stdioChildren.values()) terminateTree(child);
   }
 
   private async prepare(request: ProcessRequest): Promise<ProcessRequest & { executable: string; timeoutMs: number }> {
@@ -213,9 +258,139 @@ export class ProcessRunner {
       });
     });
   }
+
+  private spawnStdioSession(request: ProcessRequest & { timeoutMs: number }): Promise<ManagedStdioSession> {
+    return new Promise((resolve, reject) => {
+      const startedAt = Date.now();
+      const child = spawnNative(request, ["pipe", "pipe", "pipe"]);
+      const stdoutDecoder = new StringDecoder("utf8");
+      const stderrDecoder = new StringDecoder("utf8");
+      const events: ProcessStreamEvent[] = [];
+      const waiters: Array<{ resolve(event: ProcessStreamEvent): void; reject(error: Error): void }> = [];
+      let outputBytes = 0;
+      let accepted = false;
+      let openSettled = false;
+      let closeSettled = false;
+      let timedOut = false;
+      let aborted = false;
+      let outputLimitExceeded = false;
+      let preAcceptanceFailure: unknown;
+      let timer: NodeJS.Timeout | undefined;
+      let resolveClosed!: (value: ManagedProcessClose) => void;
+      const closed = new Promise<ManagedProcessClose>((resolveClose) => { resolveClosed = resolveClose; });
+
+      const enqueue = (event: ProcessStreamEvent) => {
+        const waiter = waiters.shift();
+        if (waiter) waiter.resolve(event);
+        else events.push(event);
+      };
+      const rejectWaiters = () => {
+        const error = new Error("Managed stdio session is closed");
+        while (waiters.length) waiters.shift()!.reject(error);
+      };
+      const terminate = () => terminateTree(child);
+      const append = (type: "stdout" | "stderr", chunk: Buffer) => {
+        if (closeSettled) return;
+        const remaining = Math.max(0, this.outputLimitBytes - outputBytes);
+        const acceptedChunk = chunk.subarray(0, remaining);
+        outputBytes += acceptedChunk.length;
+        if (acceptedChunk.length) {
+          const decoder = type === "stdout" ? stdoutDecoder : stderrDecoder;
+          const data = decoder.write(acceptedChunk);
+          if (data) enqueue({ type, data });
+        }
+        if (acceptedChunk.length < chunk.length) {
+          outputLimitExceeded = true;
+          terminate();
+        }
+      };
+      const onAbort = () => {
+        aborted = true;
+        if (!accepted) preAcceptanceFailure = request.signal?.reason ?? new Error("Process request aborted");
+        terminate();
+      };
+      const releaseTracked = () => {
+        if (child.pid) this.stdioChildren.delete(child.pid);
+        this.release();
+      };
+      const settleClose = (exitCode: number | null, signal: NodeJS.Signals | null) => {
+        if (closeSettled) return;
+        closeSettled = true;
+        if (timer) clearTimeout(timer);
+        request.signal?.removeEventListener("abort", onAbort);
+        const stdoutTail = stdoutDecoder.end();
+        const stderrTail = stderrDecoder.end();
+        if (stdoutTail) enqueue({ type: "stdout", data: stdoutTail });
+        if (stderrTail) enqueue({ type: "stderr", data: stderrTail });
+        rejectWaiters();
+        if (accepted) releaseTracked();
+        resolveClosed({ exitCode, signal, durationMs: Date.now() - startedAt, timedOut, aborted, outputLimitExceeded });
+      };
+
+      request.signal?.addEventListener("abort", onAbort, { once: true });
+      child.stdout!.on("data", (chunk: Buffer) => append("stdout", chunk));
+      child.stderr!.on("data", (chunk: Buffer) => append("stderr", chunk));
+      child.once("error", (error) => {
+        if (!accepted && !openSettled) {
+          openSettled = true;
+          request.signal?.removeEventListener("abort", onAbort);
+          reject(error);
+        }
+      });
+      child.once("spawn", () => {
+        if (openSettled) return;
+        if (preAcceptanceFailure || request.signal?.aborted) {
+          preAcceptanceFailure = preAcceptanceFailure ?? request.signal?.reason ?? new Error("Process request aborted");
+          terminate();
+          return;
+        }
+        if (!child.pid) {
+          preAcceptanceFailure = new Error("Native process started without a process id");
+          terminate();
+          return;
+        }
+        accepted = true;
+        openSettled = true;
+        this.stdioChildren.set(child.pid, child);
+        timer = setTimeout(() => { timedOut = true; terminate(); }, request.timeoutMs);
+        const session: ManagedStdioSession = {
+          pid: child.pid,
+          closed,
+          async write(data: string) {
+            if (Buffer.byteLength(data, "utf8") > MAX_PROCESS_INPUT_CHUNK_BYTES) throw new Error(`Managed stdio write exceeds ${MAX_PROCESS_INPUT_CHUNK_BYTES} bytes`);
+            const stdin = child.stdin;
+            if (!stdin || stdin.destroyed || !stdin.writable) throw new Error("Managed stdio session stdin is closed");
+            await new Promise<void>((resolveWrite, rejectWrite) => stdin.write(data, "utf8", (error) => error ? rejectWrite(error) : resolveWrite()));
+          },
+          next() {
+            const event = events.shift();
+            if (event) return Promise.resolve(event);
+            if (closeSettled) return Promise.reject(new Error("Managed stdio session is closed"));
+            return new Promise<ProcessStreamEvent>((resolveEvent, rejectEvent) => waiters.push({ resolve: resolveEvent, reject: rejectEvent }));
+          },
+          async close() {
+            terminate();
+            await closed;
+          },
+        };
+        resolve(session);
+      });
+      child.once("close", (exitCode, signal) => {
+        if (!accepted) {
+          if (!openSettled) {
+            openSettled = true;
+            request.signal?.removeEventListener("abort", onAbort);
+            reject(preAcceptanceFailure ?? new Error("Native process exited before successful stdio acceptance"));
+          }
+          return;
+        }
+        settleClose(exitCode, signal as NodeJS.Signals | null);
+      });
+    });
+  }
 }
 
-function spawnNative(request: ProcessRequest & { executable: string }, stdio: ["ignore", "pipe" | "ignore", "pipe" | "ignore"]): ChildProcess {
+function spawnNative(request: ProcessRequest & { executable: string }, stdio: ["ignore" | "pipe", "pipe" | "ignore", "pipe" | "ignore"]): ChildProcess {
   return spawn(request.executable, [...request.args], {
     cwd: request.cwd,
     shell: false,
