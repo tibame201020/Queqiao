@@ -29,9 +29,9 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - if: runner.os != 'Windows'
-        run: npm run security:gate
+        run: npm run typecheck && npm run test:security
       - if: runner.os == 'Windows'
-        run: npm run typecheck && npm run test:security -- --maxWorkers=2 && npm audit --omit=dev --audit-level=moderate
+        run: npm run typecheck && npm run test:security -- --maxWorkers=2
 
   dependency-gate:
     name: Runtime dependency audit
