@@ -65,7 +65,7 @@ export async function createWorkerProtocolService(config: WorkerProtocolServiceC
 
   const extensionPolicyFor = (toolName: string, workspaceId: string, state: RequestExtensionState) => {
     const owner = state.host?.activeManifests(workspaceId).find((manifest) => manifest.contributions.some((contribution) => contribution.operation === "register" && contribution.tool === toolName));
-    return extensionRuntimePolicyFor(owner ?? {});
+    return extensionRuntimePolicyFor(owner?.runtime ? { runtime: owner.runtime } : {});
   };
 
   const contextFor = (toolName: string, workspaceId: string, state: RequestExtensionState, signal?: AbortSignal, authority: "core" | "extension" = "core"): WorkerToolContext => {
