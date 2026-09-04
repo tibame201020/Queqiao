@@ -34,7 +34,15 @@ export type WorkerExtensionHttpResponse = { status: number; headers: Record<stri
 export type WorkerExtensionFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 export type WorkerExtensionRuntime = {
   stdio: {
-    open(input: { executable: string; args?: readonly string[]; cwd?: string; timeoutMs?: number }): Promise<WorkerExtensionStdioSession>;
+    open(input: {
+      executable: string;
+      args?: readonly string[];
+      cwd?: string;
+      /** null keeps the managed session alive until close, explicit cancellation, or Worker shutdown. */
+      timeoutMs?: number | null;
+      /** Optional session-lifetime cancellation; tool invocation cancellation is not implicitly inherited. */
+      signal?: AbortSignal;
+    }): Promise<WorkerExtensionStdioSession>;
   };
   http: {
     request(input: {
