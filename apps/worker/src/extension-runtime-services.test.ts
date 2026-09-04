@@ -58,6 +58,26 @@ describe("Worker extension runtime services", () => {
     await expect(runtime.stdio.open({ executable, args: ["-e", "0"], cwd: "..", timeoutMs: 1000 })).rejects.toThrow(/escapes the workspace|outside/i);
   });
 
+  it("keeps lifecycle-bound stdio independent from the invocation signal unless the session opts into cancellation", async () => {
+    const entry = await workspace();
+    const executable = path.basename(process.execPath);
+    const runner = new ProcessRunner(1);
+    const invocation = new AbortController();
+    const runtime = new WorkerExtensionRuntimeServices({ workspace: entry, processes: runner, policy: policy({ processes: { allow: [executable] } }) }).withSignal(invocation.signal);
+    const session = await runtime.stdio.open({ executable, args: ["-e", "setInterval(()=>{},1000)"], cwd: ".", timeoutMs: null });
+    invocation.abort(new Error("tool call ended"));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(runner.stdioCount()).toBe(1);
+    await session.close();
+    expect(runner.stdioCount()).toBe(0);
+
+    const sessionAbort = new AbortController();
+    const cancellable = await runtime.stdio.open({ executable, args: ["-e", "setInterval(()=>{},1000)"], cwd: ".", timeoutMs: null, signal: sessionAbort.signal });
+    sessionAbort.abort(new Error("close managed transport"));
+    await expect(cancellable.closed).resolves.toMatchObject({ aborted: true });
+    expect(runner.stdioCount()).toBe(0);
+  });
+
   it("allows only exact declared HTTP origins and does not follow redirects", async () => {
     const entry = await workspace();
     const origin = await listen((req, res) => {
