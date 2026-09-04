@@ -106,4 +106,22 @@ describe("Worker extension runtime services", () => {
     abort.abort(new Error("cancel extension request"));
     await expect(pending).rejects.toThrow(/cancel extension request|aborted/i);
   });
+
+  it("cancels a streaming request body before native fetch when the per-fetch signal aborts", async () => {
+    const entry = await workspace();
+    const origin = await listen((_req, res) => res.end("should-not-be-reached"));
+    const runtime = new WorkerExtensionRuntimeServices({ workspace: entry, processes: new ProcessRunner(), policy: policy({ outboundHttp: { allowOrigins: [origin] } }) });
+    const abort = new AbortController();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode("partial")); },
+    });
+    const pending = runtime.http.fetch(`${origin}/mcp`, {
+      method: "POST",
+      body,
+      signal: abort.signal,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    abort.abort(new Error("cancel streaming request body"));
+    await expect(pending).rejects.toThrow(/cancel streaming request body|aborted/i);
+  });
 });
