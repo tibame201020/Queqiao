@@ -122,14 +122,9 @@ export class WorkerExtensionRuntimeServices {
       throw new WorkerToolError(400, "extension_http_invalid_method", `Extension HTTP method is not allowed: ${method}`);
     }
     const headers = validateHeaders(request.headers);
-    const body = await readBoundedRequestBody(request);
     const controller = new AbortController();
-    let timedOut = false;
     let cleanedUp = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      controller.abort(new Error("Extension HTTP stream exceeded bounded lifetime"));
-    }, MAX_HTTP_STREAM_LIFETIME_MS);
+    const timeout = setTimeout(() => controller.abort(new Error("Extension HTTP stream exceeded bounded lifetime")), MAX_HTTP_STREAM_LIFETIME_MS);
     const onAbort = () => controller.abort(request.signal.reason ?? new Error("Extension HTTP request aborted"));
     request.signal.addEventListener("abort", onAbort, { once: true });
     if (request.signal.aborted) onAbort();
@@ -141,6 +136,8 @@ export class WorkerExtensionRuntimeServices {
     };
 
     try {
+      const body = await readBoundedRequestBody(request, controller.signal);
+      if (controller.signal.aborted) throw abortReason(controller.signal, "Extension HTTP request aborted");
       const response = await fetch(url, {
         method,
         headers,
@@ -166,11 +163,7 @@ export class WorkerExtensionRuntimeServices {
     } catch (error) {
       cleanup();
       if (error instanceof WorkerToolError) throw error;
-      if (controller.signal.aborted) {
-        const reason = controller.signal.reason;
-        if (reason instanceof Error) throw reason;
-        throw new Error(timedOut ? "Extension HTTP stream exceeded bounded lifetime" : "Extension HTTP request aborted");
-      }
+      if (controller.signal.aborted) throw abortReason(controller.signal, "Extension HTTP request aborted");
       throw new WorkerToolError(502, "extension_http_failed", error instanceof Error ? error.message : "Extension HTTP request failed");
     }
   }
@@ -208,13 +201,21 @@ function validateHeaders(headers: Headers): Headers {
   return result;
 }
 
-async function readBoundedRequestBody(request: Request): Promise<Uint8Array | undefined> {
+async function readBoundedRequestBody(request: Request, signal: AbortSignal): Promise<Uint8Array | undefined> {
   if (!request.body) return undefined;
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let bytes = 0;
+  let aborted = false;
+  const onAbort = () => {
+    aborted = true;
+    void reader.cancel(signal.reason).catch(() => undefined);
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
   try {
     while (true) {
+      if (aborted) throw abortReason(signal, "Extension HTTP request body aborted");
       const { done, value } = await reader.read();
       if (done) break;
       bytes += value.byteLength;
@@ -225,6 +226,7 @@ async function readBoundedRequestBody(request: Request): Promise<Uint8Array | un
       chunks.push(value);
     }
   } finally {
+    signal.removeEventListener("abort", onAbort);
     reader.releaseLock();
   }
   const body = new Uint8Array(bytes);
@@ -240,47 +242,69 @@ function boundedResponseBody(body: ReadableStream<Uint8Array>, controller: Abort
   const reader = body.getReader();
   let bytes = 0;
   let settled = false;
+  let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+
+  const release = () => {
+    try { reader.releaseLock(); } catch { /* already released */ }
+  };
   const settle = () => {
-    if (settled) return;
+    if (settled) return false;
     settled = true;
     cleanup();
-    reader.releaseLock();
+    controller.signal.removeEventListener("abort", onAbort);
+    return true;
   };
+  const onAbort = () => {
+    if (!settle()) return;
+    const error = abortReason(controller.signal, "Extension HTTP stream aborted");
+    streamController?.error(error);
+    void reader.cancel(error).catch(() => undefined).finally(release);
+  };
+
   return new ReadableStream<Uint8Array>({
-    start(streamController) {
-      controller.signal.addEventListener("abort", () => {
-        if (settled) return;
-        void reader.cancel(controller.signal.reason).catch(() => undefined);
-        const reason = controller.signal.reason;
-        streamController.error(reason instanceof Error ? reason : new Error("Extension HTTP stream aborted"));
-        settle();
-      }, { once: true });
+    start(output) {
+      streamController = output;
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+      if (controller.signal.aborted) onAbort();
     },
-    async pull(streamController) {
+    async pull(output) {
       if (settled) return;
       try {
         const { done, value } = await reader.read();
+        if (settled) return;
         if (done) {
-          streamController.close();
-          settle();
+          if (settle()) {
+            output.close();
+            release();
+          }
           return;
         }
         bytes += value.byteLength;
         if (bytes > MAX_HTTP_RESPONSE_BYTES) {
           const error = new WorkerToolError(502, "extension_http_response_too_large", `Extension HTTP response exceeds ${MAX_HTTP_RESPONSE_BYTES} bytes`);
-          controller.abort(error);
+          if (settle()) {
+            await reader.cancel(error).catch(() => undefined);
+            release();
+            output.error(error);
+          }
           return;
         }
-        streamController.enqueue(value);
+        output.enqueue(value);
       } catch (error) {
-        streamController.error(error);
-        settle();
+        if (settle()) {
+          release();
+          output.error(error);
+        }
       }
     },
     async cancel(reason) {
-      if (settled) return;
+      if (!settle()) return;
       try { await reader.cancel(reason); }
-      finally { settle(); }
+      finally { release(); }
     },
   });
+}
+
+function abortReason(signal: AbortSignal, fallback: string): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error(fallback);
 }
