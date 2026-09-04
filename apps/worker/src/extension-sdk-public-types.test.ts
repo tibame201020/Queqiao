@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -22,7 +21,10 @@ async function compileFixture(
   compilerOptions: Record<string, unknown>,
   aliases: FixturePaths,
 ): Promise<void> {
-  temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-sdk-types-"));
+  // Keep the fixture below node_modules so its tsconfig and the repository always
+  // share a filesystem volume on Windows CI. TypeScript 7 paths are relative to
+  // the tsconfig and cannot represent a C: -> D: path as a relative alias.
+  temporary = await mkdtemp(path.join(repoRoot, "node_modules", ".queqiao-extension-sdk-types-"));
   const fixture = path.join(temporary, "consumer.ts");
   const tsconfig = path.join(temporary, "tsconfig.json");
   const repoFromFixture = relativeForTsconfig(temporary, repoRoot);
