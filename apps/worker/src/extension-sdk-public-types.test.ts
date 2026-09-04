@@ -38,7 +38,8 @@ async function useRuntime(context: WorkerExtensionContext) {
   await session.write("{}\\n");
   const event = await session.next();
   const response = await context.runtime.http.request({ url: "https://mcp.example.com/mcp", method: "POST", body: "{}", timeoutMs: 1000 });
-  return [event.type, response.status] as const;
+  const streamed = await context.runtime.http.fetch("https://mcp.example.com/mcp", { method: "POST", body: "{}", signal: context.signal });
+  return [event.type, response.status, streamed.status] as const;
 }
 
 export default defineExtension<WorkerExtensionContext>({
