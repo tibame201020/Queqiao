@@ -62,6 +62,35 @@ export const extensionOrderingSchema = z.object({
   after: z.array(extensionIdSchema).default([]),
 });
 
+const extensionExecutableSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/);
+const extensionHttpOriginSchema = z.string().min(1).max(2048).transform((value, ctx) => {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      ctx.addIssue({ code: "custom", message: "Outbound HTTP origin must use http or https" });
+      return z.NEVER;
+    }
+    if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+      ctx.addIssue({ code: "custom", message: "Outbound HTTP grant must be an exact origin without credentials, path, query, or fragment" });
+      return z.NEVER;
+    }
+    return url.origin;
+  } catch {
+    ctx.addIssue({ code: "custom", message: "Outbound HTTP origin must be a valid URL origin" });
+    return z.NEVER;
+  }
+});
+
+export const extensionRuntimePolicySchema = z.object({
+  processes: z.object({ allow: z.array(extensionExecutableSchema).max(64).default([]) }).default({ allow: [] }),
+  outboundHttp: z.object({ allowOrigins: z.array(extensionHttpOriginSchema).max(64).default([]) }).default({ allowOrigins: [] }),
+});
+export type ExtensionRuntimePolicy = z.infer<typeof extensionRuntimePolicySchema>;
+
+export function extensionRuntimePolicyFor(manifest: { runtime?: ExtensionRuntimePolicy }): ExtensionRuntimePolicy {
+  return extensionRuntimePolicySchema.parse(manifest.runtime ?? {});
+}
+
 const jsonSchemaObject = z.record(z.string(), z.json());
 
 export const extensionRegisterDeclarationSchema = z.object({
@@ -104,6 +133,7 @@ export const extensionManifestSchema = z.object({
   host: extensionHostSchema,
   ordering: extensionOrderingSchema.default({ requires: [], before: [], after: [] }),
   contributions: z.array(extensionContributionSchema).default([]),
+  runtime: extensionRuntimePolicySchema.optional(),
 }).superRefine((manifest, ctx) => {
   for (const relation of ["requires", "before", "after"] as const) {
     if (manifest.ordering[relation].includes(manifest.id)) {
