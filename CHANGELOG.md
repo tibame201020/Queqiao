@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.7 - 2026-09-04
+
 - Adds Worker-initiated pinned-TLS gRPC/HTTP2 sessions for cross-host Workers while retaining authenticated loopback HTTP and Worker-authoritative execution policy.
 - Makes Worker transport routing extensible in Core Manifest Revision 9: Workspace operations use a dynamic transport identifier, Workspace discovery projects enabled transports/traits/default routing, explicit selection never falls back, and unknown/not-enabled transports fail distinctly.
 - Hardens reconnect/liveness behavior and validates real cross-device routing, Worker/Gateway restart recovery, downstream Extension→MCP execution, and ChatGPT connector schema lifecycle.

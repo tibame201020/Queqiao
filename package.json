@@ -1,6 +1,6 @@
 {
   "name": "@tibame201020/queqiao",
-  "version": "0.9.7-grpc.0",
+  "version": "0.9.7",
   "private": false,
   "type": "module",
   "exports": {

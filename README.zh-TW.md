@@ -9,6 +9,8 @@ Queqiao 是 AI client 與本機開發環境之間的安全橋接層。公開 Gat
 
 ## 安裝
 
+需求：Node.js `>=22.19 <25`、npm `>=9`。
+
 ```shell
 npm install --global @tibame201020/queqiao
 queqiao --version
@@ -22,6 +24,15 @@ queqiao --version
 - **Access Profile** — 可重複使用的 authority template；套用時複製到 Workspace。
 - **Extension** — 安裝到主機的 Extension Hub，再明確 attach 到 Worker。
 
+## 開始前
+
+若 AI client 不在 Gateway 主機上，請先準備一個可以連到 Gateway 的 HTTPS URL。Gateway setup 會要求輸入這個 URL，後續複製的 MCP endpoint 也會以它為基礎。
+
+Worker 的連線方式是另一件事：
+
+- **Worker 與 Gateway 同一台主機** — 保持 **Worker connectivity: Local only**。
+- **Worker 在另一台主機** — 選 **Remote workers**，並讓該 Worker 能連到 Gateway 專用的 pinned-TLS gRPC Worker-session listener。Remote Worker 主動建立 outbound session，不需要暴露 inbound execution port。
+
 ## Quick Start — Workstation
 
 啟動持續運作的管理介面：
@@ -30,69 +41,70 @@ queqiao --version
 queqiao workstation
 ```
 
-第一次部署可以完全在 Workstation 內完成。
+第一次部署的完整路徑是 Gateway → Worker → membership → AI client。
 
-### 1. 設定 Gateway
+### 1. 設定並啟動 Gateway
 
-選 **Gateway (`1`) → Set up Gateway**，輸入 public URL、Gateway port 與本機 management port。**Worker connectivity** 預設為 **Local only**；若另一台主機要加入，選 **Remote workers**，再輸入 Gateway 的 DNS 名稱或 LAN IP，以及專用 TLS gRPC port。
+選 **Gateway (`1`) → Set up Gateway**，輸入 public URL、Gateway port 與本機 management port。依照上面的 topology 選 **Local only** 或 **Remote workers**。完成後選取 Gateway 並執行 **Start**。
 
 ![Gateway setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/01-gateway-setup.gif)
 
-### 2. 啟動 Gateway
+### 2. 設定並啟動 Worker
 
-選取已設定 Gateway，執行 **Start**。
-
-![Gateway start](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/02-gateway-start.gif)
-
-### 3. 設定 Worker
-
-選 **Worker (`2`) → Set up Worker**。Setup 會一起建立 Worker、第一個 Workspace 與 authority policy。
+選 **Worker (`2`) → Set up Worker**。Setup 會一起建立 Worker、第一個 Workspace 與 authority policy。完成後選取 Worker 並執行 **Start**。
 
 ![Worker setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/03-worker-setup.gif)
 
-### 4. 啟動 Worker
+### 3. 讓 Worker 加入 Gateway
 
-選取已設定 Worker，執行 **Start**。
+在 Gateway 執行 **Create join code**。接著在 Worker 執行 **Join Gateway**，可以選本機 Gateway，或貼上其他主機產生的 self-contained join code。
 
-![Worker start](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/04-worker-start.gif)
-
-### 5. 建立 join code
-
-回到 **Gateway (`1`)** 執行 **Create join code**。Clipboard 可用時會直接複製短效 join code。
-
-![Create join code](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/05-create-join-code.gif)
-
-### 6. Worker 加入 Gateway
-
-開 **Worker (`2`) → Join Gateway**，可選本機 Gateway，或貼上其他主機產生的 self-contained join code。Remote join code 已包含 pinned Gateway certificate 與 Worker-session target，Worker 會主動建立 outbound TLS gRPC session，不需要暴露 LAN inbound execution port。
+Remote join code 已包含 pinned Gateway certificate 與 Worker-session target，Worker 可據此建立 outbound TLS gRPC session。
 
 ![Worker join](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/06-worker-join.gif)
 
-### 7. 確認 Gateway Detailed Info
+### 4. 驗證部署狀態
 
-回到 Gateway Inspector 按 `i`。Detailed Info 直接顯示 runtime status、connector 資訊、enrolled Workers，以及 Worker transport 是 **Local only** 或 **Remote · TLS gRPC**。
+回到 Gateway Inspector 按 `i`。**Detailed Info** 應該可以看到：
 
-![Gateway Detailed Info](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/07-gateway-detail.gif)
+- Gateway runtime healthy；
+- Worker 已 enrolled；
+- Worker transport 是 **Local only** 或 **Remote · TLS gRPC**；
+- 公開 Gateway 的 connector 資訊。
 
-### 8. 複製 MCP URL
+若其中一項不存在，先不要進 ChatGPT connector 設定；請先使用 **Diagnostics (`6`)** 或依 Workstation 顯示的 remediation 修正。
 
-回到 Gateway Inspector，按 `c`（**Copy MCP URL**）。Workstation 會把公開的 `/mcp` endpoint 複製到剪貼簿，不會把 URL 額外輸出到 terminal result。
+### 5. 在 ChatGPT 新增 Queqiao
 
-![Copy MCP URL](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/08-copy-mcp-url.gif)
+在 Gateway Inspector：
 
-### 9. 複製 approval secret 並在 ChatGPT 新增 Queqiao
+1. 按 `c` — **Copy MCP URL**；
+2. 按 `p` — **Copy approval secret**；
+3. 在 ChatGPT 建立 custom app/connector，貼上 MCP URL，驗證方式選 **OAuth**；
+4. 連線後，只在 Queqiao OAuth approval 頁貼上 approval secret。
 
-按 `p`（**Copy approval secret**）。在 ChatGPT 建立自訂 app/connector，把第 8 步的 MCP URL 貼到 Server URL，驗證方式保留 **OAuth**，然後連線。Queqiao OAuth approval 頁開啟後，再貼上 `p` 複製的 approval secret。不要把 approval secret 放進文件、log 或 issue。
-
-![Copy approval secret](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/09-copy-approval-secret.gif)
+不要把 approval secret 放進文件、log、repository 或 issue。
 
 ![在 ChatGPT 新增 Queqiao connector](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/10-chatgpt-add-connector.png)
 
-若未來版本真的修改公開 MCP tool schema，請在 ChatGPT 使用 **Refresh**，並從新對話驗證新 schema。Reconnect 是 connection/OAuth lifecycle，不負責 schema discovery。
+完成後的第一條完整路徑應為：
+
+```text
+AI client → HTTPS Gateway → enrolled Worker → Workspace
+```
+
+若未來版本修改公開 MCP tool schema，請在 ChatGPT 使用 **Refresh**，並從新對話驗證。**Reconnect** 是 connection/OAuth recovery，不負責 schema discovery。
+
+## 下一步
+
+- 在 **Workspace (`3`)** / **Access Profile (`4`)** 調整 Workspace authority。
+- 從 **Extension (`5`)** 安裝並 attach 額外 Worker capability。請見 [Extensions](https://github.com/tibame201020/Queqiao/blob/main/docs/extensions.md)。
+- topology、membership 或 Extension 改動後，執行 **Diagnostics (`6`)**。
+- script／CI 請使用 [Classic / leaf CLI](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md)，不要驅動 TUI。
 
 `1..6` 切換 domain；方向鍵移動／選取；`Enter` inspect 或執行 action；`i` 開 Detailed Info；`?` 開 Help；`,` 開 Appearance Settings；沒有 modal 取得 input 時可按 `q` 離開。
 
-各 control、action 行為、Appearance，以及每個 domain 的 Detailed Info 截圖／GIF，請見 **[Workstation 詳細指南](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.zh-TW.md)**。需要 script／automation 時請使用 **[Classic / leaf CLI](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md)**。
+Root README 只保留需要說明多步驟或 topology 的錄製畫面；各 control、Appearance 與 Detailed Info 的 screenshot/GIF 請見 [Workstation 詳細指南](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.zh-TW.md)。
 
 ## Configuration 與 Persistence
 
@@ -102,7 +114,7 @@ Queqiao 將 **config**、**durable data**、**operational state** 與 **ephemera
 queqiao doctor paths
 ```
 
-Windows／Linux／WSL 路徑、secrets、membership、Extension Hub、logs/PID、backup 與 `QUEQIAO_*` overrides，請見 **[Configuration & Persistence](https://github.com/tibame201020/Queqiao/blob/main/docs/configuration-persistence.zh-TW.md)**。
+Windows／Linux／WSL 路徑、secrets、membership、Extension Hub、logs/PID、backup 與 `QUEQIAO_*` overrides，請見 [Configuration & Persistence](https://github.com/tibame201020/Queqiao/blob/main/docs/configuration-persistence.zh-TW.md)。
 
 ## 文件
 
