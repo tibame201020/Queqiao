@@ -91,7 +91,7 @@ export class WorkerExtensionRuntimeServices {
     try {
       const response = await this.fetchHttp(request.url, {
         method: request.method,
-        headers: request.headers,
+        ...(request.headers ? { headers: request.headers } : {}),
         ...(request.body !== undefined ? { body: request.body } : {}),
         signal: controller.signal,
       });
