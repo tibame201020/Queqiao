@@ -16,24 +16,38 @@ npm install --global @tibame201020/queqiao
 queqiao --version
 ```
 
-## Mental model
+## What you are building
 
-- **Gateway** — public control plane: MCP endpoint, OAuth, routing, Worker membership.
+```text
+AI client
+   ↓ HTTPS / MCP
+Gateway
+   ↓ enrolled Worker
+Worker
+   ↓ authorized root
+Workspace
+```
+
+- **Gateway** — public MCP endpoint, OAuth, routing, and Worker membership.
 - **Worker** — native execution host for one OS/environment.
-- **Workspace** — Worker-owned authority boundary for roots, Tools, and executable commands.
-- **Access Profile** — reusable authority template copied into a Workspace when applied.
-- **Extension** — installed in the host Extension Hub, then explicitly attached to Workers.
+- **Workspace** — Worker-owned authority boundary for filesystem roots, Tools, and executable commands.
+- **Access Profile** — reusable Workspace authority template.
+- **Extension** — optional capability installed into the host Extension Hub, then attached to a Worker.
 
 ## Before you start
 
-For an AI client outside the Gateway host, prepare an HTTPS URL that reaches the Gateway. The URL is entered during Gateway setup and becomes the MCP endpoint copied later.
+For an AI client outside the Gateway host, prepare an HTTPS URL that reaches the Gateway. This public URL is entered during Gateway setup and later becomes the MCP endpoint copied into ChatGPT or another AI client.
 
-Worker networking is separate:
+Choose Worker connectivity before setup:
 
-- **Same-host Worker** — keep **Worker connectivity: Local only**.
-- **Worker on another machine** — choose **Remote workers** and expose the dedicated pinned-TLS gRPC Worker-session listener to that Worker. The remote Worker connects outbound; it does not expose an inbound execution port.
+| Topology | Gateway setting | Worker behavior |
+| --- | --- | --- |
+| Gateway and Worker on the same host | **Local only** | Gateway reaches the local Worker directly. |
+| Worker on another machine | **Remote workers** | Worker connects outbound to the Gateway pinned-TLS gRPC session listener. |
 
-## Quick start — Workstation
+A remote Worker does **not** expose an inbound execution port.
+
+## Quick start — first working deployment
 
 Launch the persistent operator UI:
 
@@ -41,40 +55,64 @@ Launch the persistent operator UI:
 queqiao workstation
 ```
 
-The complete first deployment is Gateway → Worker → membership → AI client.
+Complete these steps in order. Each recording below demonstrates only the task named by that step.
 
-### 1. Set up and start the Gateway
+### 1. Set up the Gateway
 
-Choose **Gateway (`1`) → Set up Gateway** and enter the public URL, Gateway port, and local management port. Select **Local only** or **Remote workers** according to the topology above. Then select the configured Gateway and run **Start**.
+Open **Gateway (`1`) → Set up Gateway**. Enter the public URL, Gateway service port, local management port, and the Worker connectivity mode chosen above.
 
-![Gateway setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/01-gateway-setup.gif)
+![Set up Gateway](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/01-gateway-setup.gif)
 
-### 2. Set up and start the Worker
+**Done when:** the Gateway appears in the Gateway inventory as configured.
 
-Choose **Worker (`2`) → Set up Worker**. Setup creates the Worker and its first Workspace/authority policy together. Then select the Worker and run **Start**.
+### 2. Start the Gateway
 
-![Worker setup](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/03-worker-setup.gif)
+Select the configured Gateway and run **Start**.
 
-### 3. Join the Worker to the Gateway
+**Done when:** its runtime state becomes running/healthy. If Start fails, read the Workstation result/remediation before continuing.
 
-On the Gateway, run **Create join code**. On the Worker, run **Join Gateway** and either choose the local Gateway or paste a self-contained join code from another host.
+### 3. Set up the Worker
 
-Remote join codes carry the pinned Gateway certificate and Worker-session target, so the Worker can establish its outbound TLS gRPC session.
+Open **Worker (`2`) → Set up Worker**. Setup creates the Worker plus its first Workspace authority in one task.
 
-![Worker join](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/06-worker-join.gif)
+![Set up Worker](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/03-worker-setup.gif)
 
-### 4. Verify the deployment
+**Done when:** the Worker appears in Worker inventory and its Workspace is listed under **Workspace (`3`)**.
 
-Return to the Gateway Inspector and press `i`. **Detailed Info** should show:
+### 4. Start the Worker
 
-- Gateway runtime healthy;
-- the Worker enrolled;
-- Worker transport as **Local only** or **Remote · TLS gRPC**;
-- connector information for the public Gateway.
+Select the configured Worker and run **Start**.
 
-If one of these is missing, do not continue to connector setup; use **Diagnostics (`6`)** or the Workstation result/remediation text first.
+**Done when:** the Worker runtime is healthy. For a remote Worker, this does not enroll it yet; enrollment happens next.
 
-### 5. Add Queqiao to ChatGPT
+### 5. Create a join code
+
+Return to **Gateway (`1`)**, select the running Gateway, and run **Create join code**.
+
+Use the generated code immediately. For a remote Worker, the self-contained join code carries the pinned Gateway certificate and Worker-session target.
+
+**Done when:** Workstation reports that a join code was created/copied.
+
+### 6. Join the Worker to the Gateway
+
+Open **Worker (`2`) → Join Gateway**. Choose the local Gateway or paste the join code produced on another host.
+
+![Join Worker](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/06-worker-join.gif)
+
+**Done when:** the Gateway shows the Worker as enrolled/reachable.
+
+### 7. Verify the complete path
+
+Return to the Gateway Inspector and press `i` for **Detailed Info**. Verify all of the following before adding an AI client:
+
+- Gateway runtime is healthy;
+- the Worker is enrolled and reachable;
+- Worker transport is **Local only** or **Remote · TLS gRPC** as expected;
+- connector information is present for the public Gateway.
+
+If any item is missing, run **Diagnostics (`6`)** first. Do not compensate for a broken Gateway/Worker path by changing ChatGPT connector settings.
+
+### 8. Add Queqiao to ChatGPT
 
 In the Gateway Inspector:
 
@@ -87,7 +125,9 @@ Never put the approval secret in documentation, logs, repositories, or issue rep
 
 ![Add Queqiao connector in ChatGPT](https://raw.githubusercontent.com/tibame201020/Queqiao/main/docs/assets/workstation/quickstart/10-chatgpt-add-connector.png)
 
-A successful first deployment now has the complete path:
+**Done when:** the AI client can reach Queqiao and a Worker-backed tool call can reach the expected Workspace.
+
+The finished route is:
 
 ```text
 AI client → HTTPS Gateway → enrolled Worker → Workspace
@@ -95,16 +135,16 @@ AI client → HTTPS Gateway → enrolled Worker → Workspace
 
 If a future Queqiao release changes the public MCP tool schema, use ChatGPT's **Refresh** action and validate from a new conversation. **Reconnect** is for connection/OAuth recovery, not schema discovery.
 
-## Next steps
+## What to do next
 
-- Add or adjust Workspace authority from **Workspace (`3`)** / **Access Profile (`4`)**.
+- Adjust Workspace authority from **Workspace (`3`)** / **Access Profile (`4`)**.
 - Install and attach optional Worker capabilities from **Extension (`5`)**. See [Extensions](https://github.com/tibame201020/Queqiao/blob/main/docs/extensions.md).
 - Run **Diagnostics (`6`)** after topology, membership, or Extension changes.
 - For scripts/CI, use the [Classic / leaf CLI](https://github.com/tibame201020/Queqiao/blob/main/docs/cli/README.md) instead of driving the TUI.
 
-`1..6` switch domains, arrows move/select, `Enter` inspects or runs an action, `i` opens Detailed Info, `?` opens Help, `,` opens Appearance Settings, and `q` exits when no modal owns input.
+Workstation navigation: `1..6` switch domains, arrows move/select, `Enter` inspects or runs an action, `i` opens Detailed Info, `?` opens Help, `,` opens Appearance Settings, and `q` exits when no modal owns input.
 
-The root README intentionally keeps only the recordings that explain multi-step or topology-sensitive flows. Per-control recordings, Appearance behavior, and Detailed Info screenshots/GIFs live in the [Workstation guide](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.md).
+The root README keeps only recordings needed to explain a task that benefits from motion. Per-control recordings, Appearance behavior, and Detailed Info references live in the [Workstation guide](https://github.com/tibame201020/Queqiao/blob/main/docs/workstation/README.md).
 
 ## Configuration and persistence
 
