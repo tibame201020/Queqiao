@@ -4,6 +4,9 @@
 
 ## 0.9.7 - 2026-09-04
 
+- Adds Worker-authoritative Extension runtime services for downstream transports: manifest-declared executable/origin policy, bounded managed stdio including lifecycle-bound MCP sessions, and fetch-compatible streaming HTTP with exact-origin, redirect, body/header/response, cancellation, and cleanup enforcement.
+- Validates the public Extension SDK with real official MCP stdio and Streamable HTTP clients, external ESM consumer compilation, and internal/published type-contract parity without exposing private Worker capabilities.
+- Refocuses the root English and Traditional Chinese READMEs on a first working deployment: one explicit result per step, topology guidance before setup, completion criteria, and single-task recordings only where motion materially helps.
 - Adds Worker-initiated pinned-TLS gRPC/HTTP2 sessions for cross-host Workers while retaining authenticated loopback HTTP and Worker-authoritative execution policy.
 - Makes Worker transport routing extensible in Core Manifest Revision 9: Workspace operations use a dynamic transport identifier, Workspace discovery projects enabled transports/traits/default routing, explicit selection never falls back, and unknown/not-enabled transports fail distinctly.
 - Hardens reconnect/liveness behavior and validates real cross-device routing, Worker/Gateway restart recovery, downstream Extension→MCP execution, and ChatGPT connector schema lifecycle.
