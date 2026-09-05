@@ -47,9 +47,9 @@ Choose Worker connectivity before setup:
 
 A remote Worker does **not** expose an inbound execution port.
 
-## Quick start — first working deployment
+## Quick start — Workstation
 
-Launch the persistent operator UI:
+First working deployment:
 
 ```shell
 queqiao workstation
