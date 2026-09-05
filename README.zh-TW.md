@@ -47,9 +47,9 @@ Workspace
 
 Remote Worker **不需要**暴露 inbound execution port。
 
-## Quick Start — 第一次完整跑通
+## Quick Start — Workstation
 
-啟動持續運作的管理介面：
+第一次完整跑通：
 
 ```shell
 queqiao workstation
