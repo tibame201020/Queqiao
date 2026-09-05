@@ -85,17 +85,17 @@ describe("Workstation Ink control plane", () => {
       return { title: "Gateway configured", body: `${name}:${mode}:${tools.join(",")}:${approved}` };
     });
     const ui = app({ executeFlow });
-    ui.stdin.write("n"); await delay();
-    expect(ui.lastFrame()).toContain("Gateway name");
-    ui.stdin.write("\r"); await delay();
-    expect(ui.lastFrame()).toContain("Mode");
-    ui.stdin.write("\r"); await delay();
-    expect(ui.lastFrame()).toContain("› [x] Read");
-    ui.stdin.write("\r"); await delay();
-    expect(ui.lastFrame()).toContain("Apply changes?");
-    ui.stdin.write("y"); await delay();
+    ui.stdin.write("n");
+    await waitForFrameText(ui, "Gateway name");
+    ui.stdin.write("\r");
+    await waitForFrameText(ui, "Mode");
+    ui.stdin.write("\r");
+    await waitForFrameText(ui, "› [x] Read");
+    ui.stdin.write("\r");
+    await waitForFrameText(ui, "Apply changes?");
+    ui.stdin.write("y");
+    await waitForFrameText(ui, "✓ Gateway configured");
     expect(executeFlow).toHaveBeenCalledTimes(1);
-    expect(ui.lastFrame()).toContain("✓ Gateway configured");
   });
 
   it("masks secret prompt values while still delivering the original value to the flow", async () => {
