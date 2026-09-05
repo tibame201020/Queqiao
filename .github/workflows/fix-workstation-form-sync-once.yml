@@ -1,0 +1,37 @@
+name: Fix Workstation Form Sync Once
+
+on:
+  push:
+    branches:
+      - ci/workstation-form-sync
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ci/workstation-form-sync
+      - name: Replace wall-clock form waits with frame synchronization
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const file = 'apps/cli/src/workstation-ui.test.tsx';
+          let source = fs.readFileSync(file, 'utf8');
+          const before = `    const ui = app({ executeFlow });\n    ui.stdin.write("n"); await delay();\n    expect(ui.lastFrame()).toContain("Gateway name");\n    ui.stdin.write("\\r"); await delay();\n    expect(ui.lastFrame()).toContain("Mode");\n    ui.stdin.write("\\r"); await delay();\n    expect(ui.lastFrame()).toContain("› [x] Read");\n    ui.stdin.write("\\r"); await delay();\n    expect(ui.lastFrame()).toContain("Apply changes?");\n    ui.stdin.write("y"); await delay();\n    expect(executeFlow).toHaveBeenCalledTimes(1);\n    expect(ui.lastFrame()).toContain("✓ Gateway configured");`;
+          const after = `    const ui = app({ executeFlow });\n    ui.stdin.write("n");\n    await waitForFrameText(ui, "Gateway name");\n    ui.stdin.write("\\r");\n    await waitForFrameText(ui, "Mode");\n    ui.stdin.write("\\r");\n    await waitForFrameText(ui, "› [x] Read");\n    ui.stdin.write("\\r");\n    await waitForFrameText(ui, "Apply changes?");\n    ui.stdin.write("y");\n    await waitForFrameText(ui, "✓ Gateway configured");\n    expect(executeFlow).toHaveBeenCalledTimes(1);`;
+          if (!source.includes(before)) throw new Error('target test block not found');
+          source = source.replace(before, after);
+          fs.writeFileSync(file, source);
+          fs.rmSync('.github/workflows/fix-workstation-form-sync-once.yml');
+          NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/cli/src/workstation-ui.test.tsx .github/workflows/fix-workstation-form-sync-once.yml
+          git diff --cached --check
+          git commit -m "test(workstation): synchronize multi-step form transitions"
+          git push origin HEAD:ci/workstation-form-sync
