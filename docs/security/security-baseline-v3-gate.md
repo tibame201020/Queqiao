@@ -15,11 +15,12 @@ Security Baseline v3 extends v2 only for the optional cross-machine Worker trans
 9. **Remote Worker exposes no inbound LAN execution listener.** Its HTTP/local enrollment-control listener remains loopback-only; the Worker initiates the gRPC connection.
 10. **Reconnect is recovery, not registration.** Durable sessions reconnect with bounded exponential backoff + jitter and do not create idle disk-write churn.
 11. **Existing loopback HTTP remains valid.** Remote transport does not relax Security Baseline v2 HTTP constraints.
-12. **Secrets remain outside the repository.** Generated private keys, credentials, join codes, machine-specific pinned certificates, and runtime paths stay in local runtime/config/secret storage.
+12. **Secrets remain outside the repository.** Generated private keys, credentials, join codes, machine-specific pinned certificates, runtime paths, and audit state stay in local runtime/config/secret/state storage.
+13. **Audit is bounded, redacted, and non-authoritative.** Audit storage cannot increase execution authority. Raw OAuth approval material/codes/tokens, Worker credentials, tool payloads, and Extension capability arguments are excluded from intended audit payloads; storage is size/age bounded without an idle maintenance writer.
 
 ## Required CI
 
-The existing `Security Baseline` GitHub Actions workflow runs `security:gate` on Windows and Ubuntu. `test:security` now includes the Worker Protocol reverse-session, Gateway session registry, reverse transport, real gRPC/TLS integration, local activation control, reconnect manager, and shared Worker Protocol service tests.
+The existing `Security Baseline` GitHub Actions workflow runs `security:gate` on Windows and Ubuntu. `test:security` includes the audit store/redaction contract, CLI audit query contract, OAuth audit non-leak test, Worker Protocol reverse-session, Gateway session registry, reverse transport, real gRPC/TLS integration, local activation control, reconnect manager, and shared Worker Protocol service tests.
 
 Required repository gates are:
 
@@ -47,7 +48,12 @@ Repository integration verifies:
 - cancellation reaching the Worker `AbortSignal`;
 - session disconnect cleanup;
 - reconnect/backoff contracts without durable retry writes;
-- HTTP enrollment regression compatibility.
+- HTTP enrollment regression compatibility;
+- bounded audit JSONL rotation/append-time retention without idle write churn;
+- audit redaction for sensitive keys and credential-shaped values;
+- OAuth audit outcomes without approval secrets, authorization codes, or access tokens;
+- enrollment/session/transport/tool/Extension-call audit events without Worker credentials or execution payloads;
+- packaged global/Gateway/Worker audit CLI queries.
 
 ## Release-environment validation
 

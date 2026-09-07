@@ -69,13 +69,13 @@ A change in one version dimension does not silently imply a change in another.
 
 ### `apps/gateway`
 
-Internet-facing composition root. It owns OAuth, the remote Streamable HTTP MCP adapter, public tool registration, Worker presence/routing, request budgets, cancellation propagation, and public security headers. The adapter supports both the selected 2025 legacy era and the `2026-07-28` modern era while mapping both to the same transport-neutral Queqiao tool runtime.
+Internet-facing composition root. It owns OAuth, the remote Streamable HTTP MCP adapter, public tool registration, Worker presence/routing, request budgets, cancellation propagation, public security headers, and role-local audit emission for OAuth outcomes, enrollment, Worker sessions, and transport routing. The adapter supports both the selected 2025 legacy era and the `2026-07-28` modern era while mapping both to the same transport-neutral Queqiao tool runtime.
 
 The Gateway MUST NOT perform native Workspace filesystem/process execution. MCP-specific construction, protocol-version handling, HTTP adaptation, and result/schema mapping are isolated at the Gateway adapter boundary; MCP SDK dependencies do not belong in Core/domain packages.
 
 ### `apps/worker`
 
-Environment-local authoritative execution root. It loads native Workspace policy, exposes an authenticated loopback HTTP/local-control API, optionally maintains an outbound pinned-TLS gRPC session to its Gateway, validates delegated requests, and invokes bounded native Workspace/process capabilities.
+Environment-local authoritative execution root. It loads native Workspace policy, exposes an authenticated loopback HTTP/local-control API, optionally maintains an outbound pinned-TLS gRPC session to its Gateway, validates delegated requests, invokes bounded native Workspace/process capabilities, and emits role-local audit outcomes for tool execution and Extension proxy calls without persisting tool input or capability arguments.
 
 A Worker MUST NOT rely on Gateway authorization alone and MUST NOT implement the public OAuth authorization server.
 
@@ -83,7 +83,7 @@ Loopback HTTP and Worker-initiated gRPC are adapters around the same `WorkerProt
 
 ### `apps/cli`
 
-Administrative interface for validated/atomic configuration changes, migrations, diagnostics, explicit named runtime lifecycle (`serve [--bg]` / `stop` / `status`), Worker enrollment, Workspace authority management, permission inspection, and Extension Hub package/Worker attachment management. It does not install or manage OS services or autostart.
+Administrative interface for validated/atomic configuration changes, migrations, diagnostics, explicit named runtime lifecycle (`serve [--bg]` / `stop` / `status`), Worker enrollment, Workspace authority management, permission inspection, Extension Hub package/Worker attachment management, and bounded audit queries. Successful Workspace and Extension management mutations emit safe ID-level audit events. It does not install or manage OS services or autostart.
 
 CLI/config changes do not by themselves mutate a client's cached public MCP tool schema.
 
@@ -141,11 +141,16 @@ Implemented safe Workspace filesystem primitives. The package currently provides
 
 Workspace is an authority boundary. Repository/worktree/project-marker interpretation is not a required Core identity model; ADR-0009 moves those semantics to extensions/clients while preserving Core containment and bounded discovery primitives.
 
+### `packages/audit`
+
+Shared durable audit contract and local store. It owns Audit Event Schema v1, bounded sanitization/redaction, JSONL rotation/retention, and query semantics. Gateway, Worker, and CLI are event producers; audit evidence is not an authorization or policy decision source.
+
+Audit storage is local runtime state. The default store uses a 1 MiB active file, up to four rotated files, and 30-day append-time retention pruning. It does not run an idle maintenance writer.
+
 ### Future/supporting runtime packages
 
 Packages such as the following may be introduced when their implementation tickets require them:
 
-- observability/audit projection helpers;
 - shared hostile-fixture/contract test utilities.
 
 They must be introduced for concrete implementation needs rather than as speculative empty modules.
@@ -217,10 +222,11 @@ These apply to current and future implementations:
 5. Core process execution remains bounded by profile/tool/command/cwd/timeout/concurrency/output/cancellation policy. Registered Extension execution is a separate trusted authority once Core `extension` access is granted; Worker helper APIs still preserve Workspace containment and process runtime bounds.
 6. Enabling a high-risk tool such as `shell` requires explicit Workspace policy; blank normal allowlists do not implicitly grant it.
 7. Installing and attaching an Extension explicitly expands the Worker trust boundary. Registered Extension capabilities are not re-authorized by Core `tools.allow`, profile, capability, or command policy; Core `extend`/`replace` contributions remain inside the invoked Core tool contract.
-8. Runtime configuration, endpoint-specific data, tokens, signing material, approval secrets, generated state, and logs remain outside source control.
-9. Public health and diagnostics expose only intentionally safe/redacted projections.
-10. OAuth callback CSP must preserve validated ChatGPT redirect-origin support without broadening to arbitrary external origins.
-11. Historical validation evidence is append-only: new behavior receives new evidence rather than retroactively changing old acceptance claims.
+8. Runtime configuration, endpoint-specific data, tokens, signing material, approval secrets, generated state, logs, and audit records remain outside source control.
+9. Public health, diagnostics, and audit projections expose only intentionally safe/redacted data; audit records must not persist raw OAuth/Worker credentials, tool payloads, or Extension capability arguments.
+10. Audit evidence is non-authoritative: audit write/read failure must not broaden Workspace, Tool, process, transport, or Extension authority.
+11. OAuth callback CSP must preserve validated ChatGPT redirect-origin support without broadening to arbitrary external origins.
+12. Historical validation evidence is append-only: new behavior receives new evidence rather than retroactively changing old acceptance claims.
 
 ## Delivery and production acceptance
 

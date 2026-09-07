@@ -6,6 +6,7 @@ current user documentation.
 
 ## Current release-line evidence
 
+- [Audit / Observability foundation validation](audit-observability-foundation-2026-09-07.md)
 - [Worker transport final acceptance (HTTP + reverse TLS gRPC, Revision 9)](worker-transport-final-acceptance-2026-09-03.md)
 - [v0.9.0 Workspace Management convergence](workspace-management-v0.9.0-2026-08-30.md)
 - [v0.8.5 README i18n and canonical command documentation](readme-i18n-v0.8.5-2026-08-30.md)

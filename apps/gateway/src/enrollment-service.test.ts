@@ -1,4 +1,4 @@
-﻿import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Server } from "node:http";
@@ -171,6 +171,29 @@ describe("Worker enrollment transaction", () => {
     expect((await store.read()).workers[0]?.transports).toEqual([{ type: "http", endpoint: firstEndpoint }]);
   });
 });
+  it("audits successful enrollment without persisting join or Worker credentials", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "queqiao-enrollment-audit-"));
+    const store = new WorkerMembershipStore(directory);
+    const events: unknown[] = [];
+    const service = new EnrollmentService(store, directory, undefined, { append: async (event) => { events.push(event); } });
+    const workerId = crypto.randomUUID();
+    const credential = { value: "bootstrap" };
+    const endpoint = await workerServer(workerId, "windows", credential);
+    const issued = service.createJoinToken();
+    const started = await service.startJoin({ token: issued.token, workerId, environmentId: "windows", transport: { type: "http", endpoint } });
+    credential.value = started.credential;
+    await service.confirmJoin(started.transactionId, started.credential);
+
+    expect(events).toMatchObject([
+      { component: "gateway", category: "enrollment", action: "enrollment.start", outcome: "success", subject: { workerId, environmentId: "windows" }, detail: { transports: ["http"] } },
+      { component: "gateway", category: "enrollment", action: "enrollment.confirm", outcome: "success", subject: { workerId, environmentId: "windows" }, detail: { transports: ["http"] } },
+    ]);
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain(issued.token);
+    expect(serialized).not.toContain(started.credential);
+    expect(serialized).not.toContain(endpoint);
+  });
+
 
 describe("membership gRPC staging", () => {
   it("authenticates a reverse session with the existing membership credential before gRPC becomes routable", async () => {

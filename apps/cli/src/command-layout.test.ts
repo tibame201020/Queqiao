@@ -30,6 +30,10 @@ describe("CLI ownership layout", () => {
     expect(() => assertCommandOwnership(["workspace", "list", "--worker", "windows", "--file", "other.yaml"])).toThrow(/--file is not supported/);
   });
 
+  it("routes Worker audit to the named Worker state directory", () => {
+    expect(resolveCommandLayout(["worker", "audit", "--worker", "windows"]).stateDir).toBe(resolveRuntimeLayoutForNamedRole("worker", "windows").stateDir);
+  });
+
   it("keeps Gateway-owned Worker membership on the named Gateway config", () => {
     expect(resolveCommandLayout(["membership", "list", "--gateway", "stable"]).configFile).toBe(resolveRuntimeLayoutForNamedRole("gateway", "stable").configFile);
   });

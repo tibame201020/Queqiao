@@ -81,6 +81,34 @@ On Windows, named Gateway and Worker layouts live below:
 Linux/WSL use role-scoped XDG paths. Secrets are stored separately from `config.yaml` and
 machine-specific paths are not required inside the source checkout.
 
+## Audit and observability
+
+Audit records use one shared event contract and local bounded JSONL storage. Query the global,
+Gateway, or Worker scope with:
+
+```shell
+queqiao audit --limit 100
+queqiao gateway audit --gateway <gateway> --limit 100
+queqiao worker audit --worker <worker> --limit 100
+```
+
+`--category`, `--outcome`, and `--action` provide exact filters. Global audit currently records
+Extension Hub install/uninstall. Gateway audit records OAuth outcomes, enrollment start/confirm,
+Worker gRPC session attach/detach, and transport selection/failure. Worker audit combines
+Worker-local tool/Extension-call outcomes with successful CLI Workspace add/edit/remove and
+Extension attach/detach mutations.
+
+The default store uses a 1 MiB active file plus up to four rotated files. Records older than 30
+days are pruned during append maintenance; there is no background retention writer or idle disk
+churn. Event fields are bounded/redacted. Raw OAuth approval material/codes/tokens, Worker
+credentials, tool payloads, Workspace roots, Extension source paths, and Extension capability
+arguments are not intended audit payloads. Malformed persisted records are reported as query
+`issues` instead of being treated as valid evidence.
+
+Named Gateway/Worker audit data lives under that role's private state directory in `audit/`;
+global audit uses the global Queqiao state directory. Audit state is runtime data and must not be
+committed to source control.
+
 ## Worker listener changes
 
 Worker HTTP/local-control listeners remain loopback-only. Remote Workers use an outbound TLS gRPC session and therefore do not require an inbound LAN Worker port. For loopback-HTTP memberships, to change a Worker port, stop that Worker first, change the configured port, restart it, then update Gateway

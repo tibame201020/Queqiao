@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { requireRuntimeConfigFile } from "@queqiao/platform-paths";
+import { AuditLogStore } from "@queqiao/audit";
+import { requireRuntimeConfigFile, resolveRuntimeLayout } from "@queqiao/platform-paths";
 import { readRuntimeConfig } from "@queqiao/config";
 import { ProcessRunner } from "@queqiao/process-runtime";
 import { getWorkerCoreToolDefinitions } from "./core-tools.js";
@@ -14,6 +15,7 @@ import { WorkerMembershipCredentialRegistry } from "./worker-membership-credenti
 const configFile = requireRuntimeConfigFile();
 const runtime = await readRuntimeConfig(configFile);
 if (!runtime.worker) throw new Error("worker configuration is required");
+const audit = new AuditLogStore(process.env.QUEQIAO_AUDIT_DIR?.trim() || path.join(resolveRuntimeLayout().stateDir, "audit"));
 const port = runtime.worker.listen.port;
 if (runtime.workspaces.length < 1) throw new Error("Worker has no Workspace; run worker setup to configure one before serving");
 const credentialFile = path.resolve(runtime.worker.tokenFile);
@@ -45,6 +47,7 @@ const protocolService = await createWorkerProtocolService({
   workspacesFile: configFile,
   processes,
   extensionRuntime,
+  audit,
 });
 const reverseSessions = new WorkerGatewaySessionManager(configFile, protocolService);
 const app = await createWorkerApp({

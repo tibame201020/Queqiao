@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createAuditEvent, type AuditSink } from "@queqiao/audit";
 import { extensionRuntimePolicyFor } from "@queqiao/config";
 import { ProcessRunner, type ManagedStdioSession, type StdioSessionRequest } from "@queqiao/process-runtime";
 import {
@@ -23,10 +24,64 @@ export type WorkerProtocolServiceConfig = {
   processes?: WorkerProcessExecutor;
   extensionHost?: ExtensionHost<WorkerToolContext>;
   extensionRuntime?: ReloadableExtensionHost;
+  audit?: AuditSink;
 };
 
 type RequestExtensionState = { host: ExtensionHost<WorkerToolContext> | undefined; generation: number };
 type ExtensionLeaseState = RequestExtensionState & { release?: () => Promise<void> };
+
+function auditOutcome(error: unknown, signal?: AbortSignal): "denied" | "failed" | "cancelled" {
+  if (signal?.aborted) return "cancelled";
+  const status = error && typeof error === "object" && "status" in error ? Number((error as { status?: unknown }).status) : undefined;
+  return status === 401 || status === 403 ? "denied" : "failed";
+}
+
+function auditErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("code" in error)) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && code.length <= 96 ? code : undefined;
+}
+
+async function recordToolAudit(audit: AuditSink | undefined, input: { workspaceId: string; tool: string; authority: "core" | "extension"; outcome: "success" | "denied" | "failed" | "cancelled"; errorCode?: string }): Promise<void> {
+  if (!audit) return;
+  try {
+    await audit.append(createAuditEvent({
+      component: "worker",
+      category: "tool",
+      action: "tool.execute",
+      outcome: input.outcome,
+      subject: { workspaceId: input.workspaceId, tool: input.tool },
+      detail: { authority: input.authority, ...(input.errorCode ? { errorCode: input.errorCode } : {}) },
+    }));
+  } catch (error) {
+    console.error("Audit append failed", error);
+  }
+}
+
+type ExtensionCallIdentity = { workspaceId: string; extensionId: string; capability: string };
+
+function extensionCallIdentity(toolName: string, workspaceId: string, input: unknown): ExtensionCallIdentity | undefined {
+  if (toolName !== "extension" || !input || typeof input !== "object") return undefined;
+  const candidate = input as { operation?: unknown; extensionId?: unknown; capability?: unknown };
+  if (candidate.operation !== "call" || typeof candidate.extensionId !== "string" || typeof candidate.capability !== "string") return undefined;
+  return { workspaceId, extensionId: candidate.extensionId, capability: candidate.capability };
+}
+
+async function recordExtensionCallAudit(audit: AuditSink | undefined, identity: ExtensionCallIdentity | undefined, outcome: "success" | "denied" | "failed" | "cancelled", errorCode?: string): Promise<void> {
+  if (!audit || !identity) return;
+  try {
+    await audit.append(createAuditEvent({
+      component: "worker",
+      category: "extension",
+      action: "extension.call",
+      outcome,
+      subject: identity,
+      ...(errorCode ? { detail: { errorCode } } : {}),
+    }));
+  } catch (error) {
+    console.error("Audit append failed", error);
+  }
+}
 
 export interface WorkerProtocolService {
   execute<T = unknown>(request: WorkerProtocolRequest, signal?: AbortSignal): Promise<T>;
@@ -154,8 +209,19 @@ export async function createWorkerProtocolService(config: WorkerProtocolServiceC
             if (typeof workspaceId !== "string") throw new WorkerToolError(400, "invalid_request", "workspaceId is required");
             const runtime = toolsFor(workspaceId, state);
             const authority = coreToolNames.has(request.toolName) ? "core" : "extension";
-            const result = await runtime.execute(request.toolName, request.input, contextFor(request.toolName, workspaceId, state, signal, authority));
-            return { result } as T;
+            const extensionCall = extensionCallIdentity(request.toolName, workspaceId, request.input);
+            try {
+              const result = await runtime.execute(request.toolName, request.input, contextFor(request.toolName, workspaceId, state, signal, authority));
+              await recordToolAudit(config.audit, { workspaceId, tool: request.toolName, authority, outcome: "success" });
+              await recordExtensionCallAudit(config.audit, extensionCall, "success");
+              return { result } as T;
+            } catch (error) {
+              const errorCode = auditErrorCode(error);
+              const outcome = auditOutcome(error, signal);
+              await recordToolAudit(config.audit, { workspaceId, tool: request.toolName, authority, outcome, ...(errorCode ? { errorCode } : {}) });
+              await recordExtensionCallAudit(config.audit, extensionCall, outcome, errorCode);
+              throw error;
+            }
           }
         }
       } finally {

@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createAuditEvent, type AuditSink } from "@queqiao/audit";
 import { open, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -53,7 +54,24 @@ export class EnrollmentService {
     readonly memberships: WorkerMembershipStore,
     readonly stateDirectory: string,
     private readonly sessions?: WorkerSessionRegistry,
+    private readonly audit?: AuditSink,
   ) {}
+
+  private async recordEnrollmentAudit(action: string, outcome: "success" | "denied" | "failed", subject: { workerId: string; environmentId: string }, transports: readonly WorkerTransportDescriptor[], errorCode?: string): Promise<void> {
+    if (!this.audit) return;
+    try {
+      await this.audit.append(createAuditEvent({
+        component: "gateway",
+        category: "enrollment",
+        action,
+        outcome,
+        subject,
+        detail: { transports: transports.map((transport) => transport.type), ...(errorCode ? { errorCode } : {}) },
+      }));
+    } catch (error) {
+      console.error("Audit append failed", error);
+    }
+  }
 
   private purge(now = Date.now()): void {
     for (const [key, token] of this.joinTokens) if (token.expiresAt <= now) this.joinTokens.delete(key);
@@ -104,6 +122,7 @@ export class EnrollmentService {
     const credential = randomBytes(32).toString("base64url");
     const expiresAt = Date.now() + 30_000;
     this.provisional.set(transactionId, { transactionId, workerId: request.workerId, environmentId: request.environmentId, transports: request.transports, credential, expiresAt });
+    await this.recordEnrollmentAudit("enrollment.start", "success", { workerId: request.workerId, environmentId: request.environmentId }, request.transports);
     return { transactionId, credential, confirmBy: new Date(expiresAt).toISOString() };
   }
 
@@ -167,6 +186,7 @@ export class EnrollmentService {
         this.sessions.promote(join.workerId, transactionId);
       }
       this.provisional.delete(transactionId);
+      await this.recordEnrollmentAudit("enrollment.confirm", "success", { workerId: join.workerId, environmentId: join.environmentId }, join.transports);
       return membership;
     } catch (error) {
       this.provisional.delete(transactionId);

@@ -145,7 +145,7 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it("freezes every public leaf in one parser contract", () => {
-    expect(CLI_LEAF_CONTRACTS).toHaveLength(47);
+    expect(CLI_LEAF_CONTRACTS).toHaveLength(50);
     expect(new Set(CLI_LEAF_CONTRACTS.map(({ route }) => route)).size).toBe(CLI_LEAF_CONTRACTS.length);
     expect(CLI_LEAF_CONTRACTS.map(({ route }) => route).sort()).toEqual(listCanonicalCliRoutes());
   });
