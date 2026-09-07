@@ -13,6 +13,19 @@ import type { ExtensionContribution, ExtensionManifestConfig, InstalledExtension
 
 export type { ToolAnnotations, ToolCapability, ToolRisk } from "@queqiao/contracts";
 
+export const QUEQIAO_MCP_TOOL_RESULT_KIND = "mcp_tool_result" as const;
+export type McpToolResultEnvelope = { kind: typeof QUEQIAO_MCP_TOOL_RESULT_KIND; result: unknown };
+
+export function mcpToolResult(result: unknown): McpToolResultEnvelope {
+  return { kind: QUEQIAO_MCP_TOOL_RESULT_KIND, result };
+}
+
+export function isMcpToolResultEnvelope(value: unknown): value is McpToolResultEnvelope {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return record["kind"] === QUEQIAO_MCP_TOOL_RESULT_KIND && Object.prototype.hasOwnProperty.call(record, "result");
+}
+
 export type ToolDefinition<TContext> = {
   name: string;
   title: string;

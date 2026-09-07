@@ -146,6 +146,8 @@ export type ExtensionPackageMetadata = {
   manifest: ExtensionManifestConfig;
 };
 
+export type McpToolResultEnvelope = { kind: "mcp_tool_result"; result: unknown };
 export declare const QUEQIAO_EXTENSION_API_VERSION: 1;
+export declare function mcpToolResult(result: unknown): McpToolResultEnvelope;
 export declare function defineExtension<TContext>(extension: QueqiaoExtension<TContext>): QueqiaoExtension<TContext>;
 export declare function defineExtensionManifest(manifest: ExtensionManifestConfig): ExtensionManifestConfig;

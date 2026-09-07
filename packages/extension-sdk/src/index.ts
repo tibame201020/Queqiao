@@ -1,5 +1,5 @@
 import type { ExtensionManifestConfig } from "@queqiao/config";
-import type { QueqiaoExtension } from "@queqiao/tool-runtime";
+import { mcpToolResult as wrapMcpToolResult, type QueqiaoExtension } from "@queqiao/tool-runtime";
 
 export type WorkerExtensionProcessMode = "sync" | "async";
 export type WorkerExtensionCapabilities = {
@@ -58,6 +58,10 @@ export type WorkerExtensionRuntime = {
 export type WorkerExtensionContext = { workspaceId: string; capabilities: WorkerExtensionCapabilities; runtime: WorkerExtensionRuntime; signal?: AbortSignal };
 
 export const QUEQIAO_EXTENSION_API_VERSION = 1 as const;
+
+export function mcpToolResult(result: unknown) {
+  return wrapMcpToolResult(result);
+}
 
 export function defineExtension<TContext>(extension: QueqiaoExtension<TContext>): QueqiaoExtension<TContext> {
   return extension;
