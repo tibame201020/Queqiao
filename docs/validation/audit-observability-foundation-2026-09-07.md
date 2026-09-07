@@ -50,6 +50,10 @@ Resource Safety reported a 10.37 MiB package, zero idle Gateway/Worker write byt
 
 `apps/cli/src/cli-isolated-acceptance.test.ts` passed 10/10 and exercises packaged global/Gateway/Worker audit queries, including a real managed Gateway + Worker enrollment flow.
 
+## Clean-checkout CI regression
+
+The first PR run exposed a missing TypeScript project-reference edge: clean runners installed `@queqiao/audit`, but app projects could typecheck before its declarations were built. The CLI, Gateway, and Worker tsconfigs now reference `packages/audit` explicitly. The fix was verified with `npx tsc -b --clean` followed by `npm run typecheck`, plus the 13 focused audit/runtime tests.
+
 ## Residuals / non-goals
 
 - No Dashboard audit UI is included in this slice.
