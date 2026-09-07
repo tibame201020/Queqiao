@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import type { AuditSink } from "@queqiao/audit";
 import path from "node:path";
 import { WorkerRegistry } from "./worker-registry.js";
 import type { MembershipWorkerClientConfig } from "./worker-client.js";
@@ -31,6 +32,7 @@ export class MembershipWorkerRegistry {
   constructor(
     private readonly memberships: WorkerMembershipStore,
     private readonly sessions?: WorkerSessionRegistry,
+    private readonly audit?: AuditSink,
   ) {}
 
   async initialize(): Promise<void> {
@@ -40,7 +42,7 @@ export class MembershipWorkerRegistry {
   private async reload(force: boolean): Promise<void> {
     if (!force && this.seenMembershipRevision === this.memberships.revision) return;
     const current = await this.memberships.current();
-    this.registry = new WorkerRegistry(await membershipClients(current, this.sessions));
+    this.registry = new WorkerRegistry(await membershipClients(current, this.sessions), this.audit);
     this.seenMembershipRevision = this.memberships.revision;
   }
 

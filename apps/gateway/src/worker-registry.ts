@@ -1,3 +1,4 @@
+import { createAuditEvent, type AuditSink } from "@queqiao/audit";
 import { WorkerClient, type WorkerClientConfig } from "./worker-client.js";
 import { QueqiaoError } from "./errors.js";
 import { isRegisteredWorkerTransportType, workerTransportProjection, type WorkerTransportTraits } from "./worker-transport.js";
@@ -25,11 +26,22 @@ export type WorkerLivenessState = { environmentId: string; reachable: boolean; c
 type ReachabilityRecord = { reachable?: boolean; checkedAt?: string; lastSuccessAt?: string };
 type WorkerRouteGroup = { environmentId: string; workerId?: string; clients: Map<WorkerTransportType, WorkerClient>; order: WorkerTransportType[] };
 
+function auditErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("code" in error)) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && code.length <= 96 ? code : undefined;
+}
+
+async function appendAudit(audit: AuditSink | undefined, input: Parameters<typeof createAuditEvent>[0]): Promise<void> {
+  if (!audit) return;
+  try { await audit.append(createAuditEvent(input)); }
+  catch (error) { console.error("Audit append failed", error); }
+}
 export class WorkerRegistry {
   private readonly routes: WorkerRouteGroup[] = [];
   private readonly reachability = new Map<string, ReachabilityRecord>();
 
-  constructor(configs: readonly WorkerClientConfig[]) {
+  constructor(configs: readonly WorkerClientConfig[], private readonly audit?: AuditSink) {
     const byEnvironment = new Map<string, WorkerRouteGroup>();
     for (const config of configs) {
       let route = byEnvironment.get(config.environmentId);
@@ -195,8 +207,30 @@ export class WorkerRegistry {
   }
 
   private async executeRouted<T>(workspaceId: string, transport: WorkerTransportType | undefined, execute: (client: WorkerClient) => Promise<T>): Promise<RoutedWorkerResult<T>> {
-    const selection = await this.route(workspaceId, transport);
-    return { value: await execute(selection.client), routing: selection.routing };
+    let selection: WorkerRouteSelection | undefined;
+    try {
+      selection = await this.route(workspaceId, transport);
+      await appendAudit(this.audit, {
+        component: "gateway",
+        category: "transport",
+        action: "transport.select",
+        outcome: "success",
+        subject: { workspaceId, environmentId: selection.routing.environmentId },
+        detail: { requestedTransport: selection.routing.requestedTransport, selectedTransport: selection.routing.selectedTransport, selectionReason: selection.routing.selectionReason },
+      });
+      return { value: await execute(selection.client), routing: selection.routing };
+    } catch (error) {
+      const errorCode = auditErrorCode(error);
+      await appendAudit(this.audit, {
+        component: "gateway",
+        category: "transport",
+        action: selection ? "transport.execute" : "transport.route",
+        outcome: "failed",
+        subject: { workspaceId, ...(selection ? { environmentId: selection.routing.environmentId } : {}) },
+        detail: { requestedTransport: transport ?? null, ...(selection ? { selectedTransport: selection.routing.selectedTransport } : {}), ...(errorCode ? { errorCode } : {}) },
+      });
+      throw error;
+    }
   }
 
   async requireTool(workspaceId: string, tool: string): Promise<void> {

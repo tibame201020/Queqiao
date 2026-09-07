@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@grpc/grpc-js": "^1.14.4",
+    "@queqiao/audit": "0.1.0",
     "@queqiao/config": "0.1.0",
     "@queqiao/contracts": "0.1.0",
     "@queqiao/core-manifest": "0.1.0",

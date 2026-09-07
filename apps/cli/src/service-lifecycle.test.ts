@@ -17,6 +17,7 @@ describe("runtime lifecycle", () => {
     const execFile = async (file: string, args: readonly string[]) => { calls.push({file,args}); if (file.endsWith("powershell.exe") && args.some(a=>a.includes("Start-Process"))) return { stdout: "1234", stderr: "" }; return { stdout: "", stderr: "" }; };
     const result = await startRuntime(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, fetchImpl: async()=>{ throw new Error("offline"); }, entryPoints: { gateway } });
     expect(result).toMatchObject({ started: true, pid: 1234 }); const pidFile = path.join(layout.stateDir,"processes","gateway.pid.json"); expect(JSON.parse(await readFile(pidFile,"utf8"))).toMatchObject({pid:1234});
+    const startCommand = calls.flatMap((call) => call.args).find((arg: string) => arg.includes("Start-Process")); expect(startCommand).toContain("QUEQIAO_AUDIT_DIR"); expect(startCommand).toContain(path.join(layout.stateDir, "audit"));
   });
   it("keeps ownership across package relinks by trusting the recorded entrypoint identity", async () => {
     const { layout } = await fixture();

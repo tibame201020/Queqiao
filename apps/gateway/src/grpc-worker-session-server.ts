@@ -1,4 +1,5 @@
 import * as grpc from "@grpc/grpc-js";
+import { createAuditEvent, type AuditSink } from "@queqiao/audit";
 import {
   MAX_WORKER_SESSION_FRAME_BYTES,
   workerGrpcServiceDefinition,
@@ -14,6 +15,7 @@ const WORKER_CREDENTIAL_METADATA = "x-queqiao-worker-token";
 export type WorkerGrpcSessionServerConfig = {
   sessions: WorkerSessionRegistry;
   authenticate(hello: WorkerHelloV3, credential: string): Promise<WorkerSessionAuthentication> | WorkerSessionAuthentication;
+  audit?: AuditSink;
 };
 
 function serviceError(code: grpc.status, message: string): grpc.ServiceError {
@@ -31,6 +33,22 @@ function credentialFrom(call: grpc.ServerDuplexStream<WorkerSessionFrame, Worker
 export class WorkerGrpcSessionServer {
   private readonly server: grpc.Server;
   private listening = false;
+
+  private async recordSessionAudit(action: "worker_session.attach" | "worker_session.detach", subject: { workerId: string; environmentId: string; sessionId: string }, authentication: WorkerSessionAuthentication): Promise<void> {
+    if (!this.config.audit) return;
+    try {
+      await this.config.audit.append(createAuditEvent({
+        component: "gateway",
+        category: "worker_session",
+        action,
+        outcome: "success",
+        subject,
+        detail: { authentication: authentication.kind },
+      }));
+    } catch (error) {
+      console.error("Audit append failed", error);
+    }
+  }
 
   constructor(private readonly config: WorkerGrpcSessionServerConfig) {
     this.server = new grpc.Server({
@@ -74,13 +92,16 @@ export class WorkerGrpcSessionServer {
 
   private handleConnect(call: grpc.ServerDuplexStream<WorkerSessionFrame, WorkerSessionFrame>): void {
     let sessionId: string | undefined;
+    let sessionSubject: { workerId: string; environmentId: string; sessionId: string } | undefined;
+    let sessionAuthentication: WorkerSessionAuthentication | undefined;
     let transport: ReverseWorkerTransport | undefined;
     let failed = false;
     let processing = Promise.resolve();
 
     const detach = (reason: Error) => {
       if (!sessionId) return;
-      this.config.sessions.detach(sessionId, reason);
+      const detached = this.config.sessions.detach(sessionId, reason);
+      if (detached && sessionSubject && sessionAuthentication) void this.recordSessionAudit("worker_session.detach", sessionSubject, sessionAuthentication);
       sessionId = undefined;
     };
     const fail = (error: unknown, code = grpc.status.FAILED_PRECONDITION) => {
@@ -112,7 +133,11 @@ export class WorkerGrpcSessionServer {
               if (!call.destroyed) call.destroy();
             },
           });
-          sessionId = this.config.sessions.attach(connect.data.hello, transport, authentication).sessionId;
+          const session = this.config.sessions.attach(connect.data.hello, transport, authentication);
+          sessionId = session.sessionId;
+          sessionSubject = { workerId: session.workerId, environmentId: session.environmentId, sessionId: session.sessionId };
+          sessionAuthentication = authentication;
+          await this.recordSessionAudit("worker_session.attach", sessionSubject, authentication);
           if (!call.write({ kind: "ready", sessionId })) throw serviceError(grpc.status.RESOURCE_EXHAUSTED, "Worker gRPC session ready acknowledgment backpressure limit reached");
           return;
         }

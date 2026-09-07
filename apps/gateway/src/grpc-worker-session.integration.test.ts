@@ -28,12 +28,14 @@ describe("loopback gRPC Worker session binding", () => {
       workspaces: [{ id: "one", displayName: "One", root: temporary, profile: "read-only", tools: { allow: [], deny: [], explicit: [] }, commands: { allow: [] } }],
     });
     const sessions = new WorkerSessionRegistry();
+    const events: unknown[] = [];
     const server = new WorkerGrpcSessionServer({
       sessions,
       authenticate: async (hello, presented) => {
         if (hello.workerId !== workerId || presented !== credential) throw new Error("unauthorized Worker session");
         return { kind: "membership" };
       },
+      audit: { append: async (event) => { events.push(event); } },
     });
     const target = await server.listenLoopback();
     const client = new WorkerGrpcReverseClient({ target, credential, service });
@@ -41,11 +43,15 @@ describe("loopback gRPC Worker session binding", () => {
     try {
       await client.connectLoopback();
       await vi.waitFor(() => expect(sessions.snapshot()).toHaveLength(1));
+      await vi.waitFor(() => expect(events).toMatchObject([{ action: "worker_session.attach", outcome: "success", subject: { workerId, environmentId: "linux" } }]));
       const transport = sessions.require(workerId).transport;
       await expect(transport.execute({ operation: "health" })).resolves.toMatchObject({ ok: true, environmentId: "linux" });
       await expect(transport.execute({ operation: "hello" })).resolves.toMatchObject({ workerId, protocolVersion: "3.0" });
       await expect(transport.execute({ operation: "list-workspaces" })).resolves.toMatchObject({ environmentId: "linux", workspaces: [{ workspaceId: "one" }] });
       await expect(transport.execute({ operation: "invoke-tool", toolName: "read_file", input: { workspaceId: "one", path: "fixture.txt", offset: 0, limit: 10 } })).resolves.toMatchObject({ result: { text: "hello grpc\n" } });
+      client.close();
+      await vi.waitFor(() => expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ action: "worker_session.detach", outcome: "success", subject: expect.objectContaining({ workerId, environmentId: "linux" }) })])));
+      expect(JSON.stringify(events)).not.toContain(credential);
     } finally {
       client.close();
       await server.close();

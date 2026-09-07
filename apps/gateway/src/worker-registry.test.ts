@@ -81,4 +81,35 @@ describe("Worker routing security", () => {
     await expect(registry.listEnvironments()).resolves.toEqual([{ environmentId: "windows", online: false, workspaces: [] }]);
     await expect(registry.route("shared")).rejects.toThrow(/not available/);
   });
+
+  it("audits transport selection and failures without persisting Worker credentials or tool input", async () => {
+    let failInvoke = false;
+    const events: unknown[] = [];
+    const runtime = {
+      execute: vi.fn(async (request: { operation: string }) => {
+        if (request.operation === "hello") return hello("windows");
+        if (request.operation === "list-workspaces") return state("windows", "only");
+        if (request.operation === "invoke-tool") {
+          if (failInvoke) throw Object.assign(new Error("transport failed"), { code: "transport_failure" });
+          return { result: { path: "fixture.txt", startLine: 1, endLine: 1, totalLines: 1, text: "ok" } };
+        }
+        throw new Error(`unexpected operation: ${request.operation}`);
+      }),
+    };
+    const registry = new WorkerRegistry([
+      { environmentId: "windows", transport: { type: "http", endpoint: "http://127.0.0.1:7576" }, token: "must-not-be-audited", runtimeTransport: runtime },
+    ], { append: async (event) => { events.push(event); } });
+
+    await registry.readFile({ workspaceId: "only", path: "fixture.txt", offset: 0, limit: 10 });
+    failInvoke = true;
+    await expect(registry.readFile({ workspaceId: "only", path: "private-input.txt", offset: 0, limit: 10 })).rejects.toThrow("transport failed");
+
+    expect(events).toMatchObject([
+      { component: "gateway", category: "transport", action: "transport.select", outcome: "success", subject: { workspaceId: "only", environmentId: "windows" }, detail: { requestedTransport: null, selectedTransport: "http", selectionReason: "configured_order" } },
+      { component: "gateway", category: "transport", action: "transport.select", outcome: "success", subject: { workspaceId: "only", environmentId: "windows" }, detail: { requestedTransport: null, selectedTransport: "http", selectionReason: "configured_order" } },
+      { component: "gateway", category: "transport", action: "transport.execute", outcome: "failed", subject: { workspaceId: "only", environmentId: "windows" }, detail: { selectedTransport: "http", errorCode: "transport_failure" } },
+    ]);
+    expect(JSON.stringify(events)).not.toContain("must-not-be-audited");
+    expect(JSON.stringify(events)).not.toContain("private-input.txt");
+  });
 });

@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import { createAuditEvent, type AuditSink } from "@queqiao/audit";
 import rateLimit from "express-rate-limit";
 import { createMcpExpressApp, originValidation } from "@modelcontextprotocol/express";
 import type { GatewayRuntimeConfig } from "./config.js";
@@ -12,10 +13,31 @@ import { WorkerMembershipStore } from "./worker-membership-store.js";
 import { GatewayLivenessMonitor } from "./liveness-monitor.js";
 import type { WorkerSessionRegistry } from "./worker-session-registry.js";
 
-export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService, sessions?: WorkerSessionRegistry): Promise<Express> {
+function authAuditOutcome(status: number): "success" | "denied" | "failed" {
+  if (status < 400) return "success";
+  return status < 500 ? "denied" : "failed";
+}
+
+function authAuditAction(pathname: string): string | undefined {
+  if (pathname === "/oauth/register") return "oauth.register";
+  if (pathname === "/oauth/authorize") return "oauth.authorize";
+  if (pathname === "/oauth/token") return "oauth.token";
+  return undefined;
+}
+
+async function appendAuthAudit(audit: AuditSink | undefined, action: string | undefined, method: string, status: number): Promise<void> {
+  if (!audit || !action) return;
+  try {
+    await audit.append(createAuditEvent({ component: "gateway", category: "auth", action, outcome: authAuditOutcome(status), detail: { method, status } }));
+  } catch (error) {
+    console.error("Audit append failed", error);
+  }
+}
+
+export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService, sessions?: WorkerSessionRegistry, audit?: AuditSink): Promise<Express> {
   const oauth = new OAuthService(config); await oauth.initialize();
   const memberships = enrollment?.memberships ?? new WorkerMembershipStore(config.stateDir);
-  const workerSource = new MembershipWorkerRegistry(memberships, sessions);
+  const workerSource = new MembershipWorkerRegistry(memberships, sessions, audit);
   await workerSource.initialize();
   const allowedOriginHostnames = [...new Set([config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]", ...[...config.allowedRedirectOrigins].map((origin) => new URL(origin).hostname)])];
   const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts: [config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]"], jsonLimit: "6mb" });
@@ -25,6 +47,7 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
     res.on("finish", () => {
       const rpcMethod = req.path === "/mcp" && typeof req.body?.method === "string" ? req.body.method : undefined;
       const toolName = rpcMethod === "tools/call" && typeof req.body?.params?.name === "string" ? req.body.params.name : undefined;
+      void appendAuthAudit(audit, authAuditAction(req.path), req.method, res.statusCode);
       console.log(JSON.stringify({ event: "http_request", method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - startedAt, ...(rpcMethod ? { rpcMethod } : {}), ...(toolName ? { toolName } : {}) }));
     });
     next();

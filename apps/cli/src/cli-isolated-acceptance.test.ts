@@ -19,6 +19,7 @@ const EXTENSION_ID = "dev.queqiao.acceptance";
 
 const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "version": "packaged-version",
+  "audit": "packaged-process-audit",
   "completion": "packaged-shell-completion",
   "workstation": "packaged-workstation-contract",
   "gateway list": "packaged-process-state",
@@ -28,6 +29,7 @@ const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "gateway stop": "packaged-managed-runtime",
   "gateway status": "packaged-process-state",
   "gateway info": "packaged-process-connector-info",
+  "gateway audit": "packaged-process-audit",
   "gateway join-token": "packaged-live-enrollment",
   "gateway workers list": "packaged-live-enrollment",
   "gateway workers remove": "packaged-live-enrollment",
@@ -38,6 +40,7 @@ const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "worker serve": "packaged-managed-runtime",
   "worker stop": "packaged-managed-runtime",
   "worker status": "packaged-process-state",
+  "worker audit": "packaged-process-audit",
   "worker join": "packaged-live-enrollment",
   "workspace": "packaged-workspace-manager-contract",
   "workspace add": "packaged-process-workspace",
@@ -337,9 +340,18 @@ describe.sequential("isolated packaged CLI acceptance", () => {
     expect(afterProfileDelete.workspace.access).toMatchObject({ allowedExecutables: ["git", "npm"] });
     extensionRoot = await fakeLocalExtension(root);
     expect(parseJson<any>(await runCli(["extension", "install", extensionRoot, "--json"]))).toMatchObject({ changed: true, id: EXTENSION_ID, source: "local", connectorManifestImpact: "none" });
+    expect(parseJson<any>(await runCli(["audit", "--action", "extension.install", "--json"]))).toMatchObject({
+      scope: "global",
+      events: [expect.objectContaining({ action: "extension.install", outcome: "success", subject: { extensionId: EXTENSION_ID } })],
+    });
     expect(parseJson<any>(await runCli(["extension", "list", "--json"])).extensions).toHaveLength(1);
     expect(parseJson<any>(await runCli(["extension", "show", EXTENSION_ID, "--json"]))).toMatchObject({ id: EXTENSION_ID });
     expect(parseJson<any>(await runCli(["extension", "attach", EXTENSION_ID, "--worker", WORKER, "--json"]))).toMatchObject({ changed: true, attached: EXTENSION_ID });
+    expect(parseJson<any>(await runCli(["worker", "audit", "--worker", WORKER, "--category", "extension", "--action", "extension.attach", "--json"]))).toMatchObject({
+      scope: "worker",
+      name: WORKER,
+      events: [expect.objectContaining({ action: "extension.attach", outcome: "success", subject: { extensionId: EXTENSION_ID, worker: WORKER } })],
+    });
     expect(parseJson<any>(await runCli(["extension", "attach", EXTENSION_ID, "--worker", WORKER, "--json"]))).toMatchObject({ changed: false, attached: EXTENSION_ID });
     expect(parseJson<any>(await runCli(["doctor", "extension", "--json"]))).toMatchObject({ ok: true, extensionCount: 1, workerCount: 1 });
     expect(parseJson<any>(await runCli(["doctor", "manifest", "show", "--gateway", GATEWAY, "--json"]))).toMatchObject({ ok: true });
@@ -406,6 +418,11 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       const joinToken = await waitForJson<any>(["gateway", "join-token", "--gateway", GATEWAY, "--expires", "60", "--json"], (value) => typeof value.joinCode === "string");
       expect(joinToken.joinCode).toMatch(/^qjq1:/);
       expect(parseJson<any>(await runCli(["worker", "join", "--worker", WORKER, "--join-code", joinToken.joinCode, "--protocols", "http", "--json"]))).toMatchObject({ joined: true, workerId: workerConfig.worker.workerId, environmentId: workerConfig.worker.environmentId });
+      expect(parseJson<any>(await runCli(["gateway", "audit", "--gateway", GATEWAY, "--action", "enrollment.confirm", "--json"]))).toMatchObject({
+        scope: "gateway",
+        name: GATEWAY,
+        events: [expect.objectContaining({ action: "enrollment.confirm", outcome: "success", subject: { workerId: workerConfig.worker.workerId, environmentId: workerConfig.worker.environmentId } })],
+      });
 
       expect(parseJson<any>(await runCli(["gateway", "workers", "list", "--gateway", GATEWAY, "--json"])).workers).toHaveLength(1);
 

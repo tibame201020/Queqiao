@@ -6,7 +6,7 @@ import { CORE_PUBLIC_TOOLS, QUEQIAO_CORE_MANIFEST_REVISION } from "@queqiao/core
 import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "@queqiao/mcp-compat";
 import { buildDeploymentManifest, buildOperationsDiagnostics, explainTool } from "@queqiao/operations";
 import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
-import { resolveExtensionHubRoot } from "@queqiao/platform-paths";
+import { resolveExtensionHubRoot, resolveRuntimeLayout, resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
 import { assertCommandOwnership, resolveCommandLayout } from "./command-layout.js";
 import { migrateFromRepository, migrateRuntimeLayoutV1 } from "./runtime-migration.js";
 import { createJoinToken, joinWorker, listJoinedWorkers, removeJoinedWorker, updateWorkerPort } from "./enrollment-cli.js";
@@ -26,10 +26,17 @@ import { QUEQIAO_CLI_VERSION } from "./version.js";
 import { getGatewayInfo } from "./gateway-info.js";
 import { renderShellCompletion } from "./shell-completion.js";
 import { runWorkstation } from "./workstation.js";
+import { listAuditEvents, recordCliAudit } from "./audit-cli.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
 function operations(config: RuntimeConfig) { return buildOperationsDiagnostics({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, workerProtocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, supportedMcpProtocolVersions: QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS, coreTools: CORE_PUBLIC_TOOLS, extensions: config.extensions }); }
+function auditDir(stateDir: string): string { return path.join(stateDir, "audit"); }
+function resultString(value: unknown, key: string): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === "string" ? candidate : undefined;
+}
 
 const rawArgs = process.argv.slice(2);
 let outputArgs = rawArgs;
@@ -94,19 +101,41 @@ async function main() {
     const source = dispatch?.positionals[0] || (typeof dispatch?.options.source === "string" ? dispatch.options.source : undefined);
     if (!source) throw new Error("Extension source is required, for example: npm:queqiao-mcp or .\\my-extension");
     const workerName = option(args, "worker");
-    return print(await installExtension(resolveExtensionHubRoot(), source, { ...(workerName ? { workerName } : {}), attachAll: args.includes("--attach-all") }));
+    const result = await installExtension(resolveExtensionHubRoot(), source, { ...(workerName ? { workerName } : {}), attachAll: args.includes("--attach-all") });
+    const extensionId = resultString(result, "id");
+    await recordCliAudit(auditDir(resolveRuntimeLayout().stateDir), { category: "extension", action: "extension.install", outcome: "success", ...(extensionId ? { subject: { extensionId } } : {}) });
+    if (extensionId && result && typeof result === "object" && Array.isArray((result as { attachments?: unknown }).attachments)) {
+      for (const attachment of (result as { attachments: unknown[] }).attachments) {
+        const attachedWorker = resultString(attachment, "worker");
+        if (attachedWorker) await recordCliAudit(auditDir(resolveRuntimeLayoutForNamedRole("worker", attachedWorker).stateDir), { category: "extension", action: "extension.attach", outcome: "success", subject: { extensionId, worker: attachedWorker } });
+      }
+    }
+    return print(result);
   }
   if (dispatch?.handler === "extension-attach") {
     const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), dispatch?.positionals[0] || (typeof dispatch?.options.id === "string" ? dispatch.options.id : undefined));
-    return print(await attachExtension(resolveExtensionHubRoot(), id, requiredOption(args, "worker")));
+    const workerName = requiredOption(args, "worker");
+    const result = await attachExtension(resolveExtensionHubRoot(), id, workerName);
+    await recordCliAudit(auditDir(resolveRuntimeLayoutForNamedRole("worker", workerName).stateDir), { category: "extension", action: "extension.attach", outcome: "success", subject: { extensionId: id, worker: workerName } });
+    return print(result);
   }
   if (dispatch?.handler === "extension-detach") {
     const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), dispatch?.positionals[0] || (typeof dispatch?.options.id === "string" ? dispatch.options.id : undefined));
-    return print(await detachExtension(id, requiredOption(args, "worker")));
+    const workerName = requiredOption(args, "worker");
+    const result = await detachExtension(id, workerName);
+    await recordCliAudit(auditDir(resolveRuntimeLayoutForNamedRole("worker", workerName).stateDir), { category: "extension", action: "extension.detach", outcome: "success", subject: { extensionId: id, worker: workerName } });
+    return print(result);
   }
   if (dispatch?.handler === "extension-uninstall") {
     const id = await resolveInstalledExtensionId(resolveExtensionHubRoot(), dispatch?.positionals[0] || (typeof dispatch?.options.id === "string" ? dispatch.options.id : undefined));
-    return print(await uninstallExtension(resolveExtensionHubRoot(), id, args.includes("--force")));
+    const result = await uninstallExtension(resolveExtensionHubRoot(), id, args.includes("--force"));
+    await recordCliAudit(auditDir(resolveRuntimeLayout().stateDir), { category: "extension", action: "extension.uninstall", outcome: "success", subject: { extensionId: id } });
+    if (result && typeof result === "object" && Array.isArray((result as { detachedWorkers?: unknown }).detachedWorkers)) {
+      for (const detachedWorker of (result as { detachedWorkers: unknown[] }).detachedWorkers) {
+        if (typeof detachedWorker === "string") await recordCliAudit(auditDir(resolveRuntimeLayoutForNamedRole("worker", detachedWorker).stateDir), { category: "extension", action: "extension.detach", outcome: "success", subject: { extensionId: id, worker: detachedWorker } });
+      }
+    }
+    return print(result);
   }
   if (dispatch?.handler === "extension-list") return print(await listExtensions(resolveExtensionHubRoot()));
   if (dispatch?.handler === "extension-show") {
@@ -127,6 +156,16 @@ async function main() {
 
   const layout = resolveCommandLayout(args);
   const configFile = path.resolve(layout.configFile);
+  if (dispatch?.handler === "audit-list") {
+    const result = await listAuditEvents(path.join(layout.stateDir, "audit"), {
+      ...(typeof dispatch.options.limit === "string" ? { limit: dispatch.options.limit } : {}),
+      ...(typeof dispatch.options.category === "string" ? { category: dispatch.options.category } : {}),
+      ...(typeof dispatch.options.outcome === "string" ? { outcome: dispatch.options.outcome } : {}),
+      ...(typeof dispatch.options.action === "string" ? { action: dispatch.options.action } : {}),
+    });
+    const scope = route?.startsWith("gateway") ? "gateway" : route?.startsWith("worker") ? "worker" : "global";
+    return print({ ...result, scope, ...(selectedRoleName ? { name: selectedRoleName } : {}) });
+  }
   const configStore = new AtomicConfigStore<RuntimeConfig>(configFile, (value) => runtimeConfigSchema.parse(value));
 
   if (dispatch?.handler === "gateway-info") return print(await getGatewayInfo(configFile, layout, selectedRoleName!, outputArgs));
@@ -141,12 +180,31 @@ async function main() {
   if (dispatch?.handler === "membership-list") return print(await listJoinedWorkers(configFile));
   if (dispatch?.handler === "membership-remove") return print(await removeJoinedWorker(configFile, requiredOption(args, "worker-id")));
   if (dispatch?.handler === "workspace-list") return print(await listManagedWorkspaces(configFile));
-  if (dispatch?.handler === "workspace-add") { requiredOption(args, "worker"); return print(await addWorkspace(configFile, args)); }
+  if (dispatch?.handler === "workspace-add") {
+    const workerName = requiredOption(args, "worker");
+    const result = await addWorkspace(configFile, args);
+    const workspaceId = result && typeof result === "object" && (result as { workspace?: unknown }).workspace && typeof (result as { workspace?: unknown }).workspace === "object"
+      ? resultString((result as { workspace: unknown }).workspace, "id")
+      : undefined;
+    await recordCliAudit(auditDir(layout.stateDir), { category: "workspace", action: "workspace.add", outcome: "success", ...(workspaceId ? { subject: { workspaceId, worker: workerName } } : { subject: { worker: workerName } }) });
+    return print(result);
+  }
   if (dispatch?.handler === "workspace-info") return print(await getManagedWorkspaceInfo(configFile, args));
-  if (dispatch?.handler === "workspace-edit") return print(await editManagedWorkspace(configFile, args));
+  if (dispatch?.handler === "workspace-edit") {
+    const workerName = requiredOption(args, "worker");
+    const result = await editManagedWorkspace(configFile, args);
+    const workspaceId = result && typeof result === "object" && (result as { workspace?: unknown }).workspace && typeof (result as { workspace?: unknown }).workspace === "object"
+      ? resultString((result as { workspace: unknown }).workspace, "id")
+      : option(args, "workspace");
+    await recordCliAudit(auditDir(layout.stateDir), { category: "workspace", action: "workspace.edit", outcome: "success", ...(workspaceId ? { subject: { workspaceId, worker: workerName } } : { subject: { worker: workerName } }) });
+    return print(result);
+  }
   if (dispatch?.handler === "workspace-remove") {
+    const workerName = requiredOption(args, "worker");
     const id = option(args, "workspace") || (await getManagedWorkspaceInfo(configFile, args) as any).workspace.id;
-    return print(await removeWorkspace(configFile, requiredOption(args, "worker"), id));
+    const result = await removeWorkspace(configFile, workerName, id);
+    await recordCliAudit(auditDir(layout.stateDir), { category: "workspace", action: "workspace.remove", outcome: "success", subject: { workspaceId: id, worker: workerName } });
+    return print(result);
   }
   if (dispatch?.handler === "manifest-show") {
     const config = await configStore.read(); const state = operations(config);
@@ -159,8 +217,8 @@ async function main() {
   if (dispatch?.handler === "runtime-stop" && route === "worker stop") return print(await stopRuntime(layout, "worker", selectedRoleName!));
   if (dispatch?.handler === "runtime-status" && route === "gateway status") return print(await runtimeStatus(configFile, layout, "gateway", selectedRoleName!));
   if (dispatch?.handler === "runtime-status" && route === "worker status") return print(await runtimeStatus(configFile, layout, "worker", selectedRoleName!));
-  if (dispatch?.handler === "runtime-serve" && route === "gateway serve") return print(args.includes("--bg") ? await startRuntime(configFile, layout, "gateway", selectedRoleName!) : await serveRuntime(configFile, "gateway", selectedRoleName!));
-  if (dispatch?.handler === "runtime-serve" && route === "worker serve") return print(args.includes("--bg") ? await startRuntime(configFile, layout, "worker", selectedRoleName!) : await serveRuntime(configFile, "worker", selectedRoleName!));
+  if (dispatch?.handler === "runtime-serve" && route === "gateway serve") return print(args.includes("--bg") ? await startRuntime(configFile, layout, "gateway", selectedRoleName!) : await serveRuntime(configFile, "gateway", selectedRoleName!, { env: { ...process.env, QUEQIAO_AUDIT_DIR: path.join(layout.stateDir, "audit") } }));
+  if (dispatch?.handler === "runtime-serve" && route === "worker serve") return print(args.includes("--bg") ? await startRuntime(configFile, layout, "worker", selectedRoleName!) : await serveRuntime(configFile, "worker", selectedRoleName!, { env: { ...process.env, QUEQIAO_AUDIT_DIR: path.join(layout.stateDir, "audit") } }));
   if (dispatch?.handler === "migrate-from-repo") return print(await migrateFromRepository(path.resolve(option(args, "repo") || process.cwd()), layout, args.includes("--execute")));
   if (dispatch?.handler === "migrate-runtime-v1") return print(await migrateRuntimeLayoutV1(layout, args.includes("--execute")));
   throw new Error(USAGE);
