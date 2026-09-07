@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { ExtensionHost, ToolRuntime, resolveExtensionComposition, type QueqiaoExtension, type ToolDefinition } from "./index.js";
+import { ExtensionHost, ToolRuntime, isMcpToolResultEnvelope, mcpToolResult, resolveExtensionComposition, type QueqiaoExtension, type ToolDefinition } from "./index.js";
 import type { ExtensionManifestConfig, InstalledExtensionConfig } from "@queqiao/config";
 
 type Context = { allowed: boolean; trace: string[] };
@@ -28,6 +28,17 @@ function manifest(id: string, contributions: ExtensionManifestConfig["contributi
 function module(id: string, activate: QueqiaoExtension<Context>["activate"]): QueqiaoExtension<Context> {
   return { manifest: { id, version: "1.0.0", displayName: id }, activate };
 }
+
+describe("MCP tool result envelope", () => {
+  it("requires an explicit marker before native MCP projection", () => {
+    const native = { content: [{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" }] };
+    const envelope = mcpToolResult(native);
+    expect(envelope).toEqual({ kind: "mcp_tool_result", result: native });
+    expect(isMcpToolResultEnvelope(envelope)).toBe(true);
+    expect(isMcpToolResultEnvelope(native)).toBe(false);
+    expect(isMcpToolResultEnvelope({ kind: "mcp_tool_result" })).toBe(false);
+  });
+});
 
 describe("extension composition resolver", () => {
   it("resolves a deterministic DAG independent of input order", () => {

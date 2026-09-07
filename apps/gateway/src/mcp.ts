@@ -1,5 +1,5 @@
-import { McpServer, fromJsonSchema, type JsonSchemaType } from "@modelcontextprotocol/server";
-import { ToolRuntime, extensionActiveForWorkspace, resolveExtensionComposition } from "@queqiao/tool-runtime";
+import { McpServer, fromJsonSchema, isCallToolResult, type JsonSchemaType } from "@modelcontextprotocol/server";
+import { ToolRuntime, extensionActiveForWorkspace, isMcpToolResultEnvelope, resolveExtensionComposition } from "@queqiao/tool-runtime";
 import type { InstalledExtensionConfig } from "@queqiao/config";
 import { coreWorkspaceTools, type GatewayToolContext, unwrapRoutedToolValue } from "./core-tools.js";
 import type { WorkerRegistry } from "./worker-registry.js";
@@ -14,6 +14,12 @@ export const QUEQIAO_V0_TOOL_NAMES = ["workspace_info", "read_file"] as const;
 export const QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES = CORE_PUBLIC_TOOL_ORDER;
 
 function result(value: unknown, routing?: import("./worker-registry.js").WorkerRoutingReceipt) {
+  if (isMcpToolResultEnvelope(value) && isCallToolResult(value.result)) {
+    return {
+      ...value.result,
+      ...(routing ? { _meta: { ...(value.result._meta ?? {}), "dev.queqiao/routing": routing } } : {}),
+    };
+  }
   return {
     content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }],
     ...(routing ? { _meta: { "dev.queqiao/routing": routing } } : {}),

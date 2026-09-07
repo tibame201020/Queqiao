@@ -60,7 +60,10 @@ async function compileFixture(
 describe("published extension runtime types", () => {
   it("compiles an external ESM consumer using only @tibame201020/queqiao/extension", async () => {
     await compileFixture(`
-import { defineExtension, defineExtensionManifest, type WorkerExtensionContext } from "@tibame201020/queqiao/extension";
+import { defineExtension, defineExtensionManifest, mcpToolResult, type WorkerExtensionContext } from "@tibame201020/queqiao/extension";
+
+const nativeImage = mcpToolResult({ content: [{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" }] });
+void nativeImage;
 
 const manifest = defineExtensionManifest({
   id: "dev.example.remote-mcp",
