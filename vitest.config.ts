@@ -5,5 +5,6 @@ export default defineConfig({
     include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.ts", "packages/*/src/**/*.test.tsx", "apps/*/src/**/*.test.tsx"],
     exclude: ["**/dist/**", "**/node_modules/**"],
     maxWorkers: 4,
+    globalSetup: ["./scripts/vitest-global-setup.ts"],
   },
 });
