@@ -16,6 +16,8 @@ type Dependencies = {
   execFile?: ExecFile;
   fetchImpl?: typeof fetch;
   nodePath?: string;
+  cliEntryPoint?: string;
+  currentPid?: number;
   entryPoints?: Partial<Record<RuntimeRole, string>>;
 };
 const execFileAsync = promisify(execFileCallback);
@@ -24,6 +26,7 @@ function defaultExecFile(file: string, args: readonly string[]) { return execFil
 function validateName(value: string) { if (!/^[a-z][a-z0-9-]{0,31}$/.test(value)) throw new Error("Name must match ^[a-z][a-z0-9-]{0,31}$"); return value; }
 function validateRole(value: string): RuntimeRole { if (value !== "gateway" && value !== "worker") throw new Error("Role must be gateway or worker"); return value; }
 function packageEntryPoint(role: RuntimeRole) { const dir = path.dirname(fileURLToPath(import.meta.url)); return path.join(dir, role === "gateway" ? "queqiao-gateway.js" : "queqiao-worker.js"); }
+function packageCliEntryPoint() { return path.join(path.dirname(fileURLToPath(import.meta.url)), "queqiao.js"); }
 function windowsSystemExecutable(name: string, env: NodeJS.ProcessEnv) { const root = env.SystemRoot || env.WINDIR; if (!root) throw new Error("Windows system root is unavailable"); return path.win32.join(root, "System32", name); }
 function pathsFor(layout: RuntimeLayout, role: RuntimeRole) { const dir = path.join(layout.stateDir, "processes"); return { dir, pidFile: path.join(dir, `${role}.pid.json`), stdout: path.join(layout.logDir, `${role}.out.log`), stderr: path.join(layout.logDir, `${role}.err.log`) }; }
 function managedWorkingDirectory(layout: RuntimeLayout) { return path.resolve(layout.stateDir); }
@@ -70,6 +73,24 @@ async function readPid(file: string): Promise<ManagedPidMetadata | undefined> { 
 async function processCommandLine(pid: number, platform: NodeJS.Platform, env: NodeJS.ProcessEnv, execFile: ExecFile) {
   if (platform === "win32") { const ps = windowsSystemExecutable("WindowsPowerShell\\v1.0\\powershell.exe", env); const query = `$p=Get-CimInstance Win32_Process -Filter \"ProcessId = ${pid}\" -ErrorAction SilentlyContinue; if($p){[Console]::Out.Write($p.CommandLine)}`; return (await execFile(ps, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query])).stdout.trim(); }
   try { return (await execFile("ps", ["-p", String(pid), "-o", "args="])).stdout.trim(); } catch { return ""; }
+}
+async function managedProcessIsAncestor(pid: number, dependencies: Dependencies = {}) {
+  const platform = dependencies.platform || process.platform;
+  if (platform !== "win32") return false;
+  const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const ps = windowsSystemExecutable("WindowsPowerShell\\v1.0\\powershell.exe", env); const currentPid = dependencies.currentPid || process.pid;
+  const query = `$target=${pid}; $current=${currentPid}; while($current -gt 0){ if($current -eq $target){[Console]::Out.Write('1'); exit 0}; $p=Get-CimInstance Win32_Process -Filter ("ProcessId = $current") -ErrorAction SilentlyContinue; if(-not $p){break}; $next=[int]$p.ParentProcessId; if($next -eq $current){break}; $current=$next }; [Console]::Out.Write('0')`;
+  return (await execFile(ps, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query])).stdout.trim() === "1";
+}
+async function scheduleWindowsRestartHandoff(layout: RuntimeLayout, role: RuntimeRole, name: string, pid: number, dependencies: Dependencies = {}) {
+  const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const ps = windowsSystemExecutable("WindowsPowerShell\\v1.0\\powershell.exe", env); const taskkill = windowsSystemExecutable("taskkill.exe", env); const nodePath = path.resolve(dependencies.nodePath || process.execPath); const cliEntryPoint = path.resolve(dependencies.cliEntryPoint || packageCliEntryPoint()); const pidFile = pathsFor(layout, role).pidFile;
+  const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
+  const inner = `Start-Sleep -Milliseconds 1000; & ${q(taskkill)} /PID ${pid} /T /F 2>$null | Out-Null; Remove-Item -LiteralPath ${q(pidFile)} -Force -ErrorAction SilentlyContinue; & ${q(nodePath)} ${q(cliEntryPoint)} ${q(role)} 'serve' '--bg' '--${role}' ${q(name)} '--json' | Out-Null`;
+  const encoded = Buffer.from(inner, "utf16le").toString("base64");
+  const helperCommand = `"${ps}" -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encoded}`;
+  const create = `$r=Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=${q(helperCommand)}}; [Console]::Out.Write(($r.ReturnValue.ToString()+':' + $r.ProcessId.ToString()))`;
+  const result = (await execFile(ps, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", create])).stdout.trim(); const [returnValue = Number.NaN, helperPid = Number.NaN] = result.split(":").map(Number);
+  if (returnValue !== 0 || !Number.isInteger(helperPid) || helperPid <= 0) throw new Error(`Unable to schedule deferred ${role} restart`);
+  return helperPid;
 }
 async function reconcileManagedPid(layout: RuntimeLayout, role: RuntimeRole, dependencies: Dependencies = {}) {
   const platform = dependencies.platform || process.platform; const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const currentEntryPoint = dependencies.entryPoints?.[role] || packageEntryPoint(role); const p = pathsFor(layout, role); const metadata = await readPid(p.pidFile); if (!metadata) return undefined;
@@ -119,6 +140,10 @@ export async function restartRuntime(configFile: string, layout: RuntimeLayout, 
   const current = await runtimeStatus(configFile, layout, role, name, dependencies);
   if (current.active && !current.managed) throw new Error(`Cannot restart ${role} ${name}: runtime is active but not managed by Queqiao`);
   if (!current.managed) return { restarted: false as const, stopped: false as const, started: false as const, reason: "stopped" as const, name, role };
+  if (current.pid && await managedProcessIsAncestor(current.pid, dependencies)) {
+    const helperPid = await scheduleWindowsRestartHandoff(layout, role, name, current.pid, dependencies);
+    return { restarted: true as const, stopped: false as const, started: false as const, deferred: true as const, helperPid, name, role, pid: current.pid };
+  }
   const stopped = await stopManaged(layout, role, dependencies);
   const started = await startRuntime(configFile, layout, role, name, dependencies);
   return { restarted: true as const, stopped, ...started };
