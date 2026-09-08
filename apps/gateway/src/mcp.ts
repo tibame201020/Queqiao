@@ -13,11 +13,33 @@ import { toQueqiaoErrorEnvelope } from "./errors.js";
 export const QUEQIAO_V0_TOOL_NAMES = ["workspace_info", "read_file"] as const;
 export const QUEQIAO_MULTI_WORKSPACE_TOOL_NAMES = CORE_PUBLIC_TOOL_ORDER;
 
+function nativeExtensionProxyResult(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const proxy = value as { workspaceId?: unknown; extensionId?: unknown; capability?: unknown; result?: unknown };
+  if (typeof proxy.extensionId !== "string" || typeof proxy.capability !== "string") return undefined;
+  if (!isMcpToolResultEnvelope(proxy.result) || !isCallToolResult(proxy.result.result)) return undefined;
+  return {
+    result: proxy.result.result,
+    meta: {
+      ...(typeof proxy.workspaceId === "string" ? { workspaceId: proxy.workspaceId } : {}),
+      extensionId: proxy.extensionId,
+      capability: proxy.capability,
+    },
+  };
+}
+
 function result(value: unknown, routing?: import("./worker-registry.js").WorkerRoutingReceipt) {
-  if (isMcpToolResultEnvelope(value) && isCallToolResult(value.result)) {
+  const direct = isMcpToolResultEnvelope(value) && isCallToolResult(value.result) ? value.result : undefined;
+  const proxied = direct ? undefined : nativeExtensionProxyResult(value);
+  const native = direct ?? proxied?.result;
+  if (native) {
     return {
-      ...value.result,
-      ...(routing ? { _meta: { ...(value.result._meta ?? {}), "dev.queqiao/routing": routing } } : {}),
+      ...native,
+      _meta: {
+        ...(native._meta ?? {}),
+        ...(proxied ? { "dev.queqiao/extension": proxied.meta } : {}),
+        ...(routing ? { "dev.queqiao/routing": routing } : {}),
+      },
     };
   }
   return {

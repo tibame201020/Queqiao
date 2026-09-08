@@ -91,6 +91,58 @@ async function callProbe(value: unknown, revision: "2025-11-25" | "2026-07-28") 
   }
 }
 
+async function callExtensionProxy(value: unknown, revision: "2025-11-25" | "2026-07-28") {
+  const workers = {
+    async implicitRoute() { return { workspaceId: "coding" }; },
+    async requireTool() {},
+    async invokeTool(toolName: string) {
+      if (toolName !== "extension") throw new Error(`unexpected tool: ${toolName}`);
+      return {
+        value: {
+          workspaceId: "coding",
+          extensionId: "dev.queqiao.media",
+          capability: "image_probe",
+          result: value,
+        },
+        routing: { environmentId: "windows", requestedTransport: null, selectedTransport: "http", selectionReason: "configured_order" },
+      };
+    },
+  } as unknown as WorkerRegistry;
+
+  const adapter = createMcpNodeAdapter(workers, ["queqiao:access"]);
+  const app = express();
+  app.use(express.json());
+  app.post("/mcp", (req, res) => { void adapter.handle(req, res, req.body); });
+  server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server!.once("listening", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("listen failed");
+
+  const client = new Client(
+    { name: "native-result-proxy-contract", version: "1" },
+    revision === "2026-07-28"
+      ? { supportedProtocolVersions: [revision], versionNegotiation: { mode: { pin: revision } } }
+      : { supportedProtocolVersions: [revision], versionNegotiation: { mode: "legacy" } },
+  );
+  const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${address.port}/mcp`));
+  try {
+    await client.connect(transport);
+    return await client.callTool({
+      name: "extension",
+      arguments: {
+        workspaceId: "coding",
+        operation: "call",
+        extensionId: "dev.queqiao.media",
+        capability: "image_probe",
+        arguments: { workspaceId: "coding" },
+      },
+    });
+  } finally {
+    await transport.close();
+    await adapter.close();
+  }
+}
+
 describe("Gateway MCP-native extension result projection", () => {
   it("keeps ordinary JSON and image-shaped objects on the legacy text projection", async () => {
     const value = { content: [{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" }], ordinary: true };
@@ -116,6 +168,37 @@ describe("Gateway MCP-native extension result projection", () => {
   it("does not pass through a marked value that fails the MCP CallToolResult schema", async () => {
     const invalid = mcpToolResult({ content: [{ type: "image" }] });
     const call = await callProbe(invalid, "2025-11-25");
+    expect(call.content).toHaveLength(1);
+    expect(call.content[0]?.type).toBe("text");
+    expect(JSON.stringify(call.content)).toContain("mcp_tool_result");
+  });
+});
+
+describe("Gateway extension proxy MCP-native result projection", () => {
+  it("passes an explicitly marked image result through extension.call", async () => {
+    const image = { type: "image" as const, data: "iVBORw0KGgo=", mimeType: "image/png" };
+    const call = await callExtensionProxy(mcpToolResult({ content: [image] }), "2025-11-25");
+    expect(call.content).toEqual([image]);
+  });
+
+  it("passes an explicitly marked image result through extension.call on MCP 2026-07-28", async () => {
+    const image = { type: "image" as const, data: "iVBORw0KGgo=", mimeType: "image/png" };
+    const call = await callExtensionProxy(mcpToolResult({ content: [image] }), "2026-07-28");
+    expect(call.content).toEqual([image]);
+  });
+
+  it("keeps ordinary extension.call JSON on the legacy text projection", async () => {
+    const call = await callExtensionProxy({ ok: true }, "2025-11-25");
+    expect(call.content).toHaveLength(1);
+    expect(call.content[0]?.type).toBe("text");
+    expect(call.content[0]).toMatchObject({ type: "text" });
+    const text = (call.content[0] as { type: "text"; text: string }).text;
+    expect(text).toContain('"ok": true');
+    expect(text).toContain("dev.queqiao.media");
+  });
+
+  it("does not pass through an invalid marked extension.call result", async () => {
+    const call = await callExtensionProxy(mcpToolResult({ content: [{ type: "image" }] }), "2025-11-25");
     expect(call.content).toHaveLength(1);
     expect(call.content[0]?.type).toBe("text");
     expect(JSON.stringify(call.content)).toContain("mcp_tool_result");
