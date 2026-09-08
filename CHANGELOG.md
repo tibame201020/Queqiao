@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.9.11 - 2026-09-08
+
+- Fixes managed daemon log descriptor ownership on Linux so parent-side log handles are closed immediately after spawn, preventing lifecycle warnings from leaking into packaged CLI output.
+- Adds `queqiao update` to update the global Queqiao core package and restart only managed Gateway/Worker instances that were running before the update; stopped and unmanaged roles remain untouched.
+- Ensures future starts always resolve Gateway/Worker entrypoints from the currently installed Queqiao package rather than stale PID metadata, so a later start after reboot/stop uses the newly installed version even when no explicit restart was run after npm update.
+- Adds `queqiao update --extensions`, `--extension <id|npm:source>`, and `--all` for Extension Hub updates. Floating npm sources may update, exact semver npm sources remain pinned, and local extensions are never auto-updated.
+- Updates Hub-owned Worker attachments transactionally when an npm extension changes, with rollback on failure and hot reload through the existing Worker attachment lifecycle.
+
 ## 0.9.10 - 2026-09-08
 
 - Moves managed Gateway and Worker working directories out of the global npm package and into Queqiao state directories, allowing Windows npm global updates to replace the package while existing managed services keep running.
