@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.9.8 - 2026-09-08
+
+- Adds durable audit observability across Gateway, Worker, and CLI operations, including bounded persistent audit storage, authentication/routing/protocol audit events, and operator-facing audit queries without persisting secrets.
+- Adds an explicit mcpToolResult(...) Extension SDK contract for native MCP CallToolResult passthrough, while preserving the legacy JSON-to-text projection for ordinary Extension results and validating marked results with the official MCP schema before projection.
+- Verifies native image content passthrough on MCP 2025-11-25 and 2026-07-28, keeps Git/legacy Extension behavior unchanged, and isolates Vitest temporary artifacts to prevent test-runtime collisions.
+
 ## 0.9.7 - 2026-09-04
 
 - Adds Worker-authoritative Extension runtime services for downstream transports: manifest-declared executable/origin policy, bounded managed stdio including lifecycle-bound MCP sessions, and fetch-compatible streaming HTTP with exact-origin, redirect, body/header/response, cancellation, and cleanup enforcement.
