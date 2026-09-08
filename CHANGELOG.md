@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.9.9 - 2026-09-08
+
+- Fixes native MCP results returned through the stable `extension.call` proxy so explicitly marked image/audio/resource content reaches MCP clients without being re-serialized as JSON text.
+- Keeps ordinary proxy results and invalid marked values on the legacy text projection, while preserving extension identity, Workspace, and routing metadata in MCP `_meta`.
+- Adds regression coverage for proxy image passthrough on MCP 2025-11-25 and 2026-07-28.
+
 ## 0.9.8 - 2026-09-08
 
 - Adds durable audit observability across Gateway, Worker, and CLI operations, including bounded persistent audit storage, authentication/routing/protocol audit events, and operator-facing audit queries without persisting secrets.
