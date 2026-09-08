@@ -61,6 +61,7 @@ export const COMMAND_TREE: CommandNode = {
     completion: terminal,
     workstation: terminal,
     restart: terminal,
+    update: terminal,
     audit: terminal,
     gateway: {
       children: {
@@ -131,7 +132,7 @@ export type CliHandlerKey =
   | "gateway-info" | "gateway-join-token" | "membership-list" | "membership-remove" | "worker-port" | "worker-join"
   | "workspace-manager" | "workspace-add" | "workspace-list" | "workspace-info" | "workspace-edit" | "workspace-remove" | "workspace-profiles-list" | "workspace-profiles-info" | "workspace-profiles-create" | "workspace-profiles-edit" | "workspace-profiles-rename" | "workspace-profiles-delete"
   | "extension-install" | "extension-attach" | "extension-detach" | "extension-uninstall" | "extension-list" | "extension-show" | "extension-doctor"
-  | "audit-list" | "version" | "completion" | "workstation" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
+  | "audit-list" | "version" | "completion" | "workstation" | "update" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
 
 type CliLeafContract = {
   route: string;
@@ -149,6 +150,7 @@ export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "completion", handler: "completion", options: [], positionals: 1, positionalValues: ["bash", "zsh", "powershell"] },
   { route: "workstation", handler: "workstation", options: [] },
   { route: "restart", handler: "runtime-restart-all", options: [] },
+  { route: "update", handler: "update", options: ["extensions", "extension", "all"], valueOptions: ["extension"] },
   { route: "gateway list", handler: "list-role-instances", options: [] },
   { route: "gateway setup", handler: "role-setup", options: [] },
   { route: "gateway remove", handler: "role-remove", options: ["gateway"], valueOptions: ["gateway"] },
@@ -373,7 +375,8 @@ Commands:
   version      Print the installed Queqiao version
   completion   Print shell tab-completion setup
   workstation  Open the interactive Queqiao control plane
-  restart      Restart all currently managed local Gateway and Worker instances
+  restart      Restart currently running managed local Gateway and Worker instances
+  update       Update Queqiao core or npm-managed extensions
   audit        Read global durable audit events
   gateway      Manage a Queqiao Gateway
   worker       Manage a Queqiao Worker
@@ -560,6 +563,7 @@ export function renderCliHelp(input: readonly string[]): string {
   if (domain === "completion") return COMPLETION_HELP;
   if (domain === "workstation") return WORKSTATION_HELP;
   if (domain === "restart") return renderLeafContractHelp(input) || ROOT_HELP;
+  if (domain === "update") return renderLeafContractHelp(input) || ROOT_HELP;
   if (domain === "audit") return renderLeafContractHelp(input) || ROOT_HELP;
   if (domain === "gateway") {
     if (action === "info") return GATEWAY_INFO_HELP;

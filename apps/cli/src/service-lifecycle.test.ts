@@ -20,19 +20,40 @@ describe("runtime lifecycle", () => {
     const startCommand = calls.flatMap((call) => call.args).find((arg: string) => arg.includes("Start-Process")); expect(startCommand).toContain("QUEQIAO_AUDIT_DIR"); expect(startCommand).toContain(path.join(layout.stateDir, "audit"));
     expect(startCommand).toContain(`-WorkingDirectory '${path.resolve(layout.stateDir)}'`);
   });
+  it("uses the currently installed package entrypoint on a later start instead of stale PID metadata", async () => {
+    const { layout } = await fixture();
+    const dir = path.join(layout.stateDir, "processes");
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(dir, { recursive: true }));
+    await writeFile(path.join(dir, "gateway.pid.json"), JSON.stringify({ pid: 4321, entryPoint: "C:\\old-global\\dist\\queqiao-gateway.js", configFile: layout.configFile }), "utf8");
+    const calls: Array<{ file: string; args: readonly string[] }> = [];
+    const currentEntryPoint = "C:\\new-global\\dist\\queqiao-gateway.js";
+    const execFile = async (file: string, args: readonly string[]) => {
+      calls.push({ file, args });
+      if (file.endsWith("powershell.exe") && args.some((arg) => arg.includes("Get-CimInstance"))) return { stdout: "", stderr: "" };
+      if (file.endsWith("powershell.exe") && args.some((arg) => arg.includes("Start-Process"))) return { stdout: "8765", stderr: "" };
+      return { stdout: "", stderr: "" };
+    };
+    const result = await startRuntime(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, fetchImpl: async () => { throw new Error("offline"); }, entryPoints: { gateway: currentEntryPoint } });
+    expect(result).toMatchObject({ started: true, pid: 8765 });
+    const startCommand = calls.flatMap((call) => call.args).find((arg) => arg.includes("Start-Process"));
+    expect(startCommand).toContain(currentEntryPoint);
+    expect(startCommand).not.toContain("old-global");
+  });
+
   it("uses Queqiao state/config directories as daemon working directories instead of the package directory", async () => {
     const { layout } = await fixture();
     expect(runtimeLifecycleInternals.managedWorkingDirectory(layout)).toBe(path.resolve(layout.stateDir));
     expect(runtimeLifecycleInternals.foregroundWorkingDirectory(layout.configFile)).toBe(path.dirname(path.resolve(layout.configFile)));
     expect(runtimeLifecycleInternals.managedWorkingDirectory(layout)).not.toContain("node_modules");
   });
-  it("restarts a stopped managed role by starting it and refuses to take over an unmanaged live role", async () => {
-    const { layout } = await fixture(); const gateway = "C:\\pkg\\queqiao-gateway.js";
-    const execFile = async (file: string, args: readonly string[]) => file.endsWith("powershell.exe") && args.some((arg) => arg.includes("Start-Process"))
+  it("keeps a stopped role stopped on restart and refuses to take over an unmanaged live role", async () => {
+    const { layout } = await fixture(); const gateway = "C:\\pkg\\queqiao-gateway.js"; const calls: Array<{ file: string; args: readonly string[] }> = [];
+    const execFile = async (file: string, args: readonly string[]) => { calls.push({ file, args }); return file.endsWith("powershell.exe") && args.some((arg) => arg.includes("Start-Process"))
       ? { stdout: "5678", stderr: "" }
-      : { stdout: "", stderr: "" };
+      : { stdout: "", stderr: "" }; };
     const started = await restartRuntime(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, fetchImpl: async()=>{ throw new Error("offline"); }, entryPoints: { gateway } });
-    expect(started).toMatchObject({ restarted: true, stopped: false, started: true, pid: 5678, role: "gateway", name: "shadow" });
+    expect(started).toMatchObject({ restarted: false, stopped: false, started: false, reason: "stopped", role: "gateway", name: "shadow" });
+    expect(calls.flatMap((call) => call.args).some((arg) => arg.includes("Start-Process"))).toBe(false);
 
     const other = await fixture();
     await expect(restartRuntime(other.layout.configFile, other.layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile: async()=>({stdout:"",stderr:""}), fetchImpl: async()=>new Response("{}",{status:200}), entryPoints: { gateway } })).rejects.toThrow(/active but not managed/);

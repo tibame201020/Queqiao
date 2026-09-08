@@ -26,6 +26,7 @@ import { queqiaoSelect } from "./tui-select.js";
 const execFileAsync = promisify(execFile);
 const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const PACKAGE_VERSION = /^[a-z0-9][a-z0-9._-]*$/i;
+const EXACT_SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 type NpmRunner = (args: readonly string[], cwd: string) => Promise<void>;
 
@@ -434,6 +435,173 @@ export async function installNpmExtension(
     if (!finalDirectory) await rm(staging, { recursive: true, force: true }).catch(() => undefined);
     throw error;
   }
+}
+
+
+function isPinnedNpmExtension(extension: HubExtension): boolean {
+  if (extension.source.kind !== "npm") return false;
+  const prefix = `${extension.source.package}@`;
+  if (!extension.source.requested.startsWith(prefix)) return false;
+  return EXACT_SEMVER.test(extension.source.requested.slice(prefix.length));
+}
+
+function selectorMatchesExtension(extension: HubExtension, selector: string): boolean {
+  if (extension.manifest.id === selector) return true;
+  if (extension.source.kind !== "npm") return false;
+  const normalized = selector.startsWith("npm:") ? selector.slice(4) : selector;
+  if (normalized === extension.source.package || normalized === extension.source.requested) return true;
+  if (selector.startsWith("npm:")) {
+    try { return parseExtensionSource(selector).packageName === extension.source.package; }
+    catch { return false; }
+  }
+  return false;
+}
+
+async function prepareNpmExtensionUpdate(
+  hubLayout: HubLocation,
+  current: HubExtension,
+  npmRunner: NpmRunner,
+): Promise<{ extension?: HubExtension; reason?: "up-to-date" }> {
+  if (current.source.kind !== "npm") throw new Error(`Extension is not npm-managed: ${current.manifest.id}`);
+  const source = `npm:${current.source.requested}`;
+  const { requested, packageName } = parseExtensionSource(source);
+  const packageStore = packagesRoot(hubLayout);
+  await secureRuntimeDirectory(packageStore);
+  const staging = path.join(packageStore, `.staging-${randomUUID()}`);
+  await secureRuntimeDirectory(staging);
+  await writeFile(path.join(staging, "package.json"), `${JSON.stringify({ name: "queqiao-extension-update", private: true, version: "0.0.0" }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+
+  let finalDirectory: string | undefined;
+  try {
+    await npmRunner(["install", "--ignore-scripts", "--no-audit", "--no-fund", "--save-exact", requested], staging);
+    const packageRoot = packageDirectory(staging, packageName);
+    const packageJson = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")) as InstalledPackageJson;
+    if (packageJson.name !== packageName || typeof packageJson.version !== "string") throw new Error("Installed npm package identity is invalid");
+    const metadata = z.object({ apiVersion: z.literal(1), module: z.string().min(1).max(4096), manifest: extensionManifestSchema }).parse(packageJson.queqiao);
+    if (metadata.manifest.version !== packageJson.version) throw new Error("Queqiao extension manifest version must match npm package version");
+    if (metadata.manifest.id !== current.manifest.id) throw new Error(`Extension update changed manifest id from ${current.manifest.id} to ${metadata.manifest.id}`);
+    if (metadata.manifest.host.kind !== "worker") throw new Error("Extension Hub v1 accepts Worker-hosted extensions only");
+    if (!metadata.module.startsWith("./") && !metadata.module.startsWith(".\\")) throw new Error("queqiao.module must be a package-relative path beginning with ./");
+    const realPackageRoot = await realpath(packageRoot);
+    const realModule = await realpath(path.resolve(packageRoot, metadata.module));
+    if (!contained(realPackageRoot, realModule)) throw new Error("queqiao.module escapes the installed npm package");
+    if (!(await stat(realModule)).isFile()) throw new Error("queqiao.module must resolve to a file");
+    if (packageJson.version === current.source.version) {
+      await rm(staging, { recursive: true, force: true });
+      return { reason: "up-to-date" };
+    }
+    const relativeModule = path.relative(realPackageRoot, realModule);
+    if (relativeModule.startsWith(`..${path.sep}`) || relativeModule === ".." || path.isAbsolute(relativeModule)) throw new Error("queqiao.module escapes the installed npm package");
+    finalDirectory = path.join(packageStore, safeInstallDirectoryName(metadata.manifest.id, metadata.manifest.version));
+    await rename(staging, finalDirectory);
+    const finalPackageRoot = packageDirectory(finalDirectory, packageName);
+    return {
+      extension: {
+        trusted: true,
+        source: {
+          kind: "npm",
+          package: packageName,
+          requested,
+          version: packageJson.version,
+          module: path.join(finalPackageRoot, relativeModule),
+          installDirectory: finalDirectory,
+        },
+        manifest: metadata.manifest,
+      },
+    };
+  } catch (error) {
+    if (!finalDirectory) await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    else await rm(finalDirectory, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function replaceWorkerAttachment(worker: ExtensionWorkerTarget, from: HubExtension, to: HubExtension): Promise<boolean> {
+  const store = new AtomicConfigStore<RuntimeConfig>(worker.layout.configFile, (value) => runtimeConfigSchema.parse(value));
+  let changed = false;
+  await store.update((config) => ({
+    ...config,
+    extensions: config.extensions.map((entry) => {
+      if (!isHubOwnedAttachment(entry, from)) return entry;
+      changed = true;
+      return { ...entry, source: to.source, manifest: to.manifest };
+    }),
+  }));
+  return changed;
+}
+
+async function updateOneNpmExtension(
+  hubLayout: HubLocation,
+  current: HubExtension,
+  npmRunner: NpmRunner,
+  workerDiscovery: WorkerDiscovery,
+): Promise<{ changed: boolean; id: string; fromVersion: string; toVersion: string; workers: string[]; packageCleanup: "removed" | "orphaned" | "preserved" }> {
+  if (current.source.kind !== "npm") throw new Error(`Extension is not npm-managed: ${current.manifest.id}`);
+  const prepared = await prepareNpmExtensionUpdate(hubLayout, current, npmRunner);
+  if (!prepared.extension) return { changed: false, id: current.manifest.id, fromVersion: current.source.version, toVersion: current.source.version, workers: [], packageCleanup: "preserved" };
+  const next = prepared.extension;
+  if (next.source.kind !== "npm") throw new Error("Prepared extension update must be npm-managed");
+  const managedRoot = path.resolve(packagesRoot(hubLayout));
+  const oldInstallDirectory = path.resolve(current.source.installDirectory);
+  if (!contained(managedRoot, oldInstallDirectory) || oldInstallDirectory === managedRoot) {
+    await rm(next.source.installDirectory, { recursive: true, force: true }).catch(() => undefined);
+    throw new Error("Refusing to update extension whose current package is outside the managed Extension Hub package directory");
+  }
+
+  const workers = await workerDiscovery();
+  const attached = workers.filter((worker) => worker.config.extensions.some((entry) => isHubOwnedAttachment(entry, current)));
+  for (const worker of attached) assertWorkerCompatible(worker.config, next, worker.name);
+  const changedWorkers: ExtensionWorkerTarget[] = [];
+  let hubChanged = false;
+  try {
+    await updateHub(hubLayout, (hub) => ({ ...hub, extensions: hub.extensions.map((entry) => entry.manifest.id === current.manifest.id ? next : entry) }));
+    hubChanged = true;
+    for (const worker of attached) {
+      if (await replaceWorkerAttachment(worker, current, next)) changedWorkers.push(worker);
+    }
+  } catch (error) {
+    for (const worker of changedWorkers.slice().reverse()) await replaceWorkerAttachment(worker, next, current).catch(() => undefined);
+    if (hubChanged) await updateHub(hubLayout, (hub) => ({ ...hub, extensions: hub.extensions.map((entry) => entry.manifest.id === current.manifest.id ? current : entry) })).catch(() => undefined);
+    await rm(next.source.installDirectory, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+
+  let packageCleanup: "removed" | "orphaned" | "preserved" = "removed";
+  try { await rm(oldInstallDirectory, { recursive: true, force: true }); }
+  catch { packageCleanup = "orphaned"; }
+  return {
+    changed: true,
+    id: current.manifest.id,
+    fromVersion: current.source.version,
+    toVersion: next.source.version,
+    workers: changedWorkers.map((worker) => worker.name),
+    packageCleanup,
+  };
+}
+
+export async function updateNpmExtensions(
+  hubLayout: HubLocation,
+  options: { extension?: string } = {},
+  npmRunner: NpmRunner = defaultNpmRunner,
+  workerDiscovery: WorkerDiscovery = discoverWorkers,
+) {
+  const hub = await readHub(hubLayout);
+  let candidates = hub.extensions;
+  if (options.extension) {
+    candidates = hub.extensions.filter((extension) => selectorMatchesExtension(extension, options.extension!));
+    if (!candidates.length) throw new Error(`Extension is not installed in the Hub: ${options.extension}`);
+    if (candidates.length > 1) throw new Error(`Extension selector is ambiguous: ${options.extension}`);
+  }
+  const updated: Array<Awaited<ReturnType<typeof updateOneNpmExtension>>> = [];
+  const skipped: Array<{ id: string; reason: "non-npm" | "pinned" | "up-to-date" }> = [];
+  for (const extension of candidates) {
+    if (extension.source.kind !== "npm") { skipped.push({ id: extension.manifest.id, reason: "non-npm" }); continue; }
+    if (isPinnedNpmExtension(extension)) { skipped.push({ id: extension.manifest.id, reason: "pinned" }); continue; }
+    const result = await updateOneNpmExtension(hubLayout, extension, npmRunner, workerDiscovery);
+    if (result.changed) updated.push(result);
+    else skipped.push({ id: extension.manifest.id, reason: "up-to-date" });
+  }
+  return { changed: updated.length > 0, updatedCount: updated.length, updated, skipped };
 }
 
 export async function uninstallExtension(hubLayout: HubLocation, id: string, force = false, workerDiscovery: WorkerDiscovery = discoverWorkers): Promise<unknown> {
