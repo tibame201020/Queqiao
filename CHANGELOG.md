@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.9.10 - 2026-09-08
+
+- Moves managed Gateway and Worker working directories out of the global npm package and into Queqiao state directories, allowing Windows npm global updates to replace the package while existing managed services keep running.
+- Adds `queqiao gateway restart` and `queqiao worker restart` for explicit role restarts.
+- Adds `queqiao restart` to restart all currently managed local Gateway and Worker instances while leaving intentionally stopped or unmanaged instances untouched.
+- Adds packaged Windows lifecycle acceptance coverage verifying a root restart replaces both managed process IDs and restores healthy service state.
+
 ## 0.9.9 - 2026-09-08
 
 - Fixes native MCP results returned through the stable `extension.call` proxy so explicitly marked image/audio/resource content reaches MCP clients without being re-serialized as JSON text.
