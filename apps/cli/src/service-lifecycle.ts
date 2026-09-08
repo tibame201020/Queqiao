@@ -1,5 +1,6 @@
 import { execFile as execFileCallback, spawn } from "node:child_process";
-import { access, mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
+import { closeSync, openSync } from "node:fs";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -99,7 +100,16 @@ export async function startRuntime(configFile: string, layout: RuntimeLayout, ro
   if (platform === "win32") {
     const ps = windowsSystemExecutable("WindowsPowerShell\\v1.0\\powershell.exe", env); const q = (v: string) => `'${v.replaceAll("'", "''")}'`; const command = `$env:QUEQIAO_CONFIG_FILE=${q(path.resolve(configFile))}; $env:QUEQIAO_AUDIT_DIR=${q(path.join(layout.stateDir, "audit"))}; $p=Start-Process -FilePath ${q(nodePath)} -ArgumentList @(${q(entryPoint)}) -WorkingDirectory ${q(managedWorkingDirectory(layout))} -WindowStyle Hidden -PassThru; [Console]::Out.Write($p.Id)`; pid = Number((await execFile(ps, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command])).stdout.trim());
   } else if (platform === "linux") {
-    const stdout = await open(p.stdout, "a", 0o600); const stderr = await open(p.stderr, "a", 0o600); const child = spawn(nodePath, [entryPoint], { cwd: managedWorkingDirectory(layout), detached: true, stdio: ["ignore", stdout.fd, stderr.fd], env: { ...env, QUEQIAO_CONFIG_FILE: path.resolve(configFile), QUEQIAO_AUDIT_DIR: path.join(layout.stateDir, "audit") } }); if (!child.pid) throw new Error(`Queqiao ${role} start did not return a valid PID`); pid = child.pid; child.unref();
+    const stdoutFd = openSync(p.stdout, "a", 0o600); let stderrFd: number | undefined;
+    try {
+      stderrFd = openSync(p.stderr, "a", 0o600);
+      const child = spawn(nodePath, [entryPoint], { cwd: managedWorkingDirectory(layout), detached: true, stdio: ["ignore", stdoutFd, stderrFd], env: { ...env, QUEQIAO_CONFIG_FILE: path.resolve(configFile), QUEQIAO_AUDIT_DIR: path.join(layout.stateDir, "audit") } });
+      if (!child.pid) throw new Error(`Queqiao ${role} start did not return a valid PID`);
+      pid = child.pid; child.unref();
+    } finally {
+      if (stderrFd !== undefined) closeSync(stderrFd);
+      closeSync(stdoutFd);
+    }
   } else throw new Error(`Runtime lifecycle is not supported on platform: ${platform}`);
   if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Queqiao ${role} start did not return a valid PID`); await writeFile(p.pidFile, `${JSON.stringify({ pid, entryPoint, configFile: path.resolve(configFile), startedAt: new Date().toISOString() })}\n`, { encoding: "utf8", mode: 0o600 }); await secureRuntimeFile(p.pidFile); return { started: true, name, role, pid };
 }
