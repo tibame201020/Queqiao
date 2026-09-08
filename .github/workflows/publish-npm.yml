@@ -52,6 +52,8 @@ jobs:
           }
       - run: npm ci --ignore-scripts
       - run: npm run release:gate
+      - name: Build publish artifact
+        run: npm run build:package
       - name: Verify trusted publishing toolchain
         shell: bash
         run: |
@@ -61,4 +63,4 @@ jobs:
           echo "npm v$npm_version"
           node -e "const [M,m,p]=process.argv[1].split('.').map(Number); if (M < 11 || (M === 11 && (m < 5 || (m === 5 && p < 1)))) process.exit(1)" "$npm_version"
       - name: Publish public package with trusted publishing
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --ignore-scripts

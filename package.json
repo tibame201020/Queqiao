@@ -35,7 +35,7 @@
     "build": "tsc -b",
     "build:package": "node scripts/build-package.mjs",
     "dev:workstation:verify": "tsx scripts/workstation-isolated-verify.ts",
-    "prepack": "npm run check && npm run build:package",
+    "prepack": "npm run build:package",
     "clean": "tsc -b --clean",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
