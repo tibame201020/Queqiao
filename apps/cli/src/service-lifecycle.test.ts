@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveRuntimeLayout } from "@queqiao/platform-paths";
-import { runtimeLifecycleInternals, runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
+import { restartRuntime, runtimeLifecycleInternals, runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-runtime-lifecycle-")); const layout = resolveRuntimeLayout({ LOCALAPPDATA: root, TEMP: root, USERPROFILE: root }, "win32"); await import("node:fs/promises").then(({ mkdir }) => mkdir(layout.configDir, { recursive: true }));
@@ -18,8 +18,25 @@ describe("runtime lifecycle", () => {
     const result = await startRuntime(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, fetchImpl: async()=>{ throw new Error("offline"); }, entryPoints: { gateway } });
     expect(result).toMatchObject({ started: true, pid: 1234 }); const pidFile = path.join(layout.stateDir,"processes","gateway.pid.json"); expect(JSON.parse(await readFile(pidFile,"utf8"))).toMatchObject({pid:1234});
     const startCommand = calls.flatMap((call) => call.args).find((arg: string) => arg.includes("Start-Process")); expect(startCommand).toContain("QUEQIAO_AUDIT_DIR"); expect(startCommand).toContain(path.join(layout.stateDir, "audit"));
+    expect(startCommand).toContain(`-WorkingDirectory '${path.resolve(layout.stateDir)}'`);
   });
-  it("keeps ownership across package relinks by trusting the recorded entrypoint identity", async () => {
+  it("uses Queqiao state/config directories as daemon working directories instead of the package directory", async () => {
+    const { layout } = await fixture();
+    expect(runtimeLifecycleInternals.managedWorkingDirectory(layout)).toBe(path.resolve(layout.stateDir));
+    expect(runtimeLifecycleInternals.foregroundWorkingDirectory(layout.configFile)).toBe(path.dirname(path.resolve(layout.configFile)));
+    expect(runtimeLifecycleInternals.managedWorkingDirectory(layout)).not.toContain("node_modules");
+  });
+  it("restarts a stopped managed role by starting it and refuses to take over an unmanaged live role", async () => {
+    const { layout } = await fixture(); const gateway = "C:\\pkg\\queqiao-gateway.js";
+    const execFile = async (file: string, args: readonly string[]) => file.endsWith("powershell.exe") && args.some((arg) => arg.includes("Start-Process"))
+      ? { stdout: "5678", stderr: "" }
+      : { stdout: "", stderr: "" };
+    const started = await restartRuntime(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile, fetchImpl: async()=>{ throw new Error("offline"); }, entryPoints: { gateway } });
+    expect(started).toMatchObject({ restarted: true, stopped: false, started: true, pid: 5678, role: "gateway", name: "shadow" });
+
+    const other = await fixture();
+    await expect(restartRuntime(other.layout.configFile, other.layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, execFile: async()=>({stdout:"",stderr:""}), fetchImpl: async()=>new Response("{}",{status:200}), entryPoints: { gateway } })).rejects.toThrow(/active but not managed/);
+  });  it("keeps ownership across package relinks by trusting the recorded entrypoint identity", async () => {
     const { layout } = await fixture();
     const dir = path.join(layout.stateDir, "processes");
     await import("node:fs/promises").then(({ mkdir }) => mkdir(dir, { recursive: true }));

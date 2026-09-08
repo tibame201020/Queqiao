@@ -83,6 +83,7 @@ describe("CLI hierarchy consolidation", () => {
     expect(help).toContain("uninstall");
     expect(help).toContain("workspace");
     expect(help).toContain("workstation");
+    expect(help).toContain("restart");
     expect(help).not.toMatch(/^\s{2}(profile|tool|command|permissions|discovery|manifest|config|migrate)\b/m);
   });
 
@@ -111,10 +112,12 @@ describe("CLI hierarchy consolidation", () => {
   it("renders scoped help using commands relative to the current context", () => {
     expect(renderCliHelp(["gateway", "--help"])).toContain("\n  setup\n");
     expect(renderCliHelp(["gateway", "--help"])).toContain("\n  remove\n");
+    expect(renderCliHelp(["gateway", "--help"])).toContain("\n  restart\n");
     expect(renderCliHelp(["gateway", "--help"])).not.toContain("\n  gateway setup\n");
     expect(renderCliHelp(["gateway", "workers", "--help"])).toContain("\n  list\n");
     expect(renderCliHelp(["gateway", "workers", "--help"])).not.toContain("gateway workers list");
     expect(renderCliHelp(["worker", "--help"])).toContain("\n  remove\n");
+    expect(renderCliHelp(["worker", "--help"])).toContain("\n  restart\n");
     expect(renderCliHelp(["workspace", "--help"])).toContain("opens Workspace Management");
     expect(renderCliHelp(["workspace", "--help"])).toContain("add [--worker <worker>]");
     expect(renderCliHelp(["workspace", "--help"])).toContain("info [--worker <worker>] [--workspace <id>]");
@@ -145,7 +148,7 @@ describe("CLI hierarchy consolidation", () => {
   });
 
   it("freezes every public leaf in one parser contract", () => {
-    expect(CLI_LEAF_CONTRACTS).toHaveLength(50);
+    expect(CLI_LEAF_CONTRACTS).toHaveLength(53);
     expect(new Set(CLI_LEAF_CONTRACTS.map(({ route }) => route)).size).toBe(CLI_LEAF_CONTRACTS.length);
     expect(CLI_LEAF_CONTRACTS.map(({ route }) => route).sort()).toEqual(listCanonicalCliRoutes());
   });
