@@ -22,11 +22,13 @@ const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "audit": "packaged-process-audit",
   "completion": "packaged-shell-completion",
   "workstation": "packaged-workstation-contract",
+  "restart": "packaged-managed-runtime",
   "gateway list": "packaged-process-state",
   "gateway setup": "interactive-setup",
   "gateway remove": "interactive-destructive",
   "gateway serve": "packaged-managed-runtime",
   "gateway stop": "packaged-managed-runtime",
+  "gateway restart": "packaged-managed-runtime",
   "gateway status": "packaged-process-state",
   "gateway info": "packaged-process-connector-info",
   "gateway audit": "packaged-process-audit",
@@ -39,6 +41,7 @@ const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "worker port": "packaged-process-config",
   "worker serve": "packaged-managed-runtime",
   "worker stop": "packaged-managed-runtime",
+  "worker restart": "packaged-managed-runtime",
   "worker status": "packaged-process-state",
   "worker audit": "packaged-process-audit",
   "worker join": "packaged-live-enrollment",
@@ -431,6 +434,18 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       const doctor = parseJson<any>(await runCli(["doctor", "--json"]));
       expect(doctor.gateways).toEqual([expect.objectContaining({ name: GATEWAY, ok: true })]);
       expect(doctor.workers).toEqual([expect.objectContaining({ name: WORKER, ok: true })]);
+
+      const restartAll = parseJson<any>(await runCli(["restart", "--json"]));
+      expect(restartAll).toMatchObject({ restartedCount: 2 });
+      expect(restartAll.restarted).toEqual(expect.arrayContaining([
+        expect.objectContaining({ restarted: true, role: "gateway", name: GATEWAY }),
+        expect.objectContaining({ restarted: true, role: "worker", name: WORKER }),
+      ]));
+      const gatewayAfterRestart = await waitForJson<any>(["gateway", "status", "--gateway", GATEWAY, "--json"], (value) => value.active === true && value.managed === true && value.pid !== gatewayStart.pid, 30_000);
+      const workerAfterRestart = await waitForJson<any>(["worker", "status", "--worker", WORKER, "--json"], (value) => value.active === true && value.managed === true && value.pid !== workerStart.pid, 30_000);
+      expect(gatewayAfterRestart.pid).not.toBe(gatewayStart.pid);
+      expect(workerAfterRestart.pid).not.toBe(workerStart.pid);
+      await waitForJson<any>(["gateway", "status", "--gateway", GATEWAY, "--json"], (value) => value.active === true && value.health?.healthy === true, 30_000);
 
       expect(parseJson<any>(await runCli(["gateway", "workers", "remove", "--gateway", GATEWAY, "--worker-id", workerConfig.worker.workerId, "--json"]))).toMatchObject({ removed: true, workerId: workerConfig.worker.workerId });
       expect(parseJson<any>(await runCli(["gateway", "workers", "list", "--gateway", GATEWAY, "--json"])).workers).toHaveLength(0);

@@ -60,6 +60,7 @@ export const COMMAND_TREE: CommandNode = {
     version: terminal,
     completion: terminal,
     workstation: terminal,
+    restart: terminal,
     audit: terminal,
     gateway: {
       children: {
@@ -68,6 +69,7 @@ export const COMMAND_TREE: CommandNode = {
         remove: terminal,
         serve: terminal,
         stop: terminal,
+        restart: terminal,
         status: terminal,
         info: terminal,
         audit: terminal,
@@ -83,6 +85,7 @@ export const COMMAND_TREE: CommandNode = {
         port: terminal,
         serve: terminal,
         stop: terminal,
+        restart: terminal,
         status: terminal,
         audit: terminal,
         join: terminal,
@@ -124,7 +127,7 @@ export const COMMAND_TREE: CommandNode = {
 };
 
 export type CliHandlerKey =
-  | "list-role-instances" | "role-setup" | "role-remove" | "runtime-serve" | "runtime-stop" | "runtime-status"
+  | "list-role-instances" | "role-setup" | "role-remove" | "runtime-serve" | "runtime-stop" | "runtime-restart" | "runtime-restart-all" | "runtime-status"
   | "gateway-info" | "gateway-join-token" | "membership-list" | "membership-remove" | "worker-port" | "worker-join"
   | "workspace-manager" | "workspace-add" | "workspace-list" | "workspace-info" | "workspace-edit" | "workspace-remove" | "workspace-profiles-list" | "workspace-profiles-info" | "workspace-profiles-create" | "workspace-profiles-edit" | "workspace-profiles-rename" | "workspace-profiles-delete"
   | "extension-install" | "extension-attach" | "extension-detach" | "extension-uninstall" | "extension-list" | "extension-show" | "extension-doctor"
@@ -145,11 +148,13 @@ export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "audit", handler: "audit-list", options: ["limit", "category", "outcome", "action"], valueOptions: ["limit", "category", "outcome", "action"] },
   { route: "completion", handler: "completion", options: [], positionals: 1, positionalValues: ["bash", "zsh", "powershell"] },
   { route: "workstation", handler: "workstation", options: [] },
+  { route: "restart", handler: "runtime-restart-all", options: [] },
   { route: "gateway list", handler: "list-role-instances", options: [] },
   { route: "gateway setup", handler: "role-setup", options: [] },
   { route: "gateway remove", handler: "role-remove", options: ["gateway"], valueOptions: ["gateway"] },
   { route: "gateway serve", handler: "runtime-serve", options: ["bg", "gateway"], valueOptions: ["gateway"] },
   { route: "gateway stop", handler: "runtime-stop", options: ["gateway"], valueOptions: ["gateway"] },
+  { route: "gateway restart", handler: "runtime-restart", options: ["gateway"], valueOptions: ["gateway"] },
   { route: "gateway status", handler: "runtime-status", options: ["gateway"], valueOptions: ["gateway"] },
   { route: "gateway info", handler: "gateway-info", options: ["gateway", "detail", "copy-url", "copy-secret"], valueOptions: ["gateway"] },
   { route: "gateway audit", handler: "audit-list", options: ["gateway", "limit", "category", "outcome", "action"], valueOptions: ["gateway", "limit", "category", "outcome", "action"] },
@@ -162,6 +167,7 @@ export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "worker port", handler: "worker-port", options: ["worker", "port"], valueOptions: ["worker", "port"] },
   { route: "worker serve", handler: "runtime-serve", options: ["bg", "worker"], valueOptions: ["worker"] },
   { route: "worker stop", handler: "runtime-stop", options: ["worker"], valueOptions: ["worker"] },
+  { route: "worker restart", handler: "runtime-restart", options: ["worker"], valueOptions: ["worker"] },
   { route: "worker status", handler: "runtime-status", options: ["worker"], valueOptions: ["worker"] },
   { route: "worker audit", handler: "audit-list", options: ["worker", "limit", "category", "outcome", "action"], valueOptions: ["worker", "limit", "category", "outcome", "action"] },
   { route: "worker join", handler: "worker-join", options: ["worker", "join-code", "protocols"], valueOptions: ["worker", "join-code", "protocols"] },
@@ -367,6 +373,7 @@ Commands:
   version      Print the installed Queqiao version
   completion   Print shell tab-completion setup
   workstation  Open the interactive Queqiao control plane
+  restart      Restart all currently managed local Gateway and Worker instances
   audit        Read global durable audit events
   gateway      Manage a Queqiao Gateway
   worker       Manage a Queqiao Worker
@@ -394,6 +401,7 @@ Commands:
   remove
   serve [--bg]
   stop
+  restart
   status
   info
   join-token
@@ -441,6 +449,7 @@ Commands:
   port
   serve [--bg]
   stop
+  restart
   status
   join
 `;
@@ -550,6 +559,7 @@ export function renderCliHelp(input: readonly string[]): string {
   if (!domain) return ROOT_HELP;
   if (domain === "completion") return COMPLETION_HELP;
   if (domain === "workstation") return WORKSTATION_HELP;
+  if (domain === "restart") return renderLeafContractHelp(input) || ROOT_HELP;
   if (domain === "audit") return renderLeafContractHelp(input) || ROOT_HELP;
   if (domain === "gateway") {
     if (action === "info") return GATEWAY_INFO_HELP;

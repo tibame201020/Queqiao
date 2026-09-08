@@ -14,7 +14,7 @@ import { runRoleSetupWizard } from "./setup-wizard.js";
 import { removeRoleInstance } from "./role-remove.js";
 import { uninstallQueqiao } from "./uninstall-cli.js";
 import { doctorPaths, doctorQueqiao } from "./doctor.js";
-import { runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
+import { restartRuntime, runtimeStatus, serveRuntime, startRuntime, stopRuntime } from "./service-lifecycle.js";
 import { addWorkspace, removeWorkspace } from "./workspace-cli.js";
 import { createAccessProfile, deleteAccessProfile, editAccessProfile, editManagedWorkspace, getAccessProfileInfo, getManagedWorkspaceInfo, listAccessProfiles, listManagedWorkspaces, renameAccessProfile, runWorkspaceManager } from "./workspace-management.js";
 import { attachExtension, detachExtension, doctorExtensionHub, installExtension, listExtensions, resolveInstalledExtensionId, showExtension, uninstallExtension } from "./extension-cli.js";
@@ -27,6 +27,7 @@ import { getGatewayInfo } from "./gateway-info.js";
 import { renderShellCompletion } from "./shell-completion.js";
 import { runWorkstation } from "./workstation.js";
 import { listAuditEvents, recordCliAudit } from "./audit-cli.js";
+import { restartManagedRuntimes } from "./restart-cli.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
@@ -72,6 +73,7 @@ async function main() {
     return;
   }
   if (dispatch?.handler === "workstation") return runWorkstation(rawArgs);
+  if (dispatch?.handler === "runtime-restart-all") return print(await restartManagedRuntimes());
   if (dispatch?.handler === "list-role-instances" && dispatch.route === "gateway list") return print({ schemaVersion: "1.0", role: "gateway", instances: await listRoleInstances("gateway") });
   if (dispatch?.handler === "list-role-instances" && dispatch.route === "worker list") return print({ schemaVersion: "1.0", role: "worker", instances: await listRoleInstances("worker") });
 
@@ -215,6 +217,8 @@ async function main() {
   }
   if (dispatch?.handler === "runtime-stop" && route === "gateway stop") return print(await stopRuntime(layout, "gateway", selectedRoleName!));
   if (dispatch?.handler === "runtime-stop" && route === "worker stop") return print(await stopRuntime(layout, "worker", selectedRoleName!));
+  if (dispatch?.handler === "runtime-restart" && route === "gateway restart") return print(await restartRuntime(configFile, layout, "gateway", selectedRoleName!));
+  if (dispatch?.handler === "runtime-restart" && route === "worker restart") return print(await restartRuntime(configFile, layout, "worker", selectedRoleName!));
   if (dispatch?.handler === "runtime-status" && route === "gateway status") return print(await runtimeStatus(configFile, layout, "gateway", selectedRoleName!));
   if (dispatch?.handler === "runtime-status" && route === "worker status") return print(await runtimeStatus(configFile, layout, "worker", selectedRoleName!));
   if (dispatch?.handler === "runtime-serve" && route === "gateway serve") return print(args.includes("--bg") ? await startRuntime(configFile, layout, "gateway", selectedRoleName!) : await serveRuntime(configFile, "gateway", selectedRoleName!, { env: { ...process.env, QUEQIAO_AUDIT_DIR: path.join(layout.stateDir, "audit") } }));
