@@ -23,6 +23,7 @@ const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "completion": "packaged-shell-completion",
   "workstation": "packaged-workstation-contract",
   "restart": "packaged-managed-runtime",
+  "update": "packaged-extension-update",
   "gateway list": "packaged-process-state",
   "gateway setup": "interactive-setup",
   "gateway remove": "interactive-destructive",
@@ -252,6 +253,11 @@ describe.sequential("isolated packaged CLI acceptance", () => {
     expect(parseJson<any>(await runCli(["--version", "--json"]))).toEqual({ schemaVersion: "1.0", version: packageVersion });
   });
 
+  it("routes extension-only update without touching the global core package", async () => {
+    const result = parseJson<any>(await runCli(["update", "--extensions", "--json"]));
+    expect(result).toMatchObject({ core: { changed: false }, restartedCount: 0, extensions: { changed: false, updatedCount: 0 } });
+  });
+
   it("prints shell completion scripts from the packaged CLI", async () => {
     const bash = (await runCli(["completion", "bash"])).stdout;
     const zsh = (await runCli(["completion", "zsh"])).stdout;
@@ -452,6 +458,16 @@ describe.sequential("isolated packaged CLI acceptance", () => {
 
       expect(parseJson<any>(await runCli(["gateway", "stop", "--gateway", GATEWAY, "--json"]))).toMatchObject({ stopped: true, role: "gateway", name: GATEWAY });
       gatewayStarted = false;
+      expect(parseJson<any>(await runCli(["gateway", "restart", "--gateway", GATEWAY, "--json"]))).toMatchObject({ restarted: false, started: false, reason: "stopped", role: "gateway", name: GATEWAY });
+      await waitForJson<any>(["gateway", "status", "--gateway", GATEWAY, "--json"], (value) => value.active === false && value.managed === false);
+
+      const workerBeforeSingleRestart = await waitForJson<any>(["worker", "status", "--worker", WORKER, "--json"], (value) => value.active === true && value.managed === true);
+      const restartOnlyRunning = parseJson<any>(await runCli(["restart", "--json"]));
+      expect(restartOnlyRunning).toMatchObject({ restartedCount: 1 });
+      expect(restartOnlyRunning.restarted).toEqual([expect.objectContaining({ restarted: true, role: "worker", name: WORKER })]);
+      expect(restartOnlyRunning.skipped).toEqual(expect.arrayContaining([expect.objectContaining({ role: "gateway", name: GATEWAY, reason: "stopped" })]));
+      await waitForJson<any>(["worker", "status", "--worker", WORKER, "--json"], (value) => value.active === true && value.managed === true && value.pid !== workerBeforeSingleRestart.pid, 30_000);
+
       expect(parseJson<any>(await runCli(["worker", "stop", "--worker", WORKER, "--json"]))).toMatchObject({ stopped: true, role: "worker", name: WORKER });
       workerStarted = false;
       await waitForJson<any>(["gateway", "status", "--gateway", GATEWAY, "--json"], (value) => value.active === false && value.managed === false);

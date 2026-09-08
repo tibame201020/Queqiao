@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readRuntimeConfig, runtimeConfigSchema, serializeRuntimeConfig } from "@queqiao/config";
 import type { RuntimeLayout } from "@queqiao/platform-paths";
-import { attachExtension, detachExtension, installExtension, installLocalExtension, installNpmExtension, parseExtensionSource, resolveInstalledExtensionId, uninstallExtension } from "./extension-cli.js";
+import { attachExtension, detachExtension, installExtension, installLocalExtension, installNpmExtension, parseExtensionSource, resolveInstalledExtensionId, uninstallExtension, updateNpmExtensions } from "./extension-cli.js";
 
 let temporary: string | undefined;
 afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); temporary = undefined; });
@@ -36,20 +36,20 @@ async function workerConfig(target: RuntimeLayout) {
   await writeFile(target.configFile, serializeRuntimeConfig(config), "utf8");
 }
 
-async function fakePackage(cwd: string) {
+async function fakePackage(cwd: string, version = "1.2.3") {
   const root = path.join(cwd, "node_modules", "queqiao-mcp");
   await mkdir(path.join(root, "dist"), { recursive: true });
   await writeFile(path.join(root, "dist", "index.js"), "export default {};\n", "utf8");
   await writeFile(path.join(root, "package.json"), JSON.stringify({
     name: "queqiao-mcp",
-    version: "1.2.3",
+    version,
     type: "module",
     queqiao: {
       apiVersion: 1,
       module: "./dist/index.js",
       manifest: {
         id: "dev.queqiao.mcp",
-        version: "1.2.3",
+        version,
         displayName: "Queqiao MCP",
         host: { kind: "worker" },
         ordering: { requires: [], before: [], after: [] },
@@ -219,6 +219,55 @@ describe("extension CLI", () => {
     await uninstallExtension(hub, "dev.queqiao.mcp", true, discover);
     expect((await readRuntimeConfig(windows.configFile)).extensions).toHaveLength(0);
     expect((await readRuntimeConfig(testWorker.configFile)).extensions).toHaveLength(0);
+  });
+
+  it("updates an unpinned npm extension in place for all Hub-owned Worker attachments", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-cli-update-"));
+    const hub = layout(path.join(temporary, "hub"));
+    const worker = layout(path.join(temporary, "worker"));
+    await workerConfig(worker);
+    const discover = async () => [{ name: "windows", layout: worker, config: await readRuntimeConfig(worker.configFile) }];
+
+    await installNpmExtension(hub, "npm:queqiao-mcp", { attachAll: true }, async (_args, cwd) => { await fakePackage(cwd, "1.2.3"); }, discover);
+    const before = await readRuntimeConfig(worker.configFile);
+    const beforeSource = before.extensions[0]?.source;
+    expect(beforeSource?.kind).toBe("npm");
+
+    const result = await updateNpmExtensions(hub, { extension: "dev.queqiao.mcp" }, async (args, cwd) => {
+      expect(args).toContain("queqiao-mcp");
+      await fakePackage(cwd, "1.3.0");
+    }, discover);
+
+    expect(result).toMatchObject({ changed: true, updatedCount: 1 });
+    const after = await readRuntimeConfig(worker.configFile);
+    expect(after.extensions[0]?.manifest.version).toBe("1.3.0");
+    expect(after.extensions[0]?.source.kind).toBe("npm");
+    if (after.extensions[0]?.source.kind !== "npm" || beforeSource?.kind !== "npm") throw new Error("expected npm source");
+    expect(after.extensions[0].source.requested).toBe("queqiao-mcp");
+    expect(after.extensions[0].source.installDirectory).not.toBe(beforeSource.installDirectory);
+    await expect(access(after.extensions[0].source.module)).resolves.toBeUndefined();
+    await expect(access(beforeSource.installDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("leaves exact-version npm extensions pinned and local extensions untouched", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-cli-update-pinned-"));
+    const hub = layout(path.join(temporary, "hub"));
+    await installNpmExtension(hub, "npm:queqiao-mcp@1.2.3", {}, async (_args, cwd) => { await fakePackage(cwd, "1.2.3"); });
+    const result = await updateNpmExtensions(hub, {}, async () => { throw new Error("pinned package must not call npm"); });
+    expect(result).toMatchObject({ changed: false, updatedCount: 0 });
+    expect(result.skipped).toEqual(expect.arrayContaining([expect.objectContaining({ id: "dev.queqiao.mcp", reason: "pinned" })]));
+  });
+
+  it("keeps an unpinned npm extension untouched when the resolved registry version is unchanged", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-extension-cli-update-current-"));
+    const hub = layout(path.join(temporary, "hub"));
+    await installNpmExtension(hub, "npm:queqiao-mcp@latest", {}, async (_args, cwd) => { await fakePackage(cwd, "1.2.3"); });
+    const packageStore = path.join(hub.dataDir, "extensions", "packages");
+    const before = (await readdir(packageStore)).filter((entry) => !entry.startsWith(".staging-"));
+    const result = await updateNpmExtensions(hub, {}, async (_args, cwd) => { await fakePackage(cwd, "1.2.3"); });
+    expect(result).toMatchObject({ changed: false, updatedCount: 0 });
+    expect(result.skipped).toEqual(expect.arrayContaining([expect.objectContaining({ id: "dev.queqiao.mcp", reason: "up-to-date" })]));
+    expect((await readdir(packageStore)).filter((entry) => !entry.startsWith(".staging-"))).toEqual(before);
   });
 
 });

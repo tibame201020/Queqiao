@@ -114,6 +114,22 @@ Use `npm run dev:workstation:verify` when manually validating Workstation from t
 
 The former `dev:shadow:refresh` helper is retired; do not replace its role names with `stable`, because its old stop/rebuild/restart lifecycle would intentionally interrupt the active stable runtime.
 
+## Restart and update
+
+```text
+queqiao restart
+queqiao update
+queqiao update --extensions
+queqiao update --extension <id|npm:source>
+queqiao update --all
+```
+
+`restart` restarts only Queqiao-managed Gateway and Worker processes that are currently running. A configured but stopped role stays stopped. The role-specific `gateway restart` and `worker restart` commands use the same rule and never act as an implicit start.
+
+`update` updates the globally installed Queqiao core with `npm install -g @tibame201020/queqiao`, then restarts only the managed processes captured before the package replacement. If npm fails, no runtime is restarted. A later `serve --bg` always resolves the entry point from the currently installed Queqiao package; stale PID metadata is used only to identify an already-running managed process, never as the authority for a future start.
+
+Extension updates are a separate Extension Hub lifecycle. `--extensions` updates all floating npm-managed extensions without replacing core; `--extension` selects one installed extension by id or npm source; `--all` updates extensions and core together. Exact-semver npm install specs are pinned and skipped, while unversioned names and tags such as `@latest` remain updateable. Local-path extensions are never modified by update.
+
 ## Gateway
 
 ```text
@@ -121,6 +137,7 @@ queqiao gateway setup
 queqiao gateway list
 queqiao gateway serve [--gateway <gateway>] [--bg]
 queqiao gateway stop [--gateway <gateway>]
+queqiao gateway restart [--gateway <gateway>]
 queqiao gateway status [--gateway <gateway>]
 queqiao gateway info [--gateway <gateway>] [--detail] [--copy-url|--copy-secret]
 queqiao gateway remove [--gateway <gateway>]
@@ -142,6 +159,7 @@ queqiao worker list
 queqiao worker port [--worker <worker>] [--port <port>]
 queqiao worker serve [--worker <worker>] [--bg]
 queqiao worker stop [--worker <worker>]
+queqiao worker restart [--worker <worker>]
 queqiao worker status [--worker <worker>]
 queqiao worker remove [--worker <worker>]
 queqiao worker join [--worker <worker>] [--join-code <code>]

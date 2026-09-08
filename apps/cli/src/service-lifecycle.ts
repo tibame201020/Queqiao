@@ -118,9 +118,10 @@ export async function restartRuntime(configFile: string, layout: RuntimeLayout, 
   const role = validateRole(roleValue); const name = validateName(nameValue);
   const current = await runtimeStatus(configFile, layout, role, name, dependencies);
   if (current.active && !current.managed) throw new Error(`Cannot restart ${role} ${name}: runtime is active but not managed by Queqiao`);
-  const stopped = current.managed ? await stopManaged(layout, role, dependencies) : false;
+  if (!current.managed) return { restarted: false as const, stopped: false as const, started: false as const, reason: "stopped" as const, name, role };
+  const stopped = await stopManaged(layout, role, dependencies);
   const started = await startRuntime(configFile, layout, role, name, dependencies);
-  return { restarted: true, stopped, ...started };
+  return { restarted: true as const, stopped, ...started };
 }
 export async function runtimeStatus(configFile: string, layout: RuntimeLayout, roleValue: string, nameValue: string, dependencies: Dependencies = {}) { const role = validateRole(roleValue); const name = validateName(nameValue); const pid = await reconcileManagedPid(layout, role, dependencies); const state = await health(configFile, role, dependencies.fetchImpl || fetch); return { name, role, active: state.reachable && state.identityMatches, managed: Boolean(pid), ...(pid ? { pid } : {}), health: state }; }
 export async function serveRuntime(configFile: string, roleValue: string, nameValue: string, dependencies: Dependencies = {}) {

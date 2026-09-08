@@ -19,6 +19,21 @@ queqiao extension install .\my-extension
 
 A local install does **not** copy the package, run `npm install`, run build scripts, or delete the source during uninstall. The package must already be prepared: its `package.json` must exist and its declared `queqiao.module` must resolve to a built file inside that package directory.
 
+### Updating npm-managed extensions
+
+```powershell
+# Update all floating npm-managed extensions.
+queqiao update --extensions
+
+# Update one installed extension by id or npm source.
+queqiao update --extension dev.example.my-extension
+queqiao update --extension npm:@scope/my-extension
+```
+
+Queqiao keeps extension packages in the Extension Hub rather than the global npm installation used by Queqiao core. An npm source installed with an exact semantic version, for example `npm:@scope/my-extension@1.2.3`, is pinned and is not changed by `update`. An unversioned package name or tag such as `@latest` is floating and can be updated. Local-path extensions are user-owned development sources and are never modified by `queqiao update`.
+
+When a floating npm extension changes version, Queqiao prepares and validates the new package first, updates the Hub and existing Hub-owned Worker attachments, and removes the old managed package only after the configuration change succeeds. Running Workers use their normal extension hot-reload path; core Gateway/Worker restart is not required for an extension-only update.
+
 Install and Worker attachment are separate operations:
 
 ```powershell

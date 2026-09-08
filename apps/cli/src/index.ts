@@ -28,6 +28,7 @@ import { renderShellCompletion } from "./shell-completion.js";
 import { runWorkstation } from "./workstation.js";
 import { listAuditEvents, recordCliAudit } from "./audit-cli.js";
 import { restartManagedRuntimes } from "./restart-cli.js";
+import { updateQueqiao } from "./update-cli.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
@@ -74,6 +75,7 @@ async function main() {
   }
   if (dispatch?.handler === "workstation") return runWorkstation(rawArgs);
   if (dispatch?.handler === "runtime-restart-all") return print(await restartManagedRuntimes());
+  if (dispatch?.handler === "update") return print(await updateQueqiao(resolveExtensionHubRoot(), { extensions: dispatch.options.extensions === true, ...(typeof dispatch.options.extension === "string" ? { extension: dispatch.options.extension } : {}), all: dispatch.options.all === true }));
   if (dispatch?.handler === "list-role-instances" && dispatch.route === "gateway list") return print({ schemaVersion: "1.0", role: "gateway", instances: await listRoleInstances("gateway") });
   if (dispatch?.handler === "list-role-instances" && dispatch.route === "worker list") return print({ schemaVersion: "1.0", role: "worker", instances: await listRoleInstances("worker") });
 
