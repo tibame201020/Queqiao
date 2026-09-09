@@ -6,6 +6,7 @@
 
 - Adds bounded binary Workspace reads to the Extension SDK so trusted extensions can safely return image/media bytes without bypassing Workspace containment.
 - Adds opt-in base64 stdout for Worker-managed stdio sessions, preserving process policy/output bounds while allowing extensions such as media samplers to consume binary helper output without temporary files.
+- Isolates invalid Worker extensions at load/composition time so import, identity, manifest, or runtime contract failures quarantine the affected extension instead of preventing the Worker from starting; independent extensions remain active.
 
 ## 0.9.12 - 2026-09-09
 
