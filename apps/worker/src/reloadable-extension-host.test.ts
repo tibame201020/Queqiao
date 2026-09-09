@@ -95,15 +95,15 @@ describe("ReloadableExtensionHost", () => {
     expect(disposedA).toBe(1);
 
     await atomicConfig(file, runtimeConfig(root, [broken]));
-    const rejected = await host.refresh();
-    expect(rejected).toMatchObject({ changed: false });
-    expect("rejected" in rejected).toBe(true);
-    const lastGood = host.acquire();
-    expect(lastGood.host.loadedIds()).toEqual(["dev.test.b"]);
-    await lastGood.release();
+    const isolated = await host.refresh();
+    expect(isolated).toMatchObject({ changed: true });
+    const quarantined = host.acquire();
+    expect(quarantined.host.activeIds("alpha")).toEqual([]);
+    expect(quarantined.host.extensionFailures("alpha").map((entry) => entry.extensionId)).toEqual(["dev.test.broken"]);
+    await quarantined.release();
 
     await newLease.release();
-    expect(disposedB).toBe(0);
+    expect(disposedB).toBe(1);
     await host.dispose();
     expect(disposedB).toBe(1);
   });

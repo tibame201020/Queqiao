@@ -8,7 +8,7 @@ let temporary: string | undefined;
 afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); temporary = undefined; });
 const nodeExecutable = path.basename(process.execPath);
 
-type StdioInput = { args: string[]; signal?: AbortSignal; timeoutMs?: number | null };
+type StdioInput = { args: string[]; signal?: AbortSignal; timeoutMs?: number | null; stdoutEncoding?: "utf8" | "base64" };
 const openStdio = (runner: ProcessRunner, input: StdioInput) =>
   (runner as unknown as { openStdio(request: { executable: string; args: string[]; cwd: string; signal?: AbortSignal; timeoutMs?: number | null }): Promise<any> }).openStdio({
     executable: nodeExecutable,
@@ -16,6 +16,7 @@ const openStdio = (runner: ProcessRunner, input: StdioInput) =>
     cwd: temporary!,
     ...(input.signal ? { signal: input.signal } : {}),
     ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+    ...(input.stdoutEncoding ? { stdoutEncoding: input.stdoutEncoding } : {}),
   });
 
 describe("ProcessRunner managed stdio sessions", () => {
@@ -31,6 +32,20 @@ describe("ProcessRunner managed stdio sessions", () => {
     await expect(session.next()).resolves.toEqual({ type: "stdout", data: "HELLO MCP\n" });
     await expect(session.closed).resolves.toMatchObject({ exitCode: 0, timedOut: false, aborted: false, outputLimitExceeded: false });
     expect(runner.activeCount()).toBe(0);
+  });
+
+  it("can surface binary stdout as independently decodable base64 chunks", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-stdio-binary-"));
+    const runner = new ProcessRunner(1, 4096);
+    const session = await openStdio(runner, {
+      args: ["-e", "process.stdout.write(Buffer.from([0,255,1,2,3]));process.exit(0)"],
+      timeoutMs: 2000,
+      stdoutEncoding: "base64",
+    });
+    const event = await session.next();
+    expect(event.type).toBe("stdout");
+    expect(Buffer.from(event.data, "base64")).toEqual(Buffer.from([0,255,1,2,3]));
+    await expect(session.closed).resolves.toMatchObject({ exitCode: 0, outputLimitExceeded: false });
   });
 
   it("keeps explicit session cancellation authoritative and releases capacity", async () => {

@@ -22,6 +22,7 @@ export type ProcessRequest = ProcessBaseRequest & {
 };
 
 export type StdioSessionRequest = ProcessBaseRequest & {
+  stdoutEncoding?: "utf8" | "base64";
   /** null keeps the managed session alive until close(), cancellation, output failure, or Worker shutdown. */
   timeoutMs?: number | null;
 };
@@ -285,7 +286,7 @@ export class ProcessRunner {
     return new Promise((resolve, reject) => {
       const startedAt = Date.now();
       const child = spawnNative(request, ["pipe", "pipe", "pipe"]);
-      const stdoutDecoder = new StringDecoder("utf8");
+      const stdoutDecoder = request.stdoutEncoding === "base64" ? undefined : new StringDecoder("utf8");
       const stderrDecoder = new StringDecoder("utf8");
       const events: ProcessStreamEvent[] = [];
       const waiters: Array<{ resolve(event: ProcessStreamEvent): void; reject(error: Error): void }> = [];
@@ -317,9 +318,13 @@ export class ProcessRunner {
         const acceptedChunk = chunk.subarray(0, remaining);
         outputBytes += acceptedChunk.length;
         if (acceptedChunk.length) {
-          const decoder = type === "stdout" ? stdoutDecoder : stderrDecoder;
-          const data = decoder.write(acceptedChunk);
-          if (data) enqueue({ type, data });
+          if (type === "stdout" && request.stdoutEncoding === "base64") {
+            enqueue({ type, data: acceptedChunk.toString("base64") });
+          } else {
+            const decoder = type === "stdout" ? stdoutDecoder! : stderrDecoder;
+            const data = decoder.write(acceptedChunk);
+            if (data) enqueue({ type, data });
+          }
         }
         if (acceptedChunk.length < chunk.length) {
           outputLimitExceeded = true;
@@ -340,7 +345,7 @@ export class ProcessRunner {
         closeSettled = true;
         if (timer) clearTimeout(timer);
         request.signal?.removeEventListener("abort", onAbort);
-        const stdoutTail = stdoutDecoder.end();
+        const stdoutTail = stdoutDecoder?.end() ?? "";
         const stderrTail = stderrDecoder.end();
         if (stdoutTail) enqueue({ type: "stdout", data: stdoutTail });
         if (stderrTail) enqueue({ type: "stderr", data: stderrTail });

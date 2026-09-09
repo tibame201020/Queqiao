@@ -132,7 +132,7 @@ export class ReloadableExtensionHost {
       this.importer,
       this.coreToolNames,
     );
-    await host.load();
+    await host.load({ isolateFailures: true });
     for (const workspaceId of workspaceIds) createWorkerToolRuntimeForWorkspace(host, workspaceId);
     return host;
   }

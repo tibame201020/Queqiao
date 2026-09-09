@@ -33,6 +33,12 @@ describe("SafeWorkspace mutations", () => {
   });
 });
 
+it("reads bounded binary files as base64 without treating them as UTF-8 text", async () => {
+  temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-"));
+  await writeFile(path.join(temporary, "pixel.bin"), Buffer.from([0, 255, 1, 2, 3]));
+  const workspace = new SafeWorkspace(temporary); await workspace.initialize();
+  expect(await workspace.readBinary("pixel.bin")).toEqual({ path: "pixel.bin", bytes: 5, data: "AP8BAgM=" });
+});
 describe("SafeWorkspace discovery", () => {
   it("lists deterministically with bounded depth, pagination, and hidden-file control", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-workspace-"));
