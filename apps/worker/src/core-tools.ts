@@ -228,5 +228,5 @@ export function createWorkerToolRuntime(extensions: readonly RuntimeExtension<Wo
   return extensions.length ? runtime.compose(extensions) : runtime.seal();
 }
 export function createWorkerToolRuntimeForWorkspace(host: ExtensionHost<WorkerToolContext>, workspaceId: string): ToolRuntime<WorkerToolContext> {
-  return host.runtimeForWorkspace(workspaceId, workerCoreDefinitions, workerAuthority);
+  return host.runtimeForWorkspace(workspaceId, workerCoreDefinitions, workerAuthority, { isolateFailures: true });
 }

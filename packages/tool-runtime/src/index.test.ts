@@ -94,6 +94,29 @@ describe("ToolRuntime composition", () => {
     expect(() => runtime2.compose([{ config, module: module("dev.queqiao.other", () => undefined) }])).toThrow(/mismatch/);
     expect(runtime2.definitions().map((entry) => entry.name)).toEqual(["core"]);
   });
+
+  it("isolates one broken extension while keeping independent extensions active when requested", () => {
+    const bad = manifest("dev.queqiao.bad", []);
+    const goodDefinition = tool("good");
+    const good = manifest("dev.queqiao.good", [{
+      operation: "register",
+      tool: goodDefinition.name,
+      visibility: "public",
+      title: goodDefinition.title,
+      description: goodDefinition.description,
+      inputSchema: z.toJSONSchema(goodDefinition.inputSchema, { io: "input" }),
+      requiredCapabilities: goodDefinition.requiredCapabilities,
+      risk: goodDefinition.risk,
+      annotations: goodDefinition.annotations,
+    }]);
+    const runtime = new ToolRuntime<Context>([tool("core")]);
+    runtime.compose([
+      { config: bad, module: module(bad.id, (api) => api.registerTool(tool("undeclared"))) },
+      { config: good, module: module(good.id, (api) => api.registerTool(goodDefinition)) },
+    ], { isolateFailures: true });
+    expect(runtime.definitions().map((entry) => entry.name)).toEqual(["core", "good"]);
+    expect(runtime.extensionFailures().map((entry) => entry.extensionId)).toEqual([bad.id]);
+  });
 });
 
 describe("ExtensionHost", () => {
@@ -156,5 +179,21 @@ describe("ExtensionHost", () => {
     const gatewayHost = new ExtensionHost<Context>([gatewayExtension], { kind: "gateway" }, process.cwd(), async () => { throw new Error("import failed"); });
     await expect(gatewayHost.load()).rejects.toThrow(/import failed/);
     expect(gatewayHost.loadedIds()).toEqual([]);
+  });
+
+  it("quarantines a module identity mismatch when failure isolation is enabled", async () => {
+    const config: InstalledExtensionConfig = {
+      trusted: true,
+      source: { kind: "local-module", module: "./bad.mjs" },
+      activation: { kind: "global" },
+      manifest: manifest("dev.queqiao.bad"),
+    };
+    config.manifest.host = { kind: "worker", environmentId: "windows" };
+    const host = new ExtensionHost<Context>([config], { kind: "worker", environmentId: "windows" }, process.cwd(), async () => ({
+      default: module("dev.queqiao.other", () => undefined),
+    }));
+    await host.load({ isolateFailures: true });
+    expect(host.loadedIds()).toEqual([]);
+    expect(host.extensionFailures().map((entry) => entry.extensionId)).toEqual([config.manifest.id]);
   });
 });

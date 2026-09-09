@@ -161,6 +161,9 @@ const moduleManifestSchema = z.object({ id: extensionIdSchema, version: semantic
 export type RuntimeExtension<TContext> = { config: ExtensionManifestConfig; module: QueqiaoExtension<TContext> };
 export type ExtensionHostTarget = { kind: "gateway" } | { kind: "worker"; environmentId: string };
 export type ExtensionModuleImporter = (specifier: string) => Promise<unknown>;
+export type ExtensionFailure = { extensionId: string; error: Error };
+export type ExtensionHostLoadOptions = { isolateFailures?: boolean };
+export type ToolRuntimeComposeOptions = { isolateFailures?: boolean };
 
 function hostMatches(extension: InstalledExtensionConfig, target: ExtensionHostTarget): boolean {
   const host = extension.manifest.host;
@@ -189,9 +192,38 @@ function extensionExport<TContext>(loaded: unknown): QueqiaoExtension<TContext> 
   return candidate;
 }
 
+function asError(error: unknown): Error { return error instanceof Error ? error : new Error(String(error)); }
+
+function isolateCompositionFailures<T extends { manifest: CompositionExtension }>(configured: readonly T[], coreTools: readonly string[], failures: Map<string, Error>): T[] {
+  let candidates = [...configured];
+  while (candidates.length) {
+    try {
+      resolveExtensionComposition(candidates.map((entry) => entry.manifest), coreTools);
+      return candidates;
+    } catch (error) {
+      if (!(error instanceof ExtensionCompositionError)) throw error;
+      const ids = [...(error.details.extensionIds ?? [])];
+      const victims = error.code === "dependency_cycle"
+        ? ids
+        : error.code === "missing_dependency"
+          ? ids.slice(0, 1)
+          : ids.slice(-1);
+      if (!victims.length) throw error;
+      const victimSet = new Set(victims);
+      const next = candidates.filter((entry) => !victimSet.has(entry.manifest.id));
+      if (next.length === candidates.length) throw error;
+      for (const id of victims) failures.set(id, error);
+      candidates = next;
+    }
+  }
+  return candidates;
+}
+
 /** Explicit trusted-module loader. It never scans Workspace or repository content. */
 export class ExtensionHost<TContext> {
   private loaded: ReadonlyMap<string, RuntimeExtension<TContext>> = new Map();
+  private readonly loadFailures = new Map<string, Error>();
+  private readonly workspaceFailures = new Map<string, Map<string, Error>>();
 
   constructor(
     private readonly configured: readonly InstalledExtensionConfig[],
@@ -201,22 +233,45 @@ export class ExtensionHost<TContext> {
     private readonly coreToolNames: readonly string[] = [],
   ) {}
 
-  async load(): Promise<void> {
+  async load(options: ExtensionHostLoadOptions = {}): Promise<void> {
+    this.loadFailures.clear();
+    this.workspaceFailures.clear();
     const selected = this.configured.filter((extension) => hostMatches(extension, this.target));
-    resolveExtensionComposition(selected.map((extension) => extension.manifest), this.coreToolNames);
+    const composable = options.isolateFailures
+      ? isolateCompositionFailures(selected, this.coreToolNames, this.loadFailures)
+      : (resolveExtensionComposition(selected.map((extension) => extension.manifest), this.coreToolNames), [...selected]);
     const staged = new Map<string, RuntimeExtension<TContext>>();
-    for (const extension of selected) {
-      const loaded = await this.importer(moduleSpecifier(extension.source.module, this.configDirectory));
-      const module = extensionExport<TContext>(loaded);
-      if (module.manifest.id !== extension.manifest.id || module.manifest.version !== extension.manifest.version) {
-        throw new Error(`Extension module identity/version mismatch: ${extension.manifest.id}`);
+    for (const extension of composable) {
+      try {
+        const loaded = await this.importer(moduleSpecifier(extension.source.module, this.configDirectory));
+        const module = extensionExport<TContext>(loaded);
+        if (module.manifest.id !== extension.manifest.id || module.manifest.version !== extension.manifest.version) {
+          throw new Error(`Extension module identity/version mismatch: ${extension.manifest.id}`);
+        }
+        staged.set(extension.manifest.id, { config: extension.manifest, module });
+      } catch (error) {
+        if (!options.isolateFailures) throw error;
+        this.loadFailures.set(extension.manifest.id, asError(error));
       }
-      staged.set(extension.manifest.id, { config: extension.manifest, module });
+    }
+    if (options.isolateFailures && staged.size) {
+      const retained = isolateCompositionFailures(
+        composable.filter((extension) => staged.has(extension.manifest.id)),
+        this.coreToolNames,
+        this.loadFailures,
+      );
+      const retainedIds = new Set(retained.map((extension) => extension.manifest.id));
+      for (const id of [...staged.keys()]) if (!retainedIds.has(id)) staged.delete(id);
     }
     this.loaded = staged;
   }
 
   loadedIds(): readonly string[] { return Object.freeze([...this.loaded.keys()].sort()); }
+  extensionFailures(workspaceId?: string): readonly ExtensionFailure[] {
+    const merged = new Map(this.loadFailures);
+    if (workspaceId) for (const [id, error] of this.workspaceFailures.get(workspaceId) ?? []) merged.set(id, error);
+    return Object.freeze([...merged].map(([extensionId, error]) => ({ extensionId, error })).sort((a, b) => a.extensionId.localeCompare(b.extensionId)));
+  }
 
   /** Deployment-level public declarations intentionally ignore Workspace selection. */
   publicManifests(): readonly ExtensionManifestConfig[] {
@@ -228,7 +283,9 @@ export class ExtensionHost<TContext> {
 
   activeIds(workspaceId: string): readonly string[] {
     const configuredById = new Map(this.configured.map((entry) => [entry.manifest.id, entry]));
+    const failed = this.workspaceFailures.get(workspaceId);
     return Object.freeze([...this.loaded.keys()].filter((id) => {
+      if (failed?.has(id)) return false;
       const extension = configuredById.get(id);
       return extension ? extensionActiveForWorkspace(extension, workspaceId) : false;
     }).sort());
@@ -242,10 +299,15 @@ export class ExtensionHost<TContext> {
       .sort((left, right) => left.id.localeCompare(right.id)));
   }
 
-  runtimeForWorkspace(workspaceId: string, coreTools: readonly ToolDefinition<TContext>[] = [], authority?: ToolAuthorityGuard<TContext>): ToolRuntime<TContext> {
+  runtimeForWorkspace(workspaceId: string, coreTools: readonly ToolDefinition<TContext>[] = [], authority?: ToolAuthorityGuard<TContext>, options: ToolRuntimeComposeOptions = {}): ToolRuntime<TContext> {
     const active = new Set(this.activeIds(workspaceId));
     const entries = [...this.loaded.values()].filter((entry) => active.has(entry.config.id));
-    return new ToolRuntime<TContext>(coreTools, authority).compose(entries);
+    const runtime = new ToolRuntime<TContext>(coreTools, authority).compose(entries, options);
+    if (options.isolateFailures) {
+      const failures = new Map(runtime.extensionFailures().map(({ extensionId, error }) => [extensionId, error]));
+      if (failures.size) this.workspaceFailures.set(workspaceId, failures);
+    }
+    return runtime;
   }
 
   /** Dispose extension modules that are not retained by the replacement host. */
@@ -296,6 +358,7 @@ function assertReplacementContract<TContext>(base: ToolDefinition<TContext>, rep
 
 export class ToolRuntime<TContext> {
   private readonly tools = new Map<string, RuntimeTool<TContext>>();
+  private readonly activationFailures = new Map<string, Error>();
   private sealed = false;
 
   constructor(coreTools: readonly ToolDefinition<TContext>[] = [], private readonly authority?: ToolAuthorityGuard<TContext>) {
@@ -324,20 +387,44 @@ export class ToolRuntime<TContext> {
 
   seal(): this { this.sealed = true; return this; }
 
-  compose(extensions: readonly RuntimeExtension<TContext>[]): this {
+  compose(extensions: readonly RuntimeExtension<TContext>[], options: ToolRuntimeComposeOptions = {}): this {
     if (this.sealed) throw new Error("Tool runtime is sealed");
+    this.activationFailures.clear();
     const plan = resolveExtensionComposition(extensions.map((entry) => entry.config), [...this.tools.keys()]);
     const byId = new Map(extensions.map((entry) => [entry.config.id, entry]));
-    const snapshot = new Map([...this.tools].map(([name, tool]) => [name, { ...tool, before: [...tool.before], after: [...tool.after], wraps: [...tool.wraps] }]));
-    try {
-      for (const id of plan.order) this.activateExtension(byId.get(id)!);
-      this.sealed = true;
-      return this;
-    } catch (error) {
+    const snapshotTools = () => new Map([...this.tools].map(([name, tool]) => [name, { ...tool, before: [...tool.before], after: [...tool.after], wraps: [...tool.wraps] }]));
+    const restore = (snapshot: Map<string, RuntimeTool<TContext>>) => {
       this.tools.clear();
       for (const [name, tool] of snapshot) this.tools.set(name, tool);
-      throw error;
+    };
+    const initial = snapshotTools();
+    if (!options.isolateFailures) {
+      try {
+        for (const id of plan.order) this.activateExtension(byId.get(id)!);
+        this.sealed = true;
+        return this;
+      } catch (error) {
+        restore(initial);
+        throw error;
+      }
     }
+    for (const id of plan.order) {
+      const entry = byId.get(id)!;
+      const failedRequirement = entry.config.ordering.requires.find((required) => this.activationFailures.has(required));
+      if (failedRequirement) {
+        this.activationFailures.set(id, new Error(`Required extension failed activation: ${failedRequirement}`));
+        continue;
+      }
+      const before = snapshotTools();
+      try { this.activateExtension(entry); }
+      catch (error) { restore(before); this.activationFailures.set(id, asError(error)); }
+    }
+    this.sealed = true;
+    return this;
+  }
+
+  extensionFailures(): readonly ExtensionFailure[] {
+    return Object.freeze([...this.activationFailures].map(([extensionId, error]) => ({ extensionId, error })).sort((a, b) => a.extensionId.localeCompare(b.extensionId)));
   }
 
   private activateExtension(entry: RuntimeExtension<TContext>): void {
