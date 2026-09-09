@@ -113,5 +113,30 @@ describe("runtime lifecycle", () => {
     await expect(serveRuntime(layout.configFile, "worker", "windows", { fetchImpl: fetchImpl as typeof fetch })).rejects.toThrow(/port is already occupied by another runtime/);
     await expect(startRuntime(layout.configFile, layout, "worker", "windows", { platform:"win32", env:{SystemRoot:"C:\\Windows"}, execFile: async()=>({stdout:"",stderr:""}), fetchImpl: fetchImpl as typeof fetch, entryPoints:{worker:"C:\\pkg\\queqiao-worker.js"} })).rejects.toThrow(/port is already occupied by another runtime/);
   });
+  it("defers a Windows restart when the CLI is running inside the managed runtime process tree", async () => {
+    const { layout } = await fixture();
+    const dir = path.join(layout.stateDir, "processes");
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(dir, { recursive: true }));
+    await writeFile(path.join(dir, "gateway.pid.json"), JSON.stringify({ pid: 4321, entryPoint: "C:\\pkg\\queqiao-gateway.js", configFile: layout.configFile }), "utf8");
+    const calls: Array<{ file: string; args: readonly string[] }> = [];
+    const execFile = async (file: string, args: readonly string[]) => {
+      calls.push({ file, args });
+      const command = args.join(" ");
+      if (command.includes("Invoke-CimMethod")) return { stdout: "0:9876", stderr: "" };
+      if (command.includes("$target=4321")) return { stdout: "1", stderr: "" };
+      if (command.includes("Get-CimInstance")) return { stdout: "node.exe C:\\pkg\\queqiao-gateway.js", stderr: "" };
+      return { stdout: "", stderr: "" };
+    };
+    const result = await restartRuntime(layout.configFile, layout, "gateway", "shadow", { platform: "win32", env: { SystemRoot: "C:\\Windows" }, currentPid: 9999, nodePath: "C:\\node.exe", cliEntryPoint: "C:\\pkg\\queqiao.js", execFile, fetchImpl: async () => new Response("{}", { status: 200 }), entryPoints: { gateway: "C:\\pkg\\queqiao-gateway.js" } });
+    expect(result).toMatchObject({ restarted: true, stopped: false, started: false, deferred: true, helperPid: 9876, role: "gateway", name: "shadow", pid: 4321 });
+    expect(calls.some((call) => call.file.endsWith("taskkill.exe"))).toBe(false);
+    const handoff = calls.flatMap((call) => call.args).find((arg) => arg.includes("Invoke-CimMethod"));
+    expect(handoff).toBeTruthy();
+    const encoded = handoff!.match(/-EncodedCommand ([A-Za-z0-9+/=]+)/)?.[1];
+    expect(encoded).toBeTruthy();
+    const script = Buffer.from(encoded!, "base64").toString("utf16le");
+    expect(script).toContain("taskkill.exe");
+    expect(script).toContain("'C:\\pkg\\queqiao.js' 'gateway' 'serve' '--bg' '--gateway' 'shadow'");
+  });
   it("rejects unsafe runtime names", async () => { const { layout } = await fixture(); await expect(runtimeStatus(layout.configFile,layout,"gateway","../bad",{fetchImpl:async()=>new Response("{}",{status:200})})).rejects.toThrow(/Name must match/); });
 });
