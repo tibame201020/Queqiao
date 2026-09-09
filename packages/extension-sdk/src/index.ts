@@ -6,6 +6,7 @@ export type WorkerExtensionCapabilities = {
   listDirectory(path: string, depth: number, limit: number, cursor: string | undefined, includeHidden: boolean): Promise<unknown>;
   searchText(input: { query: string; path?: string; globs?: string[]; maxResults?: number; caseSensitive?: boolean; timeoutMs?: number }): Promise<unknown>;
   readFile(path: string, offset: number, limit: number): Promise<unknown>;
+  readBinaryFile(path: string): Promise<{ path: string; bytes: number; data: string }>;
   writeFile(path: string, content: string): Promise<unknown>;
   editFile(path: string, oldText: string, newText: string): Promise<unknown>;
   resolveExecutionDirectory(path: string): Promise<string>;
@@ -38,6 +39,7 @@ export type WorkerExtensionRuntime = {
     open(input: {
       executable: string;
       args?: readonly string[];
+      stdoutEncoding?: "utf8" | "base64";
       cwd?: string;
       timeoutMs?: number | null;
       signal?: AbortSignal;

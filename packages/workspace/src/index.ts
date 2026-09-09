@@ -103,6 +103,11 @@ export class SafeWorkspace {
     return { path: relativePath.replaceAll("\\", "/"), bytes };
   }
 
+  async readBinary(relativePath: string) {
+    const { absolute, info } = await this.existingFile(relativePath);
+    const buffer = await readFile(absolute);
+    return { path: relativePath.replaceAll("\\", "/"), bytes: info.size, data: buffer.toString("base64") };
+  }
   async read(relativePath: string, offset: number, limit: number) {
     const { absolute } = await this.existingFile(relativePath);
     const buffer = await readFile(absolute);

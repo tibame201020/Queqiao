@@ -81,6 +81,10 @@ export class WorkerCoreCapabilities {
     return this.#workspace.reader.searchText({ ...input, ...(this.#signal ? { signal: this.#signal } : {}) });
   }
 
+  readBinaryFile(path: string) {
+    this.#require("workspace:read");
+    return this.#workspace.reader.readBinary(path);
+  }
   readFile(path: string, offset: number, limit: number) {
     this.#require("workspace:read");
     return this.#workspace.reader.read(path, offset, limit);

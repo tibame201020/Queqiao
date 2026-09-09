@@ -14,6 +14,7 @@ const ALLOWED_HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "
 
 type ExtensionStdioRequest = {
   executable: string;
+  stdoutEncoding?: "utf8" | "base64";
   args?: readonly string[];
   cwd?: string;
   timeoutMs?: number | null;
@@ -68,6 +69,7 @@ export class WorkerExtensionRuntimeServices {
       executable: request.executable,
       args: request.args ?? [],
       cwd,
+      ...(request.stdoutEncoding ? { stdoutEncoding: request.stdoutEncoding } : {}),
       ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
       ...(request.signal ? { signal: request.signal } : {}),
     });
