@@ -82,7 +82,7 @@ async function managedProcessIsAncestor(pid: number, dependencies: Dependencies 
   return (await execFile(ps, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query])).stdout.trim() === "1";
 }
 async function scheduleWindowsRestartHandoff(layout: RuntimeLayout, role: RuntimeRole, name: string, pid: number, dependencies: Dependencies = {}) {
-  const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const ps = windowsSystemExecutable("WindowsPowerShell\\v1.0\\powershell.exe", env); const taskkill = windowsSystemExecutable("taskkill.exe", env); const nodePath = path.resolve(dependencies.nodePath || process.execPath); const cliEntryPoint = path.resolve(dependencies.cliEntryPoint || packageCliEntryPoint()); const pidFile = pathsFor(layout, role).pidFile;
+  const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const ps = windowsSystemExecutable("WindowsPowerShell\\v1.0\\powershell.exe", env); const taskkill = windowsSystemExecutable("taskkill.exe", env); const nodePath = path.win32.resolve(dependencies.nodePath || process.execPath); const cliEntryPoint = path.win32.resolve(dependencies.cliEntryPoint || packageCliEntryPoint()); const pidFile = pathsFor(layout, role).pidFile;
   const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
   const inner = `Start-Sleep -Milliseconds 1000; & ${q(taskkill)} /PID ${pid} /T /F 2>$null | Out-Null; Remove-Item -LiteralPath ${q(pidFile)} -Force -ErrorAction SilentlyContinue; & ${q(nodePath)} ${q(cliEntryPoint)} ${q(role)} 'serve' '--bg' '--${role}' ${q(name)} '--json' | Out-Null`;
   const encoded = Buffer.from(inner, "utf16le").toString("base64");
