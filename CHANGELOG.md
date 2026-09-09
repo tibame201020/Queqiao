@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.9.12 - 2026-09-09
+
+- Fixes Windows managed self-restart by handing restart off to a detached helper when the invoking CLI is inside the managed Gateway/Worker process tree, so terminating the old process no longer kills the restart command before the replacement runtime starts.
+
 ## 0.9.11 - 2026-09-08
 
 - Fixes managed daemon log descriptor ownership on Linux so parent-side log handles are closed immediately after spawn, preventing lifecycle warnings from leaking into packaged CLI output.
