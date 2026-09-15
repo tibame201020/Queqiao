@@ -121,6 +121,23 @@ describe("ProcessRunner", () => {
     expect(runner.asyncCount()).toBe(0);
   });
 
+  it("keeps foreground execution available while an accepted async process is running", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-process-"));
+    const runner = new ProcessRunner(1);
+    await runner.start({ executable: nodeExecutable, args: ["-e", "setTimeout(()=>{},450)"], cwd: temporary, timeoutMs: 1000 });
+    expect(runner.activeCount()).toBe(1);
+    expect(runner.backgroundActiveCount()).toBe(1);
+    expect(runner.foregroundActiveCount()).toBe(0);
+
+    const foreground = await runner.run({ executable: nodeExecutable, args: ["-e", "process.stdout.write('foreground-ok')"], cwd: temporary, timeoutMs: 1000 });
+    expect(foreground.stdout).toBe("foreground-ok");
+    expect(runner.activeCount()).toBe(1);
+    expect(runner.backgroundActiveCount()).toBe(1);
+    expect(runner.foregroundActiveCount()).toBe(0);
+
+    await waitFor(() => runner.activeCount() === 0);
+  });
+
   it("holds concurrency until an accepted async process exits and enforces its lifetime", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-process-"));
     const marker = path.join(temporary, "should-not-exist.txt");

@@ -72,31 +72,40 @@ export type ManagedStdioSession = {
   readonly closed: Promise<ManagedProcessClose>;
 };
 
+export type ProcessCapacityClass = "foreground" | "background";
+
 export class ProcessCapacityError extends Error {
-  constructor() { super("Worker process concurrency limit reached"); }
+  constructor(readonly capacityClass: ProcessCapacityClass = "foreground") {
+    super(capacityClass === "foreground" ? "Worker process concurrency limit reached" : "Worker background process concurrency limit reached");
+  }
 }
 
 export class ProcessRunner {
-  private active = 0;
+  private foregroundActive = 0;
+  private backgroundActive = 0;
   private readonly asyncChildren = new Map<number, { child: ChildProcess; timer: NodeJS.Timeout }>();
   private readonly stdioChildren = new Map<number, ChildProcess>();
 
   constructor(
-    private readonly concurrency = DEFAULT_PROCESS_CONCURRENCY,
+    private readonly foregroundConcurrency = DEFAULT_PROCESS_CONCURRENCY,
     private readonly outputLimitBytes = MAX_PROCESS_OUTPUT_BYTES,
+    private readonly backgroundConcurrency = foregroundConcurrency,
   ) {
-    if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("Process concurrency must be a positive integer");
+    if (!Number.isInteger(foregroundConcurrency) || foregroundConcurrency < 1) throw new Error("Foreground process concurrency must be a positive integer");
+    if (!Number.isInteger(backgroundConcurrency) || backgroundConcurrency < 1) throw new Error("Background process concurrency must be a positive integer");
   }
 
-  activeCount(): number { return this.active; }
+  activeCount(): number { return this.foregroundActive + this.backgroundActive; }
+  foregroundActiveCount(): number { return this.foregroundActive; }
+  backgroundActiveCount(): number { return this.backgroundActive; }
   asyncCount(): number { return this.asyncChildren.size; }
   stdioCount(): number { return this.stdioChildren.size; }
 
   async run(request: ProcessRequest): Promise<ProcessResult> {
     const prepared = await this.prepare(request);
-    this.acquire();
+    this.acquireForeground();
     try { return await this.spawnAndCollect(prepared); }
-    finally { this.release(); }
+    finally { this.releaseForeground(); }
   }
 
   /**
@@ -106,14 +115,14 @@ export class ProcessRunner {
    */
   async start(request: ProcessRequest): Promise<AsyncProcessResult> {
     const prepared = await this.prepare(request);
-    this.acquire();
+    this.acquireBackground();
     let handedOff = false;
     try {
       const result = await this.spawnAndAccept(prepared);
       handedOff = true;
       return result;
     } finally {
-      if (!handedOff) this.release();
+      if (!handedOff) this.releaseBackground();
     }
   }
 
@@ -125,14 +134,14 @@ export class ProcessRunner {
    */
   async openStdio(request: StdioSessionRequest): Promise<ManagedStdioSession> {
     const prepared = await this.prepareStdio(request);
-    this.acquire();
+    this.acquireForeground();
     let handedOff = false;
     try {
       const session = await this.spawnStdioSession(prepared);
       handedOff = true;
       return session;
     } finally {
-      if (!handedOff) this.release();
+      if (!handedOff) this.releaseForeground();
     }
   }
 
@@ -167,13 +176,22 @@ export class ProcessRunner {
     return { ...prepared, timeoutMs };
   }
 
-  private acquire(): void {
-    if (this.active >= this.concurrency) throw new ProcessCapacityError();
-    this.active += 1;
+  private acquireForeground(): void {
+    if (this.foregroundActive >= this.foregroundConcurrency) throw new ProcessCapacityError("foreground");
+    this.foregroundActive += 1;
   }
 
-  private release(): void {
-    this.active = Math.max(0, this.active - 1);
+  private releaseForeground(): void {
+    this.foregroundActive = Math.max(0, this.foregroundActive - 1);
+  }
+
+  private acquireBackground(): void {
+    if (this.backgroundActive >= this.backgroundConcurrency) throw new ProcessCapacityError("background");
+    this.backgroundActive += 1;
+  }
+
+  private releaseBackground(): void {
+    this.backgroundActive = Math.max(0, this.backgroundActive - 1);
   }
 
   private spawnAndCollect(request: ProcessRequest & { executable: string; timeoutMs: number }): Promise<ProcessResult> {
@@ -277,7 +295,7 @@ export class ProcessRunner {
           clearTimeout(tracked.timer);
           this.asyncChildren.delete(child.pid!);
         }
-        this.release();
+        this.releaseBackground();
       });
     });
   }
@@ -338,7 +356,7 @@ export class ProcessRunner {
       };
       const releaseTracked = () => {
         if (child.pid) this.stdioChildren.delete(child.pid);
-        this.release();
+        this.releaseForeground();
       };
       const settleClose = (exitCode: number | null, signal: NodeJS.Signals | null) => {
         if (closeSettled) return;
