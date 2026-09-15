@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Separates bounded foreground process capacity from async background capacity so accepted long-running async jobs cannot starve synchronous `run` / `shell` control work; both pools remain independently bounded and lifecycle-managed.
+
 ## 0.9.13 - 2026-09-09
 
 - Adds bounded binary Workspace reads to the Extension SDK so trusted extensions can safely return image/media bytes without bypassing Workspace containment.

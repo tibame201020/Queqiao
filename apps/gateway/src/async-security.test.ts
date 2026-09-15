@@ -146,24 +146,30 @@ describe("async disconnect and resource security", () => {
     expect(await readFile(completed, "utf8")).toBe("accepted");
   });
 
-  it("shares concurrency capacity between accepted async and synchronous execution", async () => {
+  it("separates accepted async background capacity from synchronous execution", async () => {
     const { client, processes } = await startHarness(new ProcessRunner(1));
     const asyncResult = await client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", "setTimeout(()=>{},450)"], timeoutMs: 1200, mode: "async" } });
     expect(asyncResult.isError).not.toBe(true);
     expect(processes.activeCount()).toBe(1);
+    expect(processes.backgroundActiveCount()).toBe(1);
+    expect(processes.foregroundActiveCount()).toBe(0);
 
-    const denied = await client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", "process.stdout.write('should-not-run')"], timeoutMs: 1000 } });
-    expect(denied.isError).toBe(true);
-    const capacityError = JSON.parse((denied.content[0] as { type: "text"; text: string }).text) as { code: string; message: string; layer: string; retryable: boolean };
+    const foreground = await client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", "process.stdout.write('foreground-ok')"], timeoutMs: 1000 } });
+    expect(foreground.isError).not.toBe(true);
+    expect(JSON.stringify(foreground.content)).toContain("foreground-ok");
+    expect(processes.backgroundActiveCount()).toBe(1);
+
+    const deniedAsync = await client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", "setTimeout(()=>{},100)"], timeoutMs: 1000, mode: "async" } });
+    expect(deniedAsync.isError).toBe(true);
+    const capacityError = JSON.parse((deniedAsync.content[0] as { type: "text"; text: string }).text) as { code: string; message: string; layer: string; retryable: boolean };
     expect(capacityError).toMatchObject({ code: "process_capacity", layer: "worker", retryable: true });
-    expect(capacityError.message).toContain("concurrency limit");
+    expect(capacityError.message).toContain("background process concurrency limit");
 
     const deadline = Date.now() + 2500;
-    while (processes.activeCount() !== 0 && Date.now() < deadline) await delay(25);
+    while (processes.backgroundActiveCount() !== 0 && Date.now() < deadline) await delay(25);
     expect(processes.activeCount()).toBe(0);
-    const later = await client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", "process.stdout.write('capacity-restored')"], timeoutMs: 1000 } });
+    const later = await client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", "setTimeout(()=>{},100)"], timeoutMs: 1000, mode: "async" } });
     expect(later.isError).not.toBe(true);
-    expect(JSON.stringify(later.content)).toContain("capacity-restored");
   }, 10_000);
 
   it("keeps synchronous output bounded and async output discarded", async () => {

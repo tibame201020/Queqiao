@@ -126,10 +126,14 @@ describe("ProcessRunner", () => {
     const runner = new ProcessRunner(1);
     await runner.start({ executable: nodeExecutable, args: ["-e", "setTimeout(()=>{},450)"], cwd: temporary, timeoutMs: 1000 });
     expect(runner.activeCount()).toBe(1);
+    expect(runner.backgroundActiveCount()).toBe(1);
+    expect(runner.foregroundActiveCount()).toBe(0);
 
     const foreground = await runner.run({ executable: nodeExecutable, args: ["-e", "process.stdout.write('foreground-ok')"], cwd: temporary, timeoutMs: 1000 });
     expect(foreground.stdout).toBe("foreground-ok");
     expect(runner.activeCount()).toBe(1);
+    expect(runner.backgroundActiveCount()).toBe(1);
+    expect(runner.foregroundActiveCount()).toBe(0);
 
     await waitFor(() => runner.activeCount() === 0);
   });
