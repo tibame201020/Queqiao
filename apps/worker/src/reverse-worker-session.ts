@@ -24,7 +24,19 @@ function errorFrame(requestId: string, error: unknown): WorkerSessionFrame {
     return { kind: "error", requestId, error: { code: error.code, message: error.message, status: error.status, retryable: error.status === 429 || error.status >= 500 } };
   }
   if (error instanceof ProcessCapacityError) {
-    return { kind: "error", requestId, error: { code: "process_capacity", message: error.message, status: 429, retryable: true } };
+    return {
+      kind: "error",
+      requestId,
+      error: {
+        code: "process_capacity",
+        message: error.message,
+        status: 429,
+        retryable: true,
+        capacityClass: error.capacityClass,
+        active: error.active,
+        limit: error.limit,
+      },
+    };
   }
   return {
     kind: "error",

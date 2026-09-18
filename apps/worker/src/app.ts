@@ -27,7 +27,13 @@ function safeEqual(left: string, right: string): boolean { return timingSafeEqua
 
 function sendWorkerError(res: Response, error: unknown, fallbackCode = "tool_error") {
   if (error instanceof WorkerToolError) return res.status(error.status).json({ error: error.code, message: error.message });
-  if (error instanceof ProcessCapacityError) return res.status(429).json({ error: "process_capacity", message: error.message });
+  if (error instanceof ProcessCapacityError) return res.status(429).json({
+    error: "process_capacity",
+    message: error.message,
+    capacityClass: error.capacityClass,
+    active: error.active,
+    limit: error.limit,
+  });
   return res.status(400).json({ error: fallbackCode, message: error instanceof Error ? error.message : "Unknown error" });
 }
 
@@ -111,6 +117,22 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
     const requestedTool = req.query.tool === "workspace_info" ? "workspace_info" as const : "open_workspace" as const;
     try { res.json(await service.execute({ operation: "workspace-info", workspaceId: req.params.workspaceId, tool: requestedTool })); }
     catch (error) { sendWorkerError(res, error, "workspace_error"); }
+  });
+  app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/processes/capacity`, async (_req, res) => {
+    try { res.json(await service.execute({ operation: "process-capacity" })); }
+    catch (error) { sendWorkerError(res, error, "process_control_error"); }
+  });
+  app.get(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/processes`, async (req, res) => {
+    const workspaceId = typeof req.query.workspaceId === "string" ? req.query.workspaceId : undefined;
+    try { res.json(await service.execute({ operation: "process-list", ...(workspaceId ? { workspaceId } : {}) })); }
+    catch (error) { sendWorkerError(res, error, "process_control_error"); }
+  });
+  app.post(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/processes/:handle/stop`, async (req, res) => {
+    const parsedHandle = z.uuid().safeParse(req.params.handle);
+    const parsedBody = z.object({ workspaceId: z.string().min(1).max(64).optional() }).strict().safeParse(req.body ?? {});
+    if (!parsedHandle.success || !parsedBody.success) return res.status(400).json({ error: "invalid_request" });
+    try { res.json(await service.execute({ operation: "process-stop", handle: parsedHandle.data, ...parsedBody.data })); }
+    catch (error) { sendWorkerError(res, error, "process_control_error"); }
   });
   app.post(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/tools/:toolName`, async (req, res) => {
     const abort = new AbortController();

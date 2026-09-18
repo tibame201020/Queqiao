@@ -29,6 +29,14 @@ export type WorkerProtocolServiceConfig = {
 
 type RequestExtensionState = { host: ExtensionHost<WorkerToolContext> | undefined; generation: number };
 type ExtensionLeaseState = RequestExtensionState & { release?: () => Promise<void> };
+type WorkerProcessController = Pick<ProcessRunner, "capacity" | "listTracked" | "stopTracked">;
+
+function processController(processes: WorkerProcessExecutor): WorkerProcessController | undefined {
+  const candidate = processes as WorkerProcessExecutor & Partial<WorkerProcessController>;
+  return typeof candidate.capacity === "function" && typeof candidate.listTracked === "function" && typeof candidate.stopTracked === "function"
+    ? candidate as WorkerProcessExecutor & WorkerProcessController
+    : undefined;
+}
 
 function auditOutcome(error: unknown, signal?: AbortSignal): "denied" | "failed" | "cancelled" {
   if (signal?.aborted) return "cancelled";
@@ -96,6 +104,7 @@ export async function createWorkerProtocolService(config: WorkerProtocolServiceC
   const coreToolNames = new Set(coreTools.definitions().map(({ name }) => name));
   const toolRuntimes = new Map<string, { generation: number; runtime: ToolRuntime<WorkerToolContext> }>();
   const processes = config.processes ?? new ProcessRunner();
+  const processControl = processController(processes);
   const stdioProcesses = {
     openStdio: (request: StdioSessionRequest): Promise<ManagedStdioSession> => {
       const candidate = processes as WorkerProcessExecutor & { openStdio?: (request: StdioSessionRequest) => Promise<ManagedStdioSession> };
@@ -105,8 +114,9 @@ export async function createWorkerProtocolService(config: WorkerProtocolServiceC
   };
   const instanceId = randomUUID();
   const platform = process.platform === "win32" ? "windows" as const : process.platform === "darwin" ? "darwin" as const : "linux" as const;
+  const optionalCapabilities = processControl ? [...QUEQIAO_WORKER_OPTIONAL_CAPABILITIES] : [];
   const hello = config.workerId
-    ? { protocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, workerId: config.workerId, environmentId: config.environmentId, instanceId, platform, capabilities: [...QUEQIAO_WORKER_OPTIONAL_CAPABILITIES] }
+    ? { protocolVersion: QUEQIAO_WORKER_PROTOCOL_VERSION, workerId: config.workerId, environmentId: config.environmentId, instanceId, platform, capabilities: optionalCapabilities }
     : { protocolVersion: QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION, environmentId: config.environmentId, instanceId, platform, capabilities: [...QUEQIAO_WORKER_LEGACY_CAPABILITIES] };
 
   const toolsFor = (workspaceId: string, state: RequestExtensionState): ToolRuntime<WorkerToolContext> => {
@@ -180,6 +190,22 @@ export async function createWorkerProtocolService(config: WorkerProtocolServiceC
 
   return {
     async execute<T = unknown>(request: WorkerProtocolRequest, signal?: AbortSignal): Promise<T> {
+      if (request.operation === "process-capacity") {
+        if (!processControl) throw new WorkerToolError(404, "process_control_unavailable", "Worker process control is unavailable");
+        return processControl.capacity() as T;
+      }
+      if (request.operation === "process-list") {
+        if (!processControl) throw new WorkerToolError(404, "process_control_unavailable", "Worker process control is unavailable");
+        return { resources: processControl.listTracked(request.workspaceId) } as T;
+      }
+      if (request.operation === "process-stop") {
+        if (!processControl) throw new WorkerToolError(404, "process_control_unavailable", "Worker process control is unavailable");
+        if (!processControl.stopTracked(request.handle, request.workspaceId)) {
+          throw new WorkerToolError(404, "process_handle_not_found", "Tracked Worker process handle is not available");
+        }
+        return { handle: request.handle, stopped: true } as T;
+      }
+
       const state = await acquireState();
       try {
         await refreshCatalog();
