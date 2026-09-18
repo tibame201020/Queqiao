@@ -5,6 +5,9 @@ export type QueqiaoErrorEnvelope = {
   message: string;
   layer: QueqiaoErrorLayer;
   retryable: boolean;
+  capacityClass?: "foreground" | "background";
+  active?: number;
+  limit?: number;
 };
 
 export class QueqiaoError extends Error {
@@ -20,15 +23,30 @@ export class QueqiaoError extends Error {
 }
 
 export class WorkerRemoteError extends QueqiaoError {
-  constructor(readonly status: number, code: string, message: string, retryable = workerErrorIsRetryable(code, status)) {
+  constructor(
+    readonly status: number,
+    code: string,
+    message: string,
+    retryable = workerErrorIsRetryable(code, status),
+    readonly capacityClass?: "foreground" | "background",
+    readonly active?: number,
+    readonly limit?: number,
+  ) {
     super(code, message, "worker", retryable);
     this.name = "WorkerRemoteError";
   }
 }
 
 export class WorkerHttpError extends WorkerRemoteError {
-  constructor(status: number, code: string, message: string) {
-    super(status, code, message);
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    capacityClass?: "foreground" | "background",
+    active?: number,
+    limit?: number,
+  ) {
+    super(status, code, message, workerErrorIsRetryable(code, status), capacityClass, active, limit);
     this.name = "WorkerHttpError";
   }
 }
@@ -39,7 +57,15 @@ function workerErrorIsRetryable(code: string, status: number): boolean {
 
 export function toQueqiaoErrorEnvelope(error: unknown): QueqiaoErrorEnvelope {
   if (error instanceof QueqiaoError) {
-    return { code: error.code, message: error.message, layer: error.layer, retryable: error.retryable };
+    return {
+      code: error.code,
+      message: error.message,
+      layer: error.layer,
+      retryable: error.retryable,
+      ...(error instanceof WorkerRemoteError && error.capacityClass ? { capacityClass: error.capacityClass } : {}),
+      ...(error instanceof WorkerRemoteError && error.active !== undefined ? { active: error.active } : {}),
+      ...(error instanceof WorkerRemoteError && error.limit !== undefined ? { limit: error.limit } : {}),
+    };
   }
   return {
     code: "internal_error",

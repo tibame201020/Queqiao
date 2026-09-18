@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { ProcessRunner } from "@queqiao/process-runtime";
 import { createWorkerProtocolService } from "./worker-protocol-service.js";
 
 let temporary: string | undefined;
@@ -22,7 +23,7 @@ describe("transport-neutral Worker Protocol service", () => {
     });
 
     await expect(service.execute({ operation: "health" })).resolves.toEqual({ ok: true, service: "queqiao-worker", environmentId: "linux" });
-    await expect(service.execute({ operation: "hello" })).resolves.toMatchObject({ protocolVersion: "3.0", workerId, environmentId: "linux", capabilities: [] });
+    await expect(service.execute({ operation: "hello" })).resolves.toMatchObject({ protocolVersion: "3.0", workerId, environmentId: "linux", capabilities: ["process-control-v1"] });
     await expect(service.execute({ operation: "list-workspaces" })).resolves.toMatchObject({
       environmentId: "linux",
       workspaces: [{ workspaceId: "one", displayName: "One", root: temporary }],
@@ -124,4 +125,35 @@ it("audits Extension call identity without persisting capability arguments", asy
     }),
   ]));
   expect(JSON.stringify(events)).not.toContain("must-not-be-audited");
+});
+
+
+it("keeps process diagnostics and recovery available while both process pools are saturated", async () => {
+  temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-process-control-"));
+  const processes = new ProcessRunner(1);
+  const service = await createWorkerProtocolService({
+    workerId: "11111111-1111-4111-8111-111111111111",
+    environmentId: "linux",
+    workspaces: [{ id: "one", displayName: "One", root: temporary }],
+    processes,
+  });
+  await processes.start({ executable: path.basename(process.execPath), args: ["-e", "setInterval(()=>{},1000)"], cwd: temporary, workspaceId: "one", timeoutMs: 2000 });
+  await processes.openStdio({ executable: path.basename(process.execPath), args: ["-e", "setInterval(()=>{},1000)"], cwd: temporary, workspaceId: "one", timeoutMs: null });
+
+  await expect(service.execute({ operation: "process-capacity" })).resolves.toEqual({
+    foreground: { active: 1, limit: 1 },
+    background: { active: 1, limit: 1 },
+    asyncChildren: 1,
+    stdioSessions: 1,
+  });
+  const listed = await service.execute<{ resources: Array<{ handle: string; kind: "async" | "stdio" }> }>({ operation: "process-list" });
+  expect(listed.resources).toHaveLength(2);
+
+  for (const resource of listed.resources) {
+    await expect(service.execute({ operation: "process-stop", handle: resource.handle })).resolves.toEqual({ handle: resource.handle, stopped: true });
+  }
+  const deadline = Date.now() + 2000;
+  while (processes.activeCount() !== 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(processes.activeCount()).toBe(0);
+  await expect(service.execute({ operation: "process-stop", handle: "00000000-0000-4000-8000-000000000000" })).rejects.toMatchObject({ status: 404, code: "process_handle_not_found" });
 });

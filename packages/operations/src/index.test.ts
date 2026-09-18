@@ -67,7 +67,7 @@ describe("deployment manifest fingerprint", () => {
     expect(revision5WorkspaceSchema.properties ?? {}).not.toHaveProperty("workspaceId");
 
     const state = diagnostics();
-    expect(QUEQIAO_CORE_MANIFEST_REVISION).toBe(9);
+    expect(QUEQIAO_CORE_MANIFEST_REVISION).toBe(10);
     expect(state.deploymentManifestFingerprint).not.toBe(revision4Fingerprint);
     expect(state.deploymentManifestFingerprint).not.toBe(revision5Fingerprint);
     const manifest = buildDeploymentManifest({ coreManifestRevision: QUEQIAO_CORE_MANIFEST_REVISION, coreTools: CORE_PUBLIC_TOOLS, extensions: [] });
@@ -140,7 +140,7 @@ describe("composition diagnostics", () => {
     const state = diagnostics([extension]);
     const publicState = publicOperationsProjection(state);
     expect(state.extensions[0]).toMatchObject({ id: "dev.queqiao.reader", activation: { kind: "workspaces", workspaceIds: ["alpha"] }, loadState: "not_observed" });
-    expect(publicState).toEqual({ coreManifestRevision: 9, deploymentManifestFingerprint: state.deploymentManifestFingerprint, publicToolCount: 12, workerProtocolVersion: "2.0", supportedMcpProtocolVersions: ["2026-07-28", "2025-11-25"] });
+    expect(publicState).toEqual({ coreManifestRevision: 10, deploymentManifestFingerprint: state.deploymentManifestFingerprint, publicToolCount: CORE_PUBLIC_TOOLS.length + 1, workerProtocolVersion: "2.0", supportedMcpProtocolVersions: ["2026-07-28", "2025-11-25"] });
     expect(JSON.stringify(publicState)).not.toContain("dev.queqiao.reader");
     expect(JSON.stringify(publicState)).not.toContain("alpha");
   });

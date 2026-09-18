@@ -15,7 +15,7 @@ export const QUEQIAO_WORKER_HTTP_API_PREFIX = "/v1" as const;
 // Protocol 3.0 owns mandatory functionality in the protocol version itself;
 // capabilities are reserved for optional Worker-native operations.
 export const QUEQIAO_WORKER_LEGACY_CAPABILITIES = ["workspace-routing", "tool-invocation", "async-process-v1"] as const;
-export const QUEQIAO_WORKER_OPTIONAL_CAPABILITIES = [] as const;
+export const QUEQIAO_WORKER_OPTIONAL_CAPABILITIES = ["process-control-v1"] as const;
 // Compatibility export retained during the rolling-upgrade window. New code must
 // use QUEQIAO_WORKER_LEGACY_CAPABILITIES or QUEQIAO_WORKER_OPTIONAL_CAPABILITIES explicitly.
 export const QUEQIAO_WORKER_CAPABILITIES = QUEQIAO_WORKER_LEGACY_CAPABILITIES;
@@ -49,12 +49,41 @@ export const workerShellResultSchema = z.union([
   workerAsyncProcessResultSchema.extend({ shell: z.string().min(1) }),
 ]);
 
+export const workerProcessCapacityClassSchema = z.enum(["foreground", "background"]);
+export const workerProcessCapacitySchema = z.object({
+  foreground: z.object({ active: z.number().int().nonnegative(), limit: z.number().int().positive() }).strict(),
+  background: z.object({ active: z.number().int().nonnegative(), limit: z.number().int().positive() }).strict(),
+  asyncChildren: z.number().int().nonnegative(),
+  stdioSessions: z.number().int().nonnegative(),
+}).strict();
+export const workerTrackedProcessSchema = z.object({
+  handle: z.uuid(),
+  kind: z.enum(["async", "stdio"]),
+  pid: z.number().int().positive(),
+  executable: z.string().min(1).max(128),
+  workspaceId: z.string().min(1).max(64).optional(),
+  startedAt: z.string().datetime({ offset: true }),
+  timeoutMs: z.number().int().positive().nullable(),
+  capacityClass: workerProcessCapacityClassSchema,
+}).strict();
+export const workerProcessListSchema = z.object({
+  resources: z.array(workerTrackedProcessSchema).max(2048),
+}).strict();
+export const workerProcessStopSchema = z.object({
+  handle: z.uuid(),
+  stopped: z.literal(true),
+}).strict();
+
 export type WorkerHelloV2 = z.infer<typeof workerHelloV2Schema>;
 export type WorkerHelloV3 = z.infer<typeof workerHelloV3Schema>;
 export type WorkerHello = z.infer<typeof workerHelloSchema>;
 export type WorkerProcessExecutionMode = z.infer<typeof workerProcessExecutionModeSchema>;
 export type WorkerRunResult = z.infer<typeof workerRunResultSchema>;
 export type WorkerShellResult = z.infer<typeof workerShellResultSchema>;
+export type WorkerProcessCapacity = z.infer<typeof workerProcessCapacitySchema>;
+export type WorkerTrackedProcess = z.infer<typeof workerTrackedProcessSchema>;
+export type WorkerProcessList = z.infer<typeof workerProcessListSchema>;
+export type WorkerProcessStop = z.infer<typeof workerProcessStopSchema>;
 export type WorkerToolInvocationResponse<T = unknown> = { result: T };
 
 export const workerProtocolRequestSchema = z.discriminatedUnion("operation", [
@@ -65,6 +94,16 @@ export const workerProtocolRequestSchema = z.discriminatedUnion("operation", [
     operation: z.literal("workspace-info"),
     workspaceId: z.string().min(1).max(64),
     tool: z.enum(["workspace_info", "open_workspace"]),
+  }).strict(),
+  z.object({ operation: z.literal("process-capacity") }).strict(),
+  z.object({
+    operation: z.literal("process-list"),
+    workspaceId: z.string().min(1).max(64).optional(),
+  }).strict(),
+  z.object({
+    operation: z.literal("process-stop"),
+    handle: z.uuid(),
+    workspaceId: z.string().min(1).max(64).optional(),
   }).strict(),
   z.object({
     operation: z.literal("invoke-tool"),
@@ -79,6 +118,9 @@ const workerSessionErrorSchema = z.object({
   message: z.string().min(1).max(4096),
   status: z.number().int().min(400).max(599).optional(),
   retryable: z.boolean().optional(),
+  capacityClass: workerProcessCapacityClassSchema.optional(),
+  active: z.number().int().nonnegative().optional(),
+  limit: z.number().int().positive().optional(),
 }).strict();
 
 export const workerSessionConnectFrameSchema = z.object({

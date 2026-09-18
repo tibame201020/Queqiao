@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, realpath, stat } from "node:fs/promises";
 import path from "node:path";
@@ -14,6 +15,7 @@ type ProcessBaseRequest = {
   executable: string;
   args: readonly string[];
   cwd: string;
+  workspaceId?: string;
   signal?: AbortSignal;
 };
 
@@ -73,9 +75,32 @@ export type ManagedStdioSession = {
 };
 
 export type ProcessCapacityClass = "foreground" | "background";
+export type TrackedProcessKind = "async" | "stdio";
+
+export type ProcessCapacitySnapshot = {
+  foreground: { active: number; limit: number };
+  background: { active: number; limit: number };
+  asyncChildren: number;
+  stdioSessions: number;
+};
+
+export type TrackedProcessInfo = {
+  handle: string;
+  kind: TrackedProcessKind;
+  pid: number;
+  executable: string;
+  workspaceId?: string;
+  startedAt: string;
+  timeoutMs: number | null;
+  capacityClass: ProcessCapacityClass;
+};
 
 export class ProcessCapacityError extends Error {
-  constructor(readonly capacityClass: ProcessCapacityClass = "foreground") {
+  constructor(
+    readonly capacityClass: ProcessCapacityClass = "foreground",
+    readonly active?: number,
+    readonly limit?: number,
+  ) {
     super(capacityClass === "foreground" ? "Worker process concurrency limit reached" : "Worker background process concurrency limit reached");
   }
 }
@@ -83,8 +108,8 @@ export class ProcessCapacityError extends Error {
 export class ProcessRunner {
   private foregroundActive = 0;
   private backgroundActive = 0;
-  private readonly asyncChildren = new Map<number, { child: ChildProcess; timer: NodeJS.Timeout }>();
-  private readonly stdioChildren = new Map<number, ChildProcess>();
+  private readonly asyncChildren = new Map<string, { child: ChildProcess; timer: NodeJS.Timeout; info: TrackedProcessInfo }>();
+  private readonly stdioChildren = new Map<string, { child: ChildProcess; info: TrackedProcessInfo }>();
 
   constructor(
     private readonly foregroundConcurrency = DEFAULT_PROCESS_CONCURRENCY,
@@ -100,6 +125,30 @@ export class ProcessRunner {
   backgroundActiveCount(): number { return this.backgroundActive; }
   asyncCount(): number { return this.asyncChildren.size; }
   stdioCount(): number { return this.stdioChildren.size; }
+
+  capacity(): ProcessCapacitySnapshot {
+    return {
+      foreground: { active: this.foregroundActive, limit: this.foregroundConcurrency },
+      background: { active: this.backgroundActive, limit: this.backgroundConcurrency },
+      asyncChildren: this.asyncChildren.size,
+      stdioSessions: this.stdioChildren.size,
+    };
+  }
+
+  listTracked(workspaceId?: string): TrackedProcessInfo[] {
+    return [...this.asyncChildren.values(), ...this.stdioChildren.values()]
+      .map(({ info }) => ({ ...info }))
+      .filter((info) => !workspaceId || info.workspaceId === workspaceId)
+      .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+  }
+
+  stopTracked(handle: string, workspaceId?: string): boolean {
+    const tracked = this.asyncChildren.get(handle) ?? this.stdioChildren.get(handle);
+    if (!tracked) return false;
+    if (workspaceId && tracked.info.workspaceId !== workspaceId) return false;
+    terminateTree(tracked.child);
+    return true;
+  }
 
   async run(request: ProcessRequest): Promise<ProcessResult> {
     const prepared = await this.prepare(request);
@@ -148,7 +197,7 @@ export class ProcessRunner {
   /** Terminate tracked process trees during an orderly Worker shutdown. */
   shutdown(): void {
     for (const { child } of this.asyncChildren.values()) terminateTree(child);
-    for (const child of this.stdioChildren.values()) terminateTree(child);
+    for (const { child } of this.stdioChildren.values()) terminateTree(child);
   }
 
   private async prepareBase<T extends ProcessBaseRequest>(request: T): Promise<T & { executable: string }> {
@@ -177,7 +226,9 @@ export class ProcessRunner {
   }
 
   private acquireForeground(): void {
-    if (this.foregroundActive >= this.foregroundConcurrency) throw new ProcessCapacityError("foreground");
+    if (this.foregroundActive >= this.foregroundConcurrency) {
+      throw new ProcessCapacityError("foreground", this.foregroundActive, this.foregroundConcurrency);
+    }
     this.foregroundActive += 1;
   }
 
@@ -186,7 +237,9 @@ export class ProcessRunner {
   }
 
   private acquireBackground(): void {
-    if (this.backgroundActive >= this.backgroundConcurrency) throw new ProcessCapacityError("background");
+    if (this.backgroundActive >= this.backgroundConcurrency) {
+      throw new ProcessCapacityError("background", this.backgroundActive, this.backgroundConcurrency);
+    }
     this.backgroundActive += 1;
   }
 
@@ -247,6 +300,7 @@ export class ProcessRunner {
       const child = spawnNative(request, ["ignore", "ignore", "ignore"]);
       let accepted = false;
       let settled = false;
+      let handle: string | undefined;
       let preAcceptanceFailure: unknown;
 
       const cleanupPreAcceptance = () => request.signal?.removeEventListener("abort", onAbort);
@@ -277,8 +331,19 @@ export class ProcessRunner {
         settled = true;
         cleanupPreAcceptance();
         const pid = child.pid;
+        handle = randomUUID();
         const timer = setTimeout(() => terminateTree(child), request.timeoutMs);
-        this.asyncChildren.set(pid, { child, timer });
+        const info: TrackedProcessInfo = {
+          handle,
+          kind: "async",
+          pid,
+          executable: path.basename(request.executable),
+          ...(request.workspaceId ? { workspaceId: request.workspaceId } : {}),
+          startedAt: startedAt.toISOString(),
+          timeoutMs: request.timeoutMs,
+          capacityClass: "background",
+        };
+        this.asyncChildren.set(handle, { child, timer, info });
         resolve({ pid, startedAt: startedAt.toISOString(), timeoutMs: request.timeoutMs, stdout: "discarded", stderr: "discarded" });
       });
       child.once("close", () => {
@@ -290,10 +355,10 @@ export class ProcessRunner {
           }
           return;
         }
-        const tracked = child.pid ? this.asyncChildren.get(child.pid) : undefined;
+        const tracked = handle ? this.asyncChildren.get(handle) : undefined;
         if (tracked) {
           clearTimeout(tracked.timer);
-          this.asyncChildren.delete(child.pid!);
+          this.asyncChildren.delete(handle!);
         }
         this.releaseBackground();
       });
@@ -310,6 +375,7 @@ export class ProcessRunner {
       const waiters: Array<{ resolve(event: ProcessStreamEvent): void; reject(error: Error): void }> = [];
       let outputBytes = 0;
       let accepted = false;
+      let handle: string | undefined;
       let openSettled = false;
       let closeSettled = false;
       let timedOut = false;
@@ -355,7 +421,7 @@ export class ProcessRunner {
         terminate();
       };
       const releaseTracked = () => {
-        if (child.pid) this.stdioChildren.delete(child.pid);
+        if (handle) this.stdioChildren.delete(handle);
         this.releaseForeground();
       };
       const settleClose = (exitCode: number | null, signal: NodeJS.Signals | null) => {
@@ -396,7 +462,18 @@ export class ProcessRunner {
         }
         accepted = true;
         openSettled = true;
-        this.stdioChildren.set(child.pid, child);
+        handle = randomUUID();
+        const info: TrackedProcessInfo = {
+          handle,
+          kind: "stdio",
+          pid: child.pid,
+          executable: path.basename(request.executable),
+          ...(request.workspaceId ? { workspaceId: request.workspaceId } : {}),
+          startedAt: new Date(startedAt).toISOString(),
+          timeoutMs: request.timeoutMs,
+          capacityClass: "foreground",
+        };
+        this.stdioChildren.set(handle, { child, info });
         if (request.timeoutMs !== null) timer = setTimeout(() => { timedOut = true; terminate(); }, request.timeoutMs);
         const session: ManagedStdioSession = {
           pid: child.pid,
