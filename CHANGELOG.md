@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.15 - 2026-09-18
+
 - Adds Worker-native process capacity diagnostics and opaque-handle recovery controls, including foreground/background active/limit counts and bounded async/stdio metadata without exposing arbitrary PID termination; structured capacity metadata is preserved across HTTP and reverse Worker transports.
 - Separates bounded foreground process capacity from async background capacity so accepted long-running async jobs cannot starve synchronous `run` / `shell` control work; both pools remain independently bounded and lifecycle-managed.
 
