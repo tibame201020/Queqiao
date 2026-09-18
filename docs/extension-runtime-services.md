@@ -60,13 +60,23 @@ The Worker remains authoritative for:
 
 - executable declaration and native PATH resolution;
 - Workspace cwd containment, including symlink/junction escape rejection;
-- the shared Worker process concurrency limit for the entire session lifetime;
+- bounded Worker foreground process capacity for the entire managed stdio session lifetime;
 - explicit numeric session timeout when configured;
 - explicit session cancellation;
 - bounded output and bounded individual stdin writes;
 - process-tree termination and Worker shutdown cleanup.
 
 The returned object is a managed process session, not an unrestricted Node `ChildProcess` and not a durable Queqiao Job.
+
+### Capacity diagnostics and recovery
+
+Worker-managed async processes and stdio sessions are tracked with opaque Worker-owned handles. Public MCP recovery remains Workspace-scoped:
+
+- `process_capacity` reports foreground/background active and limit counts plus managed async/stdio totals;
+- `process_list` returns bounded metadata for tracked resources in the selected Workspace;
+- `process_stop` accepts only an opaque handle returned for a tracked resource in that Workspace.
+
+The recovery path operates directly on Worker-owned tracking state: it does not launch a helper process and does not accept an arbitrary OS PID. Therefore diagnostics and stopping a tracked resource remain available when either bounded process pool is saturated.
 
 ## Outbound HTTP
 
@@ -117,6 +127,7 @@ Important Worker errors include:
 
 | Code | Meaning |
 | --- | --- |
+| `process_capacity` | A bounded foreground or background process pool is full; structured errors include the capacity class and, when available, active/limit counts. |
 | `extension_process_denied` | Executable is not declared by the owning Extension manifest. |
 | `extension_network_denied` | HTTP origin is not declared by the owning Extension manifest. |
 | `extension_runtime_unavailable` | The Worker process executor does not provide managed stdio. |

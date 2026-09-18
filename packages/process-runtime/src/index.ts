@@ -98,8 +98,8 @@ export type TrackedProcessInfo = {
 export class ProcessCapacityError extends Error {
   constructor(
     readonly capacityClass: ProcessCapacityClass = "foreground",
-    readonly active = 0,
-    readonly limit = 0,
+    readonly active?: number,
+    readonly limit?: number,
   ) {
     super(capacityClass === "foreground" ? "Worker process concurrency limit reached" : "Worker background process concurrency limit reached");
   }
