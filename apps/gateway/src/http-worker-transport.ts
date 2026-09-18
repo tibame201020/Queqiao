@@ -23,12 +23,21 @@ export class HttpWorkerTransport implements WorkerTransport {
         ...init?.headers,
       },
     });
-    const data = await response.json() as T & { error?: string; message?: string };
+    const data = await response.json() as T & {
+      error?: string;
+      message?: string;
+      capacityClass?: "foreground" | "background";
+      active?: number;
+      limit?: number;
+    };
     if (!response.ok) {
       throw new WorkerHttpError(
         response.status,
         data.error || "worker_error",
         data.message || `Worker returned HTTP ${response.status}`,
+        data.capacityClass,
+        data.active,
+        data.limit,
       );
     }
     return data;
@@ -44,6 +53,17 @@ export class HttpWorkerTransport implements WorkerTransport {
         return { pathname: `${QUEQIAO_WORKER_HTTP_API_PREFIX}/workspaces` };
       case "workspace-info":
         return { pathname: `${QUEQIAO_WORKER_HTTP_API_PREFIX}/workspaces/${encodeURIComponent(request.workspaceId)}?tool=${request.tool}` };
+      case "process-capacity":
+        return { pathname: `${QUEQIAO_WORKER_HTTP_API_PREFIX}/processes/capacity` };
+      case "process-list":
+        return {
+          pathname: `${QUEQIAO_WORKER_HTTP_API_PREFIX}/processes${request.workspaceId ? `?workspaceId=${encodeURIComponent(request.workspaceId)}` : ""}`,
+        };
+      case "process-stop":
+        return {
+          pathname: `${QUEQIAO_WORKER_HTTP_API_PREFIX}/processes/${encodeURIComponent(request.handle)}/stop`,
+          init: { method: "POST", body: JSON.stringify(request.workspaceId ? { workspaceId: request.workspaceId } : {}) },
+        };
       case "invoke-tool":
         return {
           pathname: `${QUEQIAO_WORKER_HTTP_API_PREFIX}/tools/${encodeURIComponent(request.toolName)}`,

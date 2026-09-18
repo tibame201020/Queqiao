@@ -3,7 +3,7 @@ import { MAX_TEXT_MUTATION_BYTES, extensionIdSchema, processExecutionModeSchema,
 import { MAX_PROCESS_TIMEOUT_MS } from "@queqiao/process-runtime";
 import type { ToolAnnotations, ToolCapability, ToolRisk } from "@queqiao/contracts";
 
-export const QUEQIAO_CORE_MANIFEST_REVISION = 9 as const;
+export const QUEQIAO_CORE_MANIFEST_REVISION = 10 as const;
 
 export type CorePublicToolContract = {
   name: string;
@@ -40,6 +40,25 @@ export const CORE_PUBLIC_TOOL_CONTRACTS = {
     name: "list_workspaces", title: "List configured workspaces",
     description: "List only explicitly configured workspaces across Queqiao environments, including environment availability and safe deployment attestation.",
     inputSchema: z.object({}), requiredCapabilities: ["workspace:read"], risk: "read", annotations: readAnnotations,
+  },
+  process_capacity: {
+    name: "process_capacity", title: "Worker process capacity",
+    description: "Show bounded foreground/background process capacity and managed async/stdio usage for the Worker that owns a Workspace.",
+    inputSchema: z.object({ workspaceId: z.string().min(1).max(64).optional(), transport: workerTransportHintSchema }),
+    requiredCapabilities: ["workspace:read"], risk: "read", annotations: readAnnotations,
+  },
+  process_list: {
+    name: "process_list", title: "List managed Worker processes",
+    description: "List bounded metadata for Worker-managed async and stdio resources in the selected Workspace. OS processes outside Queqiao are not exposed.",
+    inputSchema: z.object({ workspaceId: z.string().min(1).max(64).optional(), transport: workerTransportHintSchema }),
+    requiredCapabilities: ["workspace:read"], risk: "read", annotations: readAnnotations,
+  },
+  process_stop: {
+    name: "process_stop", title: "Stop managed Worker process",
+    description: "Stop one Worker-managed async or stdio resource by its opaque Queqiao handle. Arbitrary OS PIDs are not accepted.",
+    inputSchema: z.object({ workspaceId: z.string().min(1).max(64).optional(), transport: workerTransportHintSchema, handle: z.uuid() }),
+    requiredCapabilities: ["workspace:exec"], risk: "execute",
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
   },
   open_workspace: {
     name: "open_workspace", title: "Open configured workspace",
@@ -105,5 +124,5 @@ export const CORE_PUBLIC_TOOL_CONTRACTS = {
 } as const satisfies Record<string, CorePublicToolContract>;
 
 export type CorePublicToolName = keyof typeof CORE_PUBLIC_TOOL_CONTRACTS;
-export const CORE_PUBLIC_TOOL_ORDER = ["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "shell", "extension", "list_directory", "search_text"] as const satisfies readonly CorePublicToolName[];
+export const CORE_PUBLIC_TOOL_ORDER = ["workspace_info", "read_file", "list_workspaces", "open_workspace", "write_file", "edit_file", "run", "shell", "extension", "list_directory", "search_text", "process_capacity", "process_list", "process_stop"] as const satisfies readonly CorePublicToolName[];
 export const CORE_PUBLIC_TOOLS: readonly CorePublicToolContract[] = Object.freeze(CORE_PUBLIC_TOOL_ORDER.map((name) => CORE_PUBLIC_TOOL_CONTRACTS[name]));

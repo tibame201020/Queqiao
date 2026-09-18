@@ -105,6 +105,42 @@ export const coreWorkspaceTools: QueqiaoExtension<GatewayToolContext> = {
     });
 
     api.registerTool({
+      ...CORE_PUBLIC_TOOL_CONTRACTS.process_capacity,
+      async execute(input, context) {
+        requireHandshake(context);
+        const { workspaceId, transport } = input as { workspaceId?: string; transport?: string };
+        const selected = await selectWorkspace(context, workspaceId);
+        await context.workers.requireTool(selected, "workspace_info");
+        const routed = await context.workers.processCapacity({ workspaceId: selected, ...(transport ? { transport } : {}) });
+        return routedToolValue({ workspaceId: selected, ...routed.value }, routed.routing);
+      },
+    });
+
+    api.registerTool({
+      ...CORE_PUBLIC_TOOL_CONTRACTS.process_list,
+      async execute(input, context) {
+        requireHandshake(context);
+        const { workspaceId, transport } = input as { workspaceId?: string; transport?: string };
+        const selected = await selectWorkspace(context, workspaceId);
+        await context.workers.requireTool(selected, "workspace_info");
+        const routed = await context.workers.processList({ workspaceId: selected, ...(transport ? { transport } : {}) });
+        return routedToolValue({ workspaceId: selected, ...routed.value }, routed.routing);
+      },
+    });
+
+    api.registerTool({
+      ...CORE_PUBLIC_TOOL_CONTRACTS.process_stop,
+      async execute(input, context) {
+        requireHandshake(context);
+        const { workspaceId, transport, handle } = input as { workspaceId?: string; transport?: string; handle: string };
+        const selected = await selectWorkspace(context, workspaceId);
+        await context.workers.requireTool(selected, "run");
+        const routed = await context.workers.processStop({ workspaceId: selected, handle, ...(transport ? { transport } : {}) });
+        return routedToolValue({ workspaceId: selected, ...routed.value }, routed.routing);
+      },
+    });
+
+    api.registerTool({
       ...CORE_PUBLIC_TOOL_CONTRACTS.open_workspace,
       async execute(input, context) {
         requireHandshake(context);

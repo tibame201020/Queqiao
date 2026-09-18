@@ -265,6 +265,18 @@ export class WorkerRegistry {
     return { value: { ...info, transports: this.transportStates(route), routing: this.routingState(route) }, routing: selection.routing };
   }
 
+  async processCapacity(input: { workspaceId: string; transport?: WorkerTransportType }) {
+    return this.executeRouted(input.workspaceId, input.transport, (worker) => worker.processCapacity());
+  }
+
+  async processList(input: { workspaceId: string; transport?: WorkerTransportType }) {
+    return this.executeRouted(input.workspaceId, input.transport, (worker) => worker.processList(input.workspaceId));
+  }
+
+  async processStop(input: { workspaceId: string; handle: string; transport?: WorkerTransportType }) {
+    return this.executeRouted(input.workspaceId, input.transport, (worker) => worker.processStop(input.handle, input.workspaceId));
+  }
+
   async readFile(input: { workspaceId: string; path: string; offset: number; limit: number; transport?: WorkerTransportType }) {
     const { transport, ...request } = input;
     return this.executeRouted(input.workspaceId, transport, (worker) => worker.readFile(request));

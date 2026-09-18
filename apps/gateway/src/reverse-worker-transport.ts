@@ -108,6 +108,9 @@ export class ReverseWorkerTransport implements WorkerTransport {
       frame.error.code,
       frame.error.message,
       frame.error.retryable,
+      frame.error.capacityClass,
+      frame.error.active,
+      frame.error.limit,
     ));
   }
 

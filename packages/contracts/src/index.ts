@@ -73,6 +73,9 @@ export const publicToolNameSchema = z.enum([
   "apply_patch",
   "run",
   "shell",
+  "process_capacity",
+  "process_list",
+  "process_stop",
 ]);
 
 export const workspaceDescriptorSchema = z.object({

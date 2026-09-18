@@ -6,9 +6,15 @@ import {
   QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION,
   QUEQIAO_WORKER_PROTOCOL_VERSION,
   workerHelloSchema,
+  workerProcessCapacitySchema,
+  workerProcessListSchema,
+  workerProcessStopSchema,
   workerRunResultSchema,
   workerShellResultSchema,
   type WorkerHello,
+  type WorkerProcessCapacity,
+  type WorkerProcessList,
+  type WorkerProcessStop,
   type WorkerRunResult,
   type WorkerShellResult,
   type WorkerToolInvocationResponse,
@@ -95,6 +101,13 @@ export class WorkerClient {
     return this.handshakePromise;
   }
 
+  private async requireOptionalCapability(capability: string): Promise<void> {
+    const hello = await this.handshake();
+    if (!hello.capabilities.includes(capability)) {
+      throw new WorkerRemoteError(404, "worker_capability_missing", `Worker capability is unavailable: ${capability}`, false);
+    }
+  }
+
   async probeLiveness(timeoutMs = 3_000): Promise<boolean> {
     try {
       const health = await this.transport.execute<{ ok?: unknown }>({ operation: "health" }, AbortSignal.timeout(timeoutMs));
@@ -122,6 +135,21 @@ export class WorkerClient {
   async invokeTool<T>(toolName: string, input: unknown, signal?: AbortSignal) {
     await this.handshake();
     return this.executeTracked<WorkerToolInvocationResponse<T>>({ operation: "invoke-tool", toolName, input }, signal).then(({ result }) => result);
+  }
+
+  async processCapacity(): Promise<WorkerProcessCapacity> {
+    await this.requireOptionalCapability("process-control-v1");
+    return workerProcessCapacitySchema.parse(await this.executeTracked<unknown>({ operation: "process-capacity" }));
+  }
+
+  async processList(workspaceId?: string): Promise<WorkerProcessList> {
+    await this.requireOptionalCapability("process-control-v1");
+    return workerProcessListSchema.parse(await this.executeTracked<unknown>({ operation: "process-list", ...(workspaceId ? { workspaceId } : {}) }));
+  }
+
+  async processStop(handle: string, workspaceId?: string): Promise<WorkerProcessStop> {
+    await this.requireOptionalCapability("process-control-v1");
+    return workerProcessStopSchema.parse(await this.executeTracked<unknown>({ operation: "process-stop", handle, ...(workspaceId ? { workspaceId } : {}) }));
   }
 
   async readFile(input: { workspaceId: string; path: string; offset: number; limit: number }) {
