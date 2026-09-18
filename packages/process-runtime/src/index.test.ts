@@ -183,4 +183,69 @@ describe("ProcessRunner", () => {
     await expect(runner.run({ executable: nodeExecutable, args: [], cwd: temporary })).rejects.toBeInstanceOf(ProcessCapacityError);
     await active;
   });
+
+  it("exposes bounded process diagnostics and stops only Worker-owned opaque handles", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-process-"));
+    const runner = new ProcessRunner(1);
+    const asyncResult = await runner.start({
+      executable: nodeExecutable,
+      args: ["-e", "setInterval(()=>{},1000)"],
+      cwd: temporary,
+      workspaceId: "one",
+      timeoutMs: 2000,
+    });
+    const session = await runner.openStdio({
+      executable: nodeExecutable,
+      args: ["-e", "setInterval(()=>{},1000)"],
+      cwd: temporary,
+      workspaceId: "one",
+      timeoutMs: null,
+    });
+
+    expect(runner.capacity()).toEqual({
+      foreground: { active: 1, limit: 1 },
+      background: { active: 1, limit: 1 },
+      asyncChildren: 1,
+      stdioSessions: 1,
+    });
+    const resources = runner.listTracked();
+    expect(resources).toHaveLength(2);
+    expect(resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "async", pid: asyncResult.pid, executable: nodeExecutable, workspaceId: "one", capacityClass: "background", timeoutMs: 2000 }),
+      expect.objectContaining({ kind: "stdio", pid: session.pid, executable: nodeExecutable, workspaceId: "one", capacityClass: "foreground", timeoutMs: null }),
+    ]));
+    const asyncResource = resources.find((resource) => resource.kind === "async")!;
+    const stdioResource = resources.find((resource) => resource.kind === "stdio")!;
+    expect(asyncResource.handle).not.toBe(String(asyncResult.pid));
+    expect(stdioResource.handle).not.toBe(String(session.pid));
+    expect(runner.stopTracked(String(asyncResult.pid))).toBe(false);
+
+    expect(runner.stopTracked(stdioResource.handle)).toBe(true);
+    await waitFor(() => runner.foregroundActiveCount() === 0);
+    expect(runner.stopTracked(asyncResource.handle)).toBe(true);
+    await waitFor(() => runner.activeCount() === 0);
+    await session.closed;
+  });
+
+  it("reports the exhausted capacity class with active and limit counts", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-process-"));
+    const runner = new ProcessRunner(1);
+    const active = runner.run({ executable: nodeExecutable, args: ["-e", "setTimeout(()=>{},300)"], cwd: temporary });
+    await waitFor(() => runner.foregroundActiveCount() === 1);
+    await expect(runner.run({ executable: nodeExecutable, args: [], cwd: temporary })).rejects.toMatchObject({
+      capacityClass: "foreground",
+      active: 1,
+      limit: 1,
+    });
+    await active;
+
+    await runner.start({ executable: nodeExecutable, args: ["-e", "setTimeout(()=>{},300)"], cwd: temporary, timeoutMs: 1000 });
+    await expect(runner.start({ executable: nodeExecutable, args: ["-e", "0"], cwd: temporary })).rejects.toMatchObject({
+      capacityClass: "background",
+      active: 1,
+      limit: 1,
+    });
+    await waitFor(() => runner.backgroundActiveCount() === 0);
+  });
+
 });

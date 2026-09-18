@@ -95,4 +95,26 @@ describe("WorkerClient rolling upgrade", () => {
     await expect(client.listWorkspaces()).resolves.toMatchObject({ environmentId: "windows" });
     expect(states.at(-1)).toBe(true);
   });
+
+  it("preserves actionable process capacity details from HTTP Worker errors", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(membershipHello), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: "process_capacity",
+        message: "Worker background process concurrency limit reached",
+        capacityClass: "background",
+        active: 2,
+        limit: 2,
+      }), { status: 429, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(new WorkerClient(membershipConfig).run({ workspaceId: "one", executable: "node", args: [], cwd: ".", timeoutMs: 1000, mode: "async" })).rejects.toMatchObject({
+      code: "process_capacity",
+      layer: "worker",
+      retryable: true,
+      capacityClass: "background",
+      active: 2,
+      limit: 2,
+    });
+  });
+
 });

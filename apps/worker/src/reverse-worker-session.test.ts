@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WorkerProtocolRequest, WorkerSessionFrame } from "@queqiao/worker-protocol";
+import { ProcessCapacityError } from "@queqiao/process-runtime";
 import { ReverseWorkerSession } from "./reverse-worker-session.js";
 
 const hello = {
@@ -71,4 +72,29 @@ describe("Worker reverse session", () => {
     const session = new ReverseWorkerSession({ service: runtime, send: () => {} });
     await expect(session.open()).rejects.toThrow(/Protocol 3.0/i);
   });
+
+  it("preserves structured process capacity metadata in reverse-session errors", async () => {
+    const sent: WorkerSessionFrame[] = [];
+    const runtime = service(async (request) => {
+      if (request.operation === "hello") return hello;
+      throw new ProcessCapacityError("background", 2, 2);
+    });
+    const session = new ReverseWorkerSession({ service: runtime, send: (frame) => sent.push(frame) });
+    await session.open();
+    await session.receive({ kind: "request", requestId: "req-capacity", request: { operation: "health" } });
+    expect(sent[1]).toEqual({
+      kind: "error",
+      requestId: "req-capacity",
+      error: {
+        code: "process_capacity",
+        message: "Worker background process concurrency limit reached",
+        status: 429,
+        retryable: true,
+        capacityClass: "background",
+        active: 2,
+        limit: 2,
+      },
+    });
+  });
+
 });
