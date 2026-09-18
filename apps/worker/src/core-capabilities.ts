@@ -126,7 +126,7 @@ export class WorkerCoreCapabilities {
       throw new WorkerToolError(403, "command_denied", `${input.executable} is not allowed by Workspace command policy`);
     }
     const cwd = await this.#workspace.reader.resolveStrictDirectory(input.cwd);
-    const request = { executable: input.executable, args: input.args, cwd, timeoutMs: input.timeoutMs, ...(this.#signal ? { signal: this.#signal } : {}) };
+    const request = { executable: input.executable, args: input.args, cwd, workspaceId: this.#workspace.config.id, timeoutMs: input.timeoutMs, ...(this.#signal ? { signal: this.#signal } : {}) };
     return input.mode === "async" ? this.#processes.start(request) : this.#processes.run(request);
   }
 
@@ -137,7 +137,7 @@ export class WorkerCoreCapabilities {
     }
     const cwd = await this.#workspace.reader.resolveStrictDirectory(input.cwd);
     const invocation = nativeShellInvocation(input.shell, input.command);
-    const request = { executable: invocation.executable, args: invocation.args, cwd, timeoutMs: input.timeoutMs, ...(this.#signal ? { signal: this.#signal } : {}) };
+    const request = { executable: invocation.executable, args: invocation.args, cwd, workspaceId: this.#workspace.config.id, timeoutMs: input.timeoutMs, ...(this.#signal ? { signal: this.#signal } : {}) };
     return { shell: invocation.name, ...(input.mode === "async" ? await this.#processes.start(request) : await this.#processes.run(request)) };
   }
 }

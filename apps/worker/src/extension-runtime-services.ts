@@ -69,6 +69,7 @@ export class WorkerExtensionRuntimeServices {
       executable: request.executable,
       args: request.args ?? [],
       cwd,
+      workspaceId: this.input.workspace.config.id,
       ...(request.stdoutEncoding ? { stdoutEncoding: request.stdoutEncoding } : {}),
       ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
       ...(request.signal ? { signal: request.signal } : {}),
