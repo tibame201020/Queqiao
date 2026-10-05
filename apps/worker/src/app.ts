@@ -52,8 +52,8 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
       const localAuthorized = safeEqual(presented, local);
       const membershipAuthorized = config.membershipCredentials ? await config.membershipCredentials.accepts(presented) : localAuthorized;
       const controlOnly = req.path.startsWith("/enrollment/reverse-session/") || req.path.startsWith("/enrollment/membership/");
-      const identity = req.path === "/enrollment/identity";
-      if (controlOnly ? !localAuthorized : identity ? !(localAuthorized || membershipAuthorized) : !membershipAuthorized) {
+      const localOrMembership = req.path === "/enrollment/identity" || req.path.startsWith(`${QUEQIAO_WORKER_HTTP_API_PREFIX}/processes`);
+      if (controlOnly ? !localAuthorized : localOrMembership ? !(localAuthorized || membershipAuthorized) : !membershipAuthorized) {
         return res.status(401).json({ error: "unauthorized" });
       }
       next();

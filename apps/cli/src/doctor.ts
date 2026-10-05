@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { listNamedRoleInstances } from "./setup-wizard.js";
 import { readRuntimeConfig, type RuntimeConfig } from "@queqiao/config";
 import {
@@ -8,6 +10,13 @@ import {
   type RuntimeLayout,
   type RuntimeRole,
 } from "@queqiao/platform-paths";
+import {
+  QUEQIAO_WORKER_HTTP_API_PREFIX,
+  workerProcessCapacitySchema,
+  workerProcessListSchema,
+  type WorkerProcessCapacity,
+  type WorkerTrackedProcess,
+} from "@queqiao/worker-protocol";
 import { doctorExtensionHub } from "./extension-cli.js";
 import { runtimeStatus } from "./service-lifecycle.js";
 
@@ -20,6 +29,15 @@ export type GatewayDoctorResult = {
 
 type RuntimeStatusResult = Awaited<ReturnType<typeof runtimeStatus>>;
 
+export type WorkerProcessDoctorResult = {
+  ok: boolean;
+  reachable: boolean;
+  capacity?: WorkerProcessCapacity;
+  resources?: WorkerTrackedProcess[];
+  saturated?: Array<"foreground" | "background">;
+  error?: string;
+};
+
 type DoctorRoleResult = {
   name: string;
   role: RuntimeRole;
@@ -27,6 +45,7 @@ type DoctorRoleResult = {
   configFile: string;
   status?: RuntimeStatusResult;
   routing?: GatewayDoctorResult;
+  processes?: WorkerProcessDoctorResult;
   error?: string;
 };
 
@@ -46,6 +65,7 @@ type DoctorDependencies = {
   resolveNamedLayout?: typeof resolveRuntimeLayoutForNamedRole;
   status?: (configFile: string, layout: RuntimeLayout, role: RuntimeRole, name: string) => Promise<RuntimeStatusResult>;
   extensionDoctor?: (location: RuntimeLayout | string) => Promise<unknown>;
+  workerDiagnostics?: (config: RuntimeConfig) => Promise<WorkerProcessDoctorResult>;
 };
 
 function hasExplicitLayout(env: NodeJS.ProcessEnv): boolean {
@@ -54,6 +74,35 @@ function hasExplicitLayout(env: NodeJS.ProcessEnv): boolean {
 
 async function defaultRoleNames(role: RuntimeRole, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): Promise<string[]> {
   return listNamedRoleInstances(role, env, platform);
+}
+
+export async function doctorWorkerProcesses(config: RuntimeConfig, fetchImpl: typeof fetch = fetch): Promise<WorkerProcessDoctorResult> {
+  if (!config.worker) return { ok: false, reachable: false, error: "Worker is not configured" };
+  let reachable = false;
+  try {
+    const credential = (await readFile(path.resolve(config.worker.tokenFile), "utf8")).trim();
+    if (!credential) throw new Error("Worker credential is empty");
+    const base = `http://127.0.0.1:${config.worker.listen.port}${QUEQIAO_WORKER_HTTP_API_PREFIX}`;
+    const request: RequestInit = {
+      headers: { "x-queqiao-worker-token": credential },
+      signal: AbortSignal.timeout(3000),
+    };
+    const [capacityResponse, listResponse] = await Promise.all([
+      fetchImpl(`${base}/processes/capacity`, request),
+      fetchImpl(`${base}/processes`, request),
+    ]);
+    reachable = true;
+    if (!capacityResponse.ok) throw new Error(`Worker process capacity diagnostics failed (${capacityResponse.status})`);
+    if (!listResponse.ok) throw new Error(`Worker process list diagnostics failed (${listResponse.status})`);
+    const capacity = workerProcessCapacitySchema.parse(await capacityResponse.json());
+    const list = workerProcessListSchema.parse(await listResponse.json());
+    const saturated: Array<"foreground" | "background"> = [];
+    if (capacity.foreground.active >= capacity.foreground.limit) saturated.push("foreground");
+    if (capacity.background.active >= capacity.background.limit) saturated.push("background");
+    return { ok: true, reachable: true, capacity, resources: list.resources, saturated };
+  } catch (error) {
+    return { ok: false, reachable, error: error instanceof Error ? error.message : "Unknown Worker process diagnostics error" };
+  }
 }
 
 export async function doctorGateway(config: RuntimeConfig, fetchImpl: typeof fetch = fetch): Promise<GatewayDoctorResult> {
@@ -76,6 +125,7 @@ export async function doctorQueqiao(hubLocation: RuntimeLayout | string = resolv
   const resolveNamedLayout = dependencies.resolveNamedLayout || ((role, name) => resolveRuntimeLayoutForNamedRole(role, name, env, platform));
   const status = dependencies.status || ((configFile, layout, role, name) => runtimeStatus(configFile, layout, role, name, { fetchImpl: dependencies.fetchImpl || fetch }));
   const extensionDoctor = dependencies.extensionDoctor || doctorExtensionHub;
+  const workerDiagnostics = dependencies.workerDiagnostics || ((config: RuntimeConfig) => doctorWorkerProcesses(config, dependencies.fetchImpl || fetch));
   const roleNames = dependencies.roleNames || ((role) => defaultRoleNames(role, env, platform));
 
   async function inspectRole(role: RuntimeRole, name: string, layout: RuntimeLayout, config: RuntimeConfig): Promise<DoctorRoleResult> {
@@ -86,7 +136,8 @@ export async function doctorQueqiao(hubLocation: RuntimeLayout | string = resolv
       const routing = await doctorGateway(config, dependencies.fetchImpl || fetch);
       return { name, role, ok: runtime.active && routing.ok, configFile: layout.configFile, status: runtime, routing };
     }
-    return { name, role, ok: runtime.active, configFile: layout.configFile, status: runtime };
+    const processes = runtime.active ? await workerDiagnostics(config) : undefined;
+    return { name, role, ok: runtime.active && Boolean(processes?.ok), configFile: layout.configFile, status: runtime, ...(processes ? { processes } : {}) };
   }
 
   const gateways: DoctorRoleResult[] = [];

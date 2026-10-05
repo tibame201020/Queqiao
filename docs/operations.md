@@ -81,6 +81,12 @@ On Windows, named Gateway and Worker layouts live below:
 Linux/WSL use role-scoped XDG paths. Secrets are stored separately from `config.yaml` and
 machine-specific paths are not required inside the source checkout.
 
+## Process diagnostics and recovery
+
+`queqiao doctor` reports each active local Worker's foreground/background capacity and tracked async/stdio resources. A saturated class is shown explicitly so an occupied execution slot can be distinguished from Worker unreachability. Tracked resources expose only Worker-owned recovery handles and bounded metadata; local Worker credentials are never emitted.
+
+Use the public `process_list` and `process_stop` Core tools for Workspace-scoped recovery rather than targeting arbitrary OS PIDs.
+
 ## Audit and observability
 
 Audit records use one shared event contract and local bounded JSONL storage. Query the global,
