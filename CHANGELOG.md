@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Makes npm release success depend on authoritative registry visibility, with cache-bypassed bounded verification and safe handling for versions that npm has accepted into its asynchronous staged-publish queue.
+
 ## 0.9.16 - 2026-10-05
 
 - Adds an opaque Worker-owned recovery handle to accepted async process results and verifies background slot recovery through `process_stop`, without introducing restart-persistent job identity.

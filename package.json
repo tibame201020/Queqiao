@@ -45,6 +45,7 @@
     "test:cli-setup": "vitest run apps/cli/src/enrollment-cli.test.ts apps/cli/src/workspace-cli.test.ts apps/cli/src/setup-wizard.test.ts apps/cli/src/access-configuration.test.ts apps/cli/src/access-configuration-flow.test.ts apps/cli/src/access-profile-store.test.ts apps/cli/src/command-history-input.test.ts apps/cli/src/tui-choice-renderer.test.ts apps/cli/src/tui-multiselect.test.ts apps/cli/src/tui-select.test.ts apps/cli/src/cli-visual-docs.test.ts",
     "security:gate": "npm run typecheck && npm run test:security && npm audit --omit=dev --audit-level=moderate",
     "release:gate": "npm run typecheck && npm test && npm run test:workstation && npm run test:security && npm run test:cluster && npm run dev:workstation:verify -- --smoke && npm run resource:gate && npm audit --omit=dev --audit-level=moderate",
+    "release:verify-registry": "tsx scripts/npm-release-visibility.ts",
     "resource:gate": "npm run build:package && node scripts/resource-safety-baseline.mjs",
     "resource:soak": "npm run build:package && node scripts/resource-safety-baseline.mjs --soak",
     "check": "npm run clean && npm run typecheck && npm test",
