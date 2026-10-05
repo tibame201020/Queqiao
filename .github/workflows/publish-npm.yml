@@ -63,4 +63,33 @@ jobs:
           echo "npm v$npm_version"
           node -e "const [M,m,p]=process.argv[1].split('.').map(Number); if (M < 11 || (M === 11 && (m < 5 || (m === 5 && p < 1)))) process.exit(1)" "$npm_version"
       - name: Publish public package with trusted publishing
-        run: npm publish --provenance --access public --ignore-scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          set +e
+          npm run release:verify-registry -- --exists-only
+          probe_status=$?
+          set -e
+
+          if [ "$probe_status" -eq 0 ]; then
+            echo "Exact package version is already visible; skipping duplicate publish."
+          elif [ "$probe_status" -eq 2 ]; then
+            publish_log="$RUNNER_TEMP/npm-publish.log"
+            set +e
+            npm publish --provenance --access public --ignore-scripts 2>&1 | tee "$publish_log"
+            publish_status=${PIPESTATUS[0]}
+            set -e
+
+            if [ "$publish_status" -ne 0 ]; then
+              if grep -Eqi 'previously staged version|EPUBLISHCONFLICT|Cannot publish over' "$publish_log"; then
+                echo "::warning::npm reports the version is already staged; waiting for registry promotion."
+              else
+                exit "$publish_status"
+              fi
+            fi
+          else
+            exit "$probe_status"
+          fi
+
+          npm run release:verify-registry -- --timeout-ms 600000 --interval-ms 10000
