@@ -16,6 +16,8 @@ const execFileAsync = promisify(execFile);
 const GATEWAY = "accept-gateway";
 const WORKER = "accept-worker";
 const EXTENSION_ID = "dev.queqiao.acceptance";
+const PACKAGED_CLI_PROCESS_TIMEOUT_MS = process.platform === "win32" ? 45_000 : 30_000;
+const MANAGED_RUNTIME_ACCEPTANCE_TIMEOUT_MS = process.platform === "win32" ? 180_000 : 90_000;
 
 const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "version": "packaged-version",
@@ -166,6 +168,7 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       encoding: "utf8",
       windowsHide: true,
       maxBuffer: 8 * 1024 * 1024,
+      timeout: PACKAGED_CLI_PROCESS_TIMEOUT_MS,
     });
     return { stdout, stderr };
   }
@@ -238,7 +241,11 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       await runCli(["gateway", "stop", "--gateway", GATEWAY, "--json"]).catch(() => undefined);
       await runCli(["worker", "stop", "--worker", WORKER, "--json"]).catch(() => undefined);
     }
-    if (root) await rm(root, { recursive: true, force: true });
+    if (root) await rm(root, {
+      recursive: true,
+      force: true,
+      ...(process.platform === "win32" ? { maxRetries: 20, retryDelay: 100 } : {}),
+    });
   });
 
   it("requires every public CLI leaf to name an acceptance scenario", () => {
@@ -482,7 +489,7 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       if (gatewayStarted) await runCli(["gateway", "stop", "--gateway", GATEWAY, "--json"]).catch(() => undefined);
       if (workerStarted) await runCli(["worker", "stop", "--worker", WORKER, "--json"]).catch(() => undefined);
     }
-  }, 90_000);
+  }, MANAGED_RUNTIME_ACCEPTANCE_TIMEOUT_MS);
 
   it("runs both migration dry-runs through the packaged CLI in an isolated default layout", async () => {
     const legacyRepo = path.join(root, "legacy-repo");
