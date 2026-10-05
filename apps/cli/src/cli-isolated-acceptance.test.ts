@@ -151,6 +151,7 @@ describe.sequential("isolated packaged CLI acceptance", () => {
   let env: NodeJS.ProcessEnv;
   let gatewayPort = 0;
   let managementPort = 0;
+  let workerSessionPort = 0;
   let workerPort = 0;
   let packageOutdir = "";
   let cliEntry = "";
@@ -403,7 +404,7 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       const runningWorker = await waitForJson<any>(["worker", "status", "--worker", WORKER, "--json"], (value) => value.active === true && value.managed === true, 30_000);
       expect(runningWorker.pid).toBe(workerStart.pid);
 
-      [gatewayPort, managementPort] = await Promise.all([freePort(), freePort()]);
+      [gatewayPort, managementPort, workerSessionPort] = await Promise.all([freePort(), freePort(), freePort()]);
       await writeFile(gatewayLayout.configFile, serializeRuntimeConfig({
         ...gatewayConfig,
         gateway: {
@@ -411,6 +412,7 @@ describe.sequential("isolated packaged CLI acceptance", () => {
           publicBaseUrl: `http://127.0.0.1:${gatewayPort}/`,
           listen: { ...gatewayConfig.gateway.listen, port: gatewayPort },
           managementListen: { ...gatewayConfig.gateway.managementListen, port: managementPort },
+          workerSessionListen: { host: "127.0.0.1", port: workerSessionPort },
           livenessIntervalMs: 5_000,
         },
       }), "utf8");

@@ -55,6 +55,12 @@ describe("extension config schema", () => {
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, listen: { host: "0.0.0.0", port: 7575 } } })).toThrow();
   });
 
+  it("rejects Gateway listener collisions including the implicit local Worker-session port", () => {
+    const gateway = { publicBaseUrl: "https://queqiao.example/", listen: { host: "127.0.0.1", port: 7575 }, stateDirectory: "state", approvalSecretFile: "approval.secret", jwtSigningSecretFile: "jwt.secret" };
+    expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, managementListen: { host: "127.0.0.1", port: 7573 } } })).toThrow(/Worker session.*Management/i);
+    expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, workerSessionListen: { host: "127.0.0.1", port: 7575 } } })).toThrow(/Worker session.*Gateway/i);
+  });
+
   it("allows a dedicated remote Worker-session listener only with TLS and an advertised host", () => {
     const gateway = { publicBaseUrl: "https://queqiao.example/", listen: { host: "127.0.0.1", port: 7575 }, stateDirectory: "state", approvalSecretFile: "approval.secret", jwtSigningSecretFile: "jwt.secret" };
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, workerSessionListen: { host: "0.0.0.0", port: 7573 } } })).toThrow(/TLS|advertised/i);

@@ -3,7 +3,7 @@ import path from "node:path";
 import { createServer } from "node:net";
 import { hostname as systemHostname, networkInterfaces as systemNetworkInterfaces, type NetworkInterfaceInfo } from "node:os";
 import { cancel, intro, isCancel, outro } from "@clack/prompts";
-import { readRuntimeConfig, readRuntimeConfigForRepair } from "@queqiao/config";
+import { effectiveGatewayWorkerSessionPort, readRuntimeConfig, readRuntimeConfigForRepair } from "@queqiao/config";
 import {
   resolveNamedRoleConfigRoot,
   resolveRuntimeLayoutForNamedRole,
@@ -176,7 +176,8 @@ async function configuredPortReservations(
       if (role === "gateway" && runtime.gateway) {
         reservations.push({ port: runtime.gateway.listen.port, owner: `Gateway ${instanceName}` });
         reservations.push({ port: runtime.gateway.managementListen.port, owner: `Gateway ${instanceName}` });
-        if (runtime.gateway.workerSessionListen) reservations.push({ port: runtime.gateway.workerSessionListen.port, owner: `Gateway ${instanceName} Worker session` });
+        const workerSessionPort = runtime.gateway.workerSessionListen?.port ?? runtime.gateway.listen.port - 2;
+        if (Number.isInteger(workerSessionPort) && workerSessionPort >= 1 && workerSessionPort <= 65535) reservations.push({ port: workerSessionPort, owner: `Gateway ${instanceName} Worker session` });
       }
       if (role === "worker" && runtime.worker) {
         reservations.push({ port: runtime.worker.listen.port, owner: `Worker ${instanceName}` });
@@ -341,6 +342,15 @@ export async function runRoleSetupWizard(
     const workerConnectivity = (await prompts.choose("Worker session exposure", currentRemote
       ? [remoteExposure, localExposure]
       : [localExposure, remoteExposure])) || (currentRemote ? "remote" : "local");
+
+    if (workerConnectivity === "local") {
+      const workerSessionPort = effectiveGatewayWorkerSessionPort({ listen: { port: gatewayPort } });
+      if (workerSessionPort === managementPort) throw new Error("Worker session port must be different from Management port");
+      const workerSessionPortOwner = reservedBy(workerSessionPort);
+      if (workerSessionPortOwner) throw new Error(`Worker session port ${workerSessionPort} is reserved by ${workerSessionPortOwner}`);
+      const currentWorkerSessionPort = current?.gateway ? effectiveGatewayWorkerSessionPort(current.gateway) : undefined;
+      if (currentWorkerSessionPort !== workerSessionPort && !await portAvailable(workerSessionPort)) throw new Error(`Worker session port ${workerSessionPort} is already in use`);
+    }
 
     setupArgs = [
       ...setupArgs,

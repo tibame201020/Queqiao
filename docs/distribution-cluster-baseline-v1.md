@@ -19,7 +19,7 @@ A host may run Gateway, Worker, both, or neither.
 
 Named Gateway and Worker runtimes use role-local state. Lifecycle is explicit:
 `serve [--bg]`, `stop`, and `status`. `--bg` starts a background process but does not
-install an OS service or autostart mechanism.
+install an OS service or autostart mechanism. Managed startup is accepted only after runtime liveness/identity is established and the launched PID ownership matches the expected Queqiao entry point; operational readiness may still be false before downstream membership is configured. The Gateway's local gRPC Worker-session listener is part of the listener contract; when no explicit Worker-session port is stored, its effective port is `Gateway port - 2` and setup treats it as a reserved port.
 
 ## First-time setup and authority boundaries
 
