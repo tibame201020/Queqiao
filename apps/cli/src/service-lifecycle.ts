@@ -107,9 +107,18 @@ async function reconcileManagedPid(layout: RuntimeLayout, role: RuntimeRole, dep
   if (!commandOwnsEntryPoint(command, ownedEntryPoint, platform)) { await rm(p.pidFile, { force: true }); return undefined; }
   return metadata.pid;
 }
+async function waitForWindowsProcessExit(pid: number, env: NodeJS.ProcessEnv, execFile: ExecFile) {
+  const ps = windowsSystemExecutable("WindowsPowerShell\\v1.0\\powershell.exe", env);
+  const command = `$p=Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if($p){ Wait-Process -Id ${pid} -Timeout 5 -ErrorAction SilentlyContinue }; if(Get-Process -Id ${pid} -ErrorAction SilentlyContinue){[Console]::Out.Write('running')}else{[Console]::Out.Write('stopped')}`;
+  const state = (await execFile(ps, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command])).stdout.trim();
+  if (state !== "stopped") throw new Error(`Timed out waiting for managed process ${pid} to exit`);
+}
 async function stopManaged(layout: RuntimeLayout, role: RuntimeRole, dependencies: Dependencies = {}) {
   const platform = dependencies.platform || process.platform; const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const p = pathsFor(layout, role); const pid = await reconcileManagedPid(layout, role, dependencies); if (!pid) return false;
-  if (platform === "win32") await execFile(windowsSystemExecutable("taskkill.exe", env), ["/PID", String(pid), "/T", "/F"]); else await execFile("kill", ["-TERM", String(pid)]);
+  if (platform === "win32") {
+    await execFile(windowsSystemExecutable("taskkill.exe", env), ["/PID", String(pid), "/T", "/F"]);
+    await waitForWindowsProcessExit(pid, env, execFile);
+  } else await execFile("kill", ["-TERM", String(pid)]);
   await rm(p.pidFile, { force: true }); return true;
 }
 
