@@ -49,7 +49,7 @@ After acceptance:
 - Worker shutdown behavior is defined explicitly by the feature implementation;
 - Worker crash/restart recovery is not guaranteed.
 
-The returned async result exposes only the native process identity/metadata needed to confirm successful start. It does not create a durable Queqiao Job identity.
+The returned async result includes the Worker's opaque recovery handle plus native process start metadata. The handle is valid only for the Worker's in-memory tracked-process lifetime and can be passed directly to `process_stop`; it is not a durable Queqiao Job identity and is not recoverable after Worker restart.
 
 ### Output handling
 

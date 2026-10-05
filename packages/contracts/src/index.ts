@@ -51,6 +51,7 @@ export const syncProcessResultSchema = z.object({
   outputLimitExceeded: z.boolean(),
 });
 export const asyncProcessResultSchema = z.object({
+  handle: z.uuid(),
   pid: z.number().int().positive(),
   startedAt: z.string().datetime({ offset: true }),
   timeoutMs: z.number().int().positive(),

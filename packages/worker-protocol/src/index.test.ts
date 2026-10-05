@@ -47,7 +47,7 @@ describe("Worker protocol contract", () => {
 
   it("defines distinct sync/async process result contracts without adding a Queqiao job identity", () => {
     const sync = { exitCode: 0, signal: null, stdout: "ok", stderr: "", durationMs: 10, timedOut: false, aborted: false, outputLimitExceeded: false };
-    const asyncResult = { pid: 123, startedAt: "2026-08-13T01:00:00.000Z", timeoutMs: 30_000, stdout: "discarded", stderr: "discarded" };
+    const asyncResult = { handle: "11111111-1111-4111-8111-111111111111", pid: 123, startedAt: "2026-08-13T01:00:00.000Z", timeoutMs: 30_000, stdout: "discarded", stderr: "discarded" };
     expect(workerSyncProcessResultSchema.parse(sync)).toEqual(sync);
     expect(workerAsyncProcessResultSchema.parse(asyncResult)).toEqual(asyncResult);
     expect(workerRunResultSchema.parse(asyncResult)).toEqual(asyncResult);

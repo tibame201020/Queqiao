@@ -70,7 +70,7 @@ The returned object is a managed process session, not an unrestricted Node `Chil
 
 ### Capacity diagnostics and recovery
 
-Worker-managed async processes and stdio sessions are tracked with opaque Worker-owned handles. Public MCP recovery remains Workspace-scoped:
+Worker-managed async processes and stdio sessions are tracked with opaque Worker-owned handles. Accepted async `run` / `shell` results return their handle directly so callers can recover or stop the exact process without inferring identity from an OS PID. Public MCP recovery remains Workspace-scoped:
 
 - `process_capacity` reports foreground/background active and limit counts plus managed async/stdio totals;
 - `process_list` returns bounded metadata for tracked resources in the selected Workspace;

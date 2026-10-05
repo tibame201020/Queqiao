@@ -133,7 +133,7 @@ Revision 7 adds a public external-extension SDK export at `@tibame201020/queqiao
 
 Environment-native process execution with trusted executable resolution, bounded synchronous output, timeout/cancellation propagation, process-tree termination, minimal child environment, and shared per-Worker concurrency limits across synchronous and asynchronous execution.
 
-`run` and `shell` support `mode: sync | async`. Sync remains request-bound. Async returns after native process acceptance with a native PID, keeps lifetime/concurrency policy authoritative, and discards stdout/stderr. It does not create a Queqiao Job domain or durable restart-recovery contract.
+`run` and `shell` support `mode: sync | async`. Sync remains request-bound. Async returns after native process acceptance with a Worker-owned opaque recovery handle plus native start metadata, keeps lifetime/concurrency policy authoritative, and discards stdout/stderr. The handle can be used with `process_stop` while that Worker tracks the process; it does not create a Queqiao Job domain or durable restart-recovery contract.
 
 ### `packages/workspace`
 

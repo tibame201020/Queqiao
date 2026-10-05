@@ -45,6 +45,7 @@ export type ProcessResult = {
  * It is not a durable Queqiao Job identity and stdout/stderr are not retained.
  */
 export type AsyncProcessResult = {
+  handle: string;
   pid: number;
   startedAt: string;
   timeoutMs: number;
@@ -344,7 +345,7 @@ export class ProcessRunner {
           capacityClass: "background",
         };
         this.asyncChildren.set(handle, { child, timer, info });
-        resolve({ pid, startedAt: startedAt.toISOString(), timeoutMs: request.timeoutMs, stdout: "discarded", stderr: "discarded" });
+        resolve({ handle, pid, startedAt: startedAt.toISOString(), timeoutMs: request.timeoutMs, stdout: "discarded", stderr: "discarded" });
       });
       child.once("close", () => {
         if (!accepted) {

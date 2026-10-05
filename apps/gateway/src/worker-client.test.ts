@@ -58,7 +58,7 @@ describe("WorkerClient rolling upgrade", () => {
   });
 
   it("validates async process results after membership handshake", async () => {
-    const asyncResult = { pid: 4321, startedAt: "2026-08-13T01:00:00.000Z", timeoutMs: 1000, stdout: "discarded", stderr: "discarded" };
+    const asyncResult = { handle: "22222222-2222-4222-8222-222222222222", pid: 4321, startedAt: "2026-08-13T01:00:00.000Z", timeoutMs: 1000, stdout: "discarded", stderr: "discarded" };
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(membershipHello), { status: 200, headers: { "content-type": "application/json" } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ result: asyncResult }), { status: 200, headers: { "content-type": "application/json" } }));
