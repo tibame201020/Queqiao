@@ -150,6 +150,9 @@ describe("async disconnect and resource security", () => {
     const { client, processes } = await startHarness(new ProcessRunner(1));
     const asyncResult = await client.callTool({ name: "run", arguments: { workspaceId: "coding", executable: path.basename(process.execPath), args: ["-e", "setTimeout(()=>{},450)"], timeoutMs: 1200, mode: "async" } });
     expect(asyncResult.isError).not.toBe(true);
+    const accepted = JSON.parse((asyncResult.content[0] as { type: "text"; text: string }).text) as { handle: string };
+    expect(accepted.handle).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(processes.listTracked().map((resource) => resource.handle)).toContain(accepted.handle);
     expect(processes.activeCount()).toBe(1);
     expect(processes.backgroundActiveCount()).toBe(1);
     expect(processes.foregroundActiveCount()).toBe(0);
@@ -165,6 +168,8 @@ describe("async disconnect and resource security", () => {
     expect(capacityError).toMatchObject({ code: "process_capacity", layer: "worker", retryable: true });
     expect(capacityError.message).toContain("background process concurrency limit");
 
+    const stopped = await client.callTool({ name: "process_stop", arguments: { workspaceId: "coding", handle: accepted.handle } });
+    expect(stopped.isError).not.toBe(true);
     const deadline = Date.now() + 2500;
     while (processes.backgroundActiveCount() !== 0 && Date.now() < deadline) await delay(25);
     expect(processes.activeCount()).toBe(0);

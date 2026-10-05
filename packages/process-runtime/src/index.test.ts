@@ -101,7 +101,9 @@ describe("ProcessRunner", () => {
       timeoutMs: 1000,
       signal: abort.signal,
     });
-    expect(result).toMatchObject({ pid: expect.any(Number), timeoutMs: 1000, stdout: "discarded", stderr: "discarded" });
+    expect(result).toMatchObject({ handle: expect.any(String), pid: expect.any(Number), timeoutMs: 1000, stdout: "discarded", stderr: "discarded" });
+    expect(result.handle).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(runner.listTracked().map((resource) => resource.handle)).toContain(result.handle);
     expect(Number.isNaN(Date.parse(result.startedAt))).toBe(false);
     expect(runner.activeCount()).toBe(1);
     expect(runner.asyncCount()).toBe(1);
