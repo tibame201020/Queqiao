@@ -18,6 +18,26 @@ describe("Worker authoritative permission enforcement", () => {
     expect(response.body.instanceId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it("keeps process-control endpoints available to the Worker-local control credential after Gateway membership", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-local-process-control-"));
+    const app = await createWorkerApp({
+      workerId: "11111111-1111-4111-8111-111111111111",
+      environmentId: "windows",
+      workerToken: "local-control-secret",
+      membershipCredentials: {
+        accepts: async (credential) => credential === "gateway-membership-secret",
+        stage: async () => undefined,
+        commit: async () => undefined,
+        revoke: async () => undefined,
+      },
+      workspaces: [{ id: "one", displayName: "One", root: temporary }],
+    });
+    await request(app).get("/v1/processes/capacity").set("x-queqiao-worker-token", "local-control-secret").expect(200);
+    await request(app).get("/v1/processes").set("x-queqiao-worker-token", "local-control-secret").expect(200);
+    await request(app).post("/v1/tools/read_file").set("x-queqiao-worker-token", "local-control-secret").send({ workspaceId: "one", path: "missing.txt", offset: 0, limit: 1 }).expect(401);
+    await request(app).get("/v1/processes/capacity").set("x-queqiao-worker-token", "gateway-membership-secret").expect(200);
+  });
+
   it("exposes Worker Protocol 3.0 with stable workerId after Worker setup", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-handshake-v3-"));
     const workerId = "11111111-1111-4111-8111-111111111111";
