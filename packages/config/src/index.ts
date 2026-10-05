@@ -194,6 +194,12 @@ export const gatewayConfigSchema = z.object({
   stateDirectory: z.string().min(1),
 });
 
+export function effectiveGatewayWorkerSessionPort(gateway: { listen: { port: number }; workerSessionListen?: { port: number } | undefined }): number {
+  const port = gateway.workerSessionListen?.port ?? gateway.listen.port - 2;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Worker session port must be between 1 and 65535");
+  return port;
+}
+
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 export type WorkerConfig = z.infer<typeof workerConfigSchema>;
 export type GatewayConfig = z.infer<typeof gatewayConfigSchema>;
@@ -284,6 +290,15 @@ export const runtimeConfigRepairSchema = runtimeConfigBaseSchema.superRefine((co
 });
 
 export const runtimeConfigSchema = runtimeConfigRepairSchema.superRefine((config, ctx) => {
+  if (config.gateway) {
+    try {
+      const workerSessionPort = effectiveGatewayWorkerSessionPort(config.gateway);
+      if (workerSessionPort === config.gateway.listen.port) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionListen", "port"], message: "Worker session port must be different from Gateway port" });
+      if (workerSessionPort === config.gateway.managementListen.port) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionListen", "port"], message: "Worker session port must be different from Management port" });
+    } catch (error) {
+      ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionListen", "port"], message: error instanceof Error ? error.message : "Worker session port is invalid" });
+    }
+  }
   if (config.worker && config.workspaces.length < 1) {
     ctx.addIssue({ code: "custom", path: ["workspaces"], message: "Worker must have at least one Workspace" });
   }

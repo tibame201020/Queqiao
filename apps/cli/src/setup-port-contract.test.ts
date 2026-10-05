@@ -79,6 +79,17 @@ describe("interactive setup port contract", () => {
     ]);
   });
 
+  it("rejects an occupied implicit local Worker-session port", async () => {
+    const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join(os.tmpdir(), "queqiao-gateway-local-session-port-")));
+    await expect(runRoleSetupWizard("gateway", ["gateway", "setup"], {
+      env: envFor(root),
+      platform: process.platform,
+      prompts: scriptedPrompts(["__create__", "stable", "https://gateway.example/stable/", "7775", "7774", "local"], []),
+      portAvailable: async (port) => port !== 7773,
+      setupGateway: async () => ({ setup: true }),
+    })).rejects.toThrow(/Worker session port 7773.*already in use/i);
+  });
+
   it("rejects equal Gateway and Management ports", async () => {
     const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join(os.tmpdir(), "queqiao-gateway-port-equal-")));
     await expect(runRoleSetupWizard("gateway", ["gateway", "setup"], {

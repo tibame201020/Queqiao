@@ -149,7 +149,7 @@ queqiao gateway workers remove [--gateway <gateway>] --worker-id <id>
 
 `gateway info` is the connector handoff command. The default view shows the MCP URL and approval-secret availability without revealing the secret. `--detail` explicitly reveals the local approval secret and Gateway metadata; do not paste that output into logs or issues. `--copy-url` and `--copy-secret` copy exactly one value without echoing it.
 
-`gateway setup` asks for **Worker connectivity** in the same setup flow. **Local only** keeps Worker transport on the same host. **Remote workers** enables a dedicated non-loopback TLS gRPC Worker-session listener and then asks for the DNS name or LAN IP reachable from those Workers plus the session port. The public MCP and management listeners remain unchanged and loopback-bound. `gateway info --detail` reports the configured Worker transport and remote target.
+`gateway setup` asks for **Worker connectivity** in the same setup flow. **Local only** keeps Worker transport on the same host; its loopback Worker-session port defaults to Gateway port minus 2 and is validated/reserved like the public and management ports. **Remote workers** enables a dedicated non-loopback TLS gRPC Worker-session listener and then asks for the DNS name or LAN IP reachable from those Workers plus the session port. The public MCP and management listeners remain unchanged and loopback-bound. `gateway info --detail` reports the configured Worker transport and remote target.
 
 ## Worker and Workspace authority
 

@@ -10,6 +10,8 @@ import { secureRuntimeDirectory, secureRuntimeFile } from "./secure-runtime-path
 
 export type RuntimeRole = "gateway" | "worker";
 type ExecFile = (file: string, args: readonly string[]) => Promise<{ stdout: string; stderr: string }>;
+type DetachedSpawnOptions = { cwd: string; env: NodeJS.ProcessEnv; stdoutFile: string; stderrFile: string; windowsHide: boolean };
+type SpawnDetached = (file: string, args: readonly string[], options: DetachedSpawnOptions) => number;
 type Dependencies = {
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
@@ -19,10 +21,34 @@ type Dependencies = {
   cliEntryPoint?: string;
   currentPid?: number;
   entryPoints?: Partial<Record<RuntimeRole, string>>;
+  startupProbeAttempts?: number;
+  sleep?: (ms: number) => Promise<void>;
+  spawnDetached?: SpawnDetached;
 };
 const execFileAsync = promisify(execFileCallback);
 const MANAGED_PID_STARTUP_GRACE_MS = 5_000;
 function defaultExecFile(file: string, args: readonly string[]) { return execFileAsync(file, [...args], { encoding: "utf8", windowsHide: true }).then(({ stdout, stderr }) => ({ stdout, stderr })); }
+function defaultSpawnDetached(file: string, args: readonly string[], options: DetachedSpawnOptions): number {
+  const stdoutFd = openSync(options.stdoutFile, "a", 0o600);
+  let stderrFd: number | undefined;
+  try {
+    stderrFd = openSync(options.stderrFile, "a", 0o600);
+    const child = spawn(file, [...args], {
+      cwd: options.cwd,
+      detached: true,
+      windowsHide: options.windowsHide,
+      stdio: ["ignore", stdoutFd, stderrFd],
+      env: options.env,
+    });
+    if (!child.pid) throw new Error("Detached runtime start did not return a valid PID");
+    const pid = child.pid;
+    child.unref();
+    return pid;
+  } finally {
+    if (stderrFd !== undefined) closeSync(stderrFd);
+    closeSync(stdoutFd);
+  }
+}
 function validateName(value: string) { if (!/^[a-z][a-z0-9-]{0,31}$/.test(value)) throw new Error("Name must match ^[a-z][a-z0-9-]{0,31}$"); return value; }
 function validateRole(value: string): RuntimeRole { if (value !== "gateway" && value !== "worker") throw new Error("Role must be gateway or worker"); return value; }
 function packageEntryPoint(role: RuntimeRole) { const dir = path.dirname(fileURLToPath(import.meta.url)); return path.join(dir, role === "gateway" ? "queqiao-gateway.js" : "queqiao-worker.js"); }
@@ -31,8 +57,11 @@ function windowsSystemExecutable(name: string, env: NodeJS.ProcessEnv) { const r
 function pathsFor(layout: RuntimeLayout, role: RuntimeRole) { const dir = path.join(layout.stateDir, "processes"); return { dir, pidFile: path.join(dir, `${role}.pid.json`), stdout: path.join(layout.logDir, `${role}.out.log`), stderr: path.join(layout.logDir, `${role}.err.log`) }; }
 function managedWorkingDirectory(layout: RuntimeLayout) { return path.resolve(layout.stateDir); }
 function foregroundWorkingDirectory(configFile: string) { return path.dirname(path.resolve(configFile)); }
+function resolvePlatformPath(value: string, platform: NodeJS.Platform) {
+  return platform === "win32" ? path.win32.resolve(value) : path.posix.resolve(value);
+}
 function comparablePath(value: string, platform: NodeJS.Platform) {
-  const resolved = platform === "win32" ? path.win32.resolve(value) : path.posix.resolve(value);
+  const resolved = resolvePlatformPath(value, platform);
   return platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 function commandOwnsEntryPoint(command: string, entryPoint: string, platform: NodeJS.Platform) {
@@ -107,6 +136,35 @@ async function reconcileManagedPid(layout: RuntimeLayout, role: RuntimeRole, dep
   if (!commandOwnsEntryPoint(command, ownedEntryPoint, platform)) { await rm(p.pidFile, { force: true }); return undefined; }
   return metadata.pid;
 }
+async function waitForManagedStartup(configFile: string, layout: RuntimeLayout, role: RuntimeRole, pid: number, entryPoint: string, dependencies: Dependencies) {
+  const platform = dependencies.platform || process.platform;
+  const env = dependencies.env || process.env;
+  const execFile = dependencies.execFile || defaultExecFile;
+  const fetchImpl = dependencies.fetchImpl || fetch;
+  const attempts = dependencies.startupProbeAttempts ?? 100;
+  const sleep = dependencies.sleep || ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let consecutiveReady = 0;
+  let lastError = "runtime did not become reachable";
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const state = await health(configFile, role, fetchImpl);
+    const command = await processCommandLine(pid, platform, env, execFile);
+    const owned = Boolean(command && commandOwnsEntryPoint(command, entryPoint, platform));
+    if (state.reachable && state.identityMatches && owned) {
+      consecutiveReady += 1;
+      if (consecutiveReady >= 2) return;
+    } else {
+      consecutiveReady = 0;
+      lastError = state.error || (command && !owned ? "managed PID ownership did not match the runtime entry point" : "runtime did not become reachable");
+    }
+    if (attempt + 1 < attempts) await sleep(100);
+  }
+  const p = pathsFor(layout, role);
+  const command = await processCommandLine(pid, platform, env, execFile);
+  if (command && commandOwnsEntryPoint(command, entryPoint, platform)) await stopManaged(layout, role, dependencies).catch(() => undefined);
+  else await rm(p.pidFile, { force: true });
+  throw new Error(`Queqiao ${role} failed startup acceptance: ${lastError}; inspect ${p.stderr} and ${p.stdout}`);
+}
+
 async function waitForWindowsProcessExit(pid: number, env: NodeJS.ProcessEnv, execFile: ExecFile) {
   const ps = windowsSystemExecutable("WindowsPowerShell\\v1.0\\powershell.exe", env);
   const command = `$p=Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if($p){ Wait-Process -Id ${pid} -Timeout 5 -ErrorAction SilentlyContinue }; if(Get-Process -Id ${pid} -ErrorAction SilentlyContinue){[Console]::Out.Write('running')}else{[Console]::Out.Write('stopped')}`;
@@ -126,22 +184,17 @@ export async function startRuntime(configFile: string, layout: RuntimeLayout, ro
   const role = validateRole(roleValue); const name = validateName(nameValue); const platform = dependencies.platform || process.platform; const env = dependencies.env || process.env; const execFile = dependencies.execFile || defaultExecFile; const fetchImpl = dependencies.fetchImpl || fetch;
   await validateConfiguredRole(configFile, role); const current = await health(configFile, role, fetchImpl); const p = pathsFor(layout, role); const existingPid = await reconcileManagedPid(layout, role, dependencies); if (current.reachable && current.identityMatches) return { started: false, alreadyRunning: true, managed: Boolean(existingPid), name, role, ...(existingPid ? { pid: existingPid } : {}) }; if (current.reachable && !current.identityMatches) throw new Error(`Cannot start ${role} ${name}: configured port is already occupied by another runtime`);
   if (existingPid) await stopManaged(layout, role, dependencies); await secureRuntimeDirectory(p.dir); await secureRuntimeDirectory(layout.logDir);
-  const nodePath = path.resolve(dependencies.nodePath || process.execPath); const entryPoint = path.resolve(dependencies.entryPoints?.[role] || packageEntryPoint(role)); let pid: number;
-  if (platform === "win32") {
-    const ps = windowsSystemExecutable("WindowsPowerShell\\v1.0\\powershell.exe", env); const q = (v: string) => `'${v.replaceAll("'", "''")}'`; const command = `$env:QUEQIAO_CONFIG_FILE=${q(path.resolve(configFile))}; $env:QUEQIAO_AUDIT_DIR=${q(path.join(layout.stateDir, "audit"))}; $p=Start-Process -FilePath ${q(nodePath)} -ArgumentList @(${q(entryPoint)}) -WorkingDirectory ${q(managedWorkingDirectory(layout))} -WindowStyle Hidden -PassThru; [Console]::Out.Write($p.Id)`; pid = Number((await execFile(ps, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command])).stdout.trim());
-  } else if (platform === "linux") {
-    const stdoutFd = openSync(p.stdout, "a", 0o600); let stderrFd: number | undefined;
-    try {
-      stderrFd = openSync(p.stderr, "a", 0o600);
-      const child = spawn(nodePath, [entryPoint], { cwd: managedWorkingDirectory(layout), detached: true, stdio: ["ignore", stdoutFd, stderrFd], env: { ...env, QUEQIAO_CONFIG_FILE: path.resolve(configFile), QUEQIAO_AUDIT_DIR: path.join(layout.stateDir, "audit") } });
-      if (!child.pid) throw new Error(`Queqiao ${role} start did not return a valid PID`);
-      pid = child.pid; child.unref();
-    } finally {
-      if (stderrFd !== undefined) closeSync(stderrFd);
-      closeSync(stdoutFd);
-    }
-  } else throw new Error(`Runtime lifecycle is not supported on platform: ${platform}`);
-  if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Queqiao ${role} start did not return a valid PID`); await writeFile(p.pidFile, `${JSON.stringify({ pid, entryPoint, configFile: path.resolve(configFile), startedAt: new Date().toISOString() })}\n`, { encoding: "utf8", mode: 0o600 }); await secureRuntimeFile(p.pidFile); return { started: true, name, role, pid };
+  const nodePath = resolvePlatformPath(dependencies.nodePath || process.execPath, platform); const entryPoint = resolvePlatformPath(dependencies.entryPoints?.[role] || packageEntryPoint(role), platform); let pid: number;
+  if (platform !== "win32" && platform !== "linux") throw new Error(`Runtime lifecycle is not supported on platform: ${platform}`);
+  const spawnDetached = dependencies.spawnDetached || defaultSpawnDetached;
+  pid = spawnDetached(nodePath, [entryPoint], {
+    cwd: managedWorkingDirectory(layout),
+    env: { ...env, QUEQIAO_CONFIG_FILE: path.resolve(configFile), QUEQIAO_AUDIT_DIR: path.join(layout.stateDir, "audit") },
+    stdoutFile: p.stdout,
+    stderrFile: p.stderr,
+    windowsHide: platform === "win32",
+  });
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Queqiao ${role} start did not return a valid PID`); await writeFile(p.pidFile, `${JSON.stringify({ pid, entryPoint, configFile: path.resolve(configFile), startedAt: new Date().toISOString() })}\n`, { encoding: "utf8", mode: 0o600 }); await secureRuntimeFile(p.pidFile); await waitForManagedStartup(configFile, layout, role, pid, entryPoint, dependencies); return { started: true, name, role, pid };
 }
 export async function stopRuntime(layout: RuntimeLayout, roleValue: string, nameValue: string, dependencies: Dependencies = {}) { const role = validateRole(roleValue); const name = validateName(nameValue); return { stopped: await stopManaged(layout, role, dependencies), name, role }; }
 export async function restartRuntime(configFile: string, layout: RuntimeLayout, roleValue: string, nameValue: string, dependencies: Dependencies = {}) {
@@ -161,4 +214,4 @@ export async function runtimeStatus(configFile: string, layout: RuntimeLayout, r
 export async function serveRuntime(configFile: string, roleValue: string, nameValue: string, dependencies: Dependencies = {}) {
   const role = validateRole(roleValue); const name = validateName(nameValue); await validateConfiguredRole(configFile, role); const current = await health(configFile, role, dependencies.fetchImpl || fetch); if (current.reachable && current.identityMatches) throw new Error(`${role} ${name} is already running`); if (current.reachable && !current.identityMatches) throw new Error(`Cannot serve ${role} ${name}: configured port is already occupied by another runtime`); const nodePath = path.resolve(dependencies.nodePath || process.execPath); const entryPoint = path.resolve(dependencies.entryPoints?.[role] || packageEntryPoint(role)); const child = spawn(nodePath, [entryPoint], { cwd: foregroundWorkingDirectory(configFile), stdio: "inherit", env: { ...(dependencies.env || process.env), QUEQIAO_CONFIG_FILE: path.resolve(configFile) } }); const exitCode = await new Promise<number>((resolve, reject) => { child.once("error", reject); child.once("exit", (code, signal) => resolve(code ?? (signal ? 1 : 0))); }); return { served: true, name, role, exitCode };
 }
-export const runtimeLifecycleInternals = { validateName, pathsFor, exists, comparablePath, commandOwnsEntryPoint, managedWorkingDirectory, foregroundWorkingDirectory };
+export const runtimeLifecycleInternals = { validateName, pathsFor, exists, resolvePlatformPath, comparablePath, commandOwnsEntryPoint, managedWorkingDirectory, foregroundWorkingDirectory };

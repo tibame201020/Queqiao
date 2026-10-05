@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
-import { runtimeConfigSchema, type InstalledExtensionConfig } from "@queqiao/config";
+import { effectiveGatewayWorkerSessionPort, runtimeConfigSchema, type InstalledExtensionConfig } from "@queqiao/config";
 
 export type GatewayRuntimeConfig = {
   host?: "127.0.0.1";
@@ -41,9 +41,7 @@ function integer(env: NodeJS.ProcessEnv, name: string, fallback: number): number
 }
 
 function resolveWorkerSessionPort(gatewayPort: number, explicit?: number): number {
-  const value = explicit ?? gatewayPort - 2;
-  if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error("Worker session port must be between 1 and 65535");
-  return value;
+  return effectiveGatewayWorkerSessionPort({ listen: { port: gatewayPort }, ...(explicit === undefined ? {} : { workerSessionListen: { port: explicit } }) });
 }
 
 function livenessInterval(env: NodeJS.ProcessEnv): number {

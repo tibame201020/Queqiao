@@ -18,7 +18,7 @@ queqiao gateway status --gateway <gateway>
 queqiao gateway stop --gateway <gateway>
 ```
 
-`--bg` means a Queqiao-managed background process, not an installed service.
+`--bg` means a Queqiao-managed background process, not an installed service. Background start returns success only after the runtime listener/identity probe confirms the launched instance and the PID is confirmed to own the expected Queqiao entry point; failed startup is reported with the runtime stdout/stderr log paths. A local Gateway also owns a loopback gRPC Worker-session listener on the effective Worker-session port (explicitly configured, or `gateway port - 2`), and setup validates that port alongside the Gateway and Management listeners.
 
 ## Connector handoff
 

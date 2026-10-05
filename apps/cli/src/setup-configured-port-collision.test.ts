@@ -50,6 +50,19 @@ describe("configured port reservation", () => {
     })).rejects.toThrow(/7675.*reserved by Gateway shadow/i);
   });
 
+  it("reserves the implicit local Worker-session port of a stopped sibling Gateway", async () => {
+    const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join(os.tmpdir(), "queqiao-configured-local-session-port-")));
+    const env = envFor(root);
+    await writeGateway(env, "shadow", 7675, 7674);
+
+    await expect(runRoleSetupWizard("worker", ["worker", "setup"], {
+      env,
+      platform: process.platform,
+      prompts: prompts(["__create__", "windows", "7673"]),
+      portAvailable: async () => true,
+    })).rejects.toThrow(/7673.*Gateway shadow Worker session/i);
+  });
+
   it("rejects a Worker port reserved by a configured Gateway management listener", async () => {
     const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join(os.tmpdir(), "queqiao-configured-port-cross-role-")));
     const env = envFor(root);
