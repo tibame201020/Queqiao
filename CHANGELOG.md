@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.9.16 - 2026-10-05
+
+- Adds an opaque Worker-owned recovery handle to accepted async process results and verifies background slot recovery through `process_stop`, without introducing restart-persistent job identity.
+- Extends `queqiao doctor` with Worker process capacity and tracked-resource diagnostics, while allowing authenticated local process-control recovery after Gateway enrollment without broadening ordinary Worker tool access.
+- Updates `@grpc/grpc-js` to the patched runtime baseline for newly disclosed high-severity advisories while preserving the existing release audit gate.
+- Hardens Windows managed lifecycle shutdown so `stop` waits for the managed process tree to exit before reporting success or removing PID metadata.
+- Hardens managed startup acceptance across platforms: reserves the implicit local Worker-session port, fails closed on early child exit, records startup logs, and distinguishes process liveness from operational readiness.
+
 ## 0.9.15 - 2026-09-18
 
 - Adds Worker-native process capacity diagnostics and opaque-handle recovery controls, including foreground/background active/limit counts and bounded async/stdio metadata without exposing arbitrary PID termination; structured capacity metadata is preserved across HTTP and reverse Worker transports.
