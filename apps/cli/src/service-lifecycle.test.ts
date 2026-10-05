@@ -87,6 +87,39 @@ describe("runtime lifecycle", () => {
   it("does not duplicate a reachable unmanaged runtime", async () => { const { layout } = await fixture(); const result = await startRuntime(layout.configFile, layout, "gateway", "shadow", { platform:"win32", env:{SystemRoot:"C:\\Windows"}, execFile: async()=>({stdout:"",stderr:""}), fetchImpl: async()=>new Response("{}",{status:200}), entryPoints:{gateway:"C:\\pkg\\queqiao-gateway.js"} }); expect(result).toMatchObject({started:false,alreadyRunning:true,managed:false}); });
   it("reports health without an installed-service concept", async () => { const { layout } = await fixture(); const status = await runtimeStatus(layout.configFile, layout, "gateway", "shadow", { fetchImpl: async()=>new Response("{}",{status:200}) }); expect(status).toMatchObject({active:true,managed:false,health:{reachable:true,healthy:true,status:200}}); expect(status).not.toHaveProperty("installed"); });
   it("reconciles a stale or reused PID without killing the unrelated process", async () => { const { layout } = await fixture(); const dir=path.join(layout.stateDir,"processes"); await import("node:fs/promises").then(({mkdir})=>mkdir(dir,{recursive:true})); const pidFile=path.join(dir,"gateway.pid.json"); await writeFile(pidFile,JSON.stringify({pid:4321}),"utf8"); const execFile=async(file:string)=>file.endsWith("powershell.exe")?{stdout:"node.exe C:\\other\\server.js",stderr:""}:{stdout:"",stderr:""}; const stopped=await stopRuntime(layout,"gateway","shadow",{platform:"win32",env:{SystemRoot:"C:\\Windows"},execFile,entryPoints:{gateway:"C:\\pkg\\queqiao-gateway.js"}}); expect(stopped).toMatchObject({stopped:false}); await expect(readFile(pidFile,"utf8")).rejects.toMatchObject({code:"ENOENT"}); });
+  it("waits for a Windows managed process to exit before reporting stop success", async () => {
+    const { layout } = await fixture();
+    const dir = path.join(layout.stateDir, "processes");
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(dir, { recursive: true }));
+    const pidFile = path.join(dir, "gateway.pid.json");
+    const entryPoint = "C:\\pkg\\queqiao-gateway.js";
+    await writeFile(pidFile, JSON.stringify({ pid: 4321, entryPoint, configFile: layout.configFile }), "utf8");
+    const calls: Array<{ file: string; args: readonly string[] }> = [];
+    let killed = false;
+    const execFile = async (file: string, args: readonly string[]) => {
+      calls.push({ file, args });
+      const command = args.join(" ");
+      if (file.endsWith("powershell.exe") && command.includes("Get-CimInstance")) return { stdout: `node.exe ${entryPoint}`, stderr: "" };
+      if (file.endsWith("taskkill.exe")) { killed = true; return { stdout: "SUCCESS", stderr: "" }; }
+      if (file.endsWith("powershell.exe") && command.includes("Wait-Process")) {
+        expect(killed).toBe(true);
+        return { stdout: "stopped", stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    };
+
+    const stopped = await stopRuntime(layout, "gateway", "shadow", {
+      platform: "win32",
+      env: { SystemRoot: "C:\\Windows" },
+      execFile,
+      entryPoints: { gateway: entryPoint },
+    });
+
+    expect(stopped).toMatchObject({ stopped: true });
+    expect(calls.some((call) => call.file.endsWith("powershell.exe") && call.args.join(" ").includes("Wait-Process"))).toBe(true);
+    await expect(readFile(pidFile, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("does not report a dead managed PID after status reconciliation", async () => { const { layout } = await fixture(); const dir=path.join(layout.stateDir,"processes"); await import("node:fs/promises").then(({mkdir})=>mkdir(dir,{recursive:true})); const pidFile=path.join(dir,"gateway.pid.json"); await writeFile(pidFile,JSON.stringify({pid:4321}),"utf8"); const status=await runtimeStatus(layout.configFile,layout,"gateway","shadow",{platform:"win32",env:{SystemRoot:"C:\\Windows"},execFile:async()=>({stdout:"",stderr:""}),fetchImpl:async()=>{throw new Error("offline")},entryPoints:{gateway:"C:\\pkg\\queqiao-gateway.js"}}); expect(status).toMatchObject({active:false,managed:false}); expect(status).not.toHaveProperty("pid"); await expect(readFile(pidFile,"utf8")).rejects.toMatchObject({code:"ENOENT"}); });
   it("keeps a just-started managed PID during transient Windows process discovery lag", async () => { const { layout } = await fixture(); const dir=path.join(layout.stateDir,"processes"); await import("node:fs/promises").then(({mkdir})=>mkdir(dir,{recursive:true})); const pidFile=path.join(dir,"gateway.pid.json"); await writeFile(pidFile,JSON.stringify({pid:4321,entryPoint:"C:\\pkg\\queqiao-gateway.js",configFile:layout.configFile,startedAt:new Date().toISOString()}),"utf8"); const status=await runtimeStatus(layout.configFile,layout,"gateway","shadow",{platform:"win32",env:{SystemRoot:"C:\\Windows"},execFile:async()=>({stdout:"",stderr:""}),fetchImpl:async()=>{throw new Error("offline")},entryPoints:{gateway:"C:\\pkg\\queqiao-gateway.js"}}); expect(status).toMatchObject({active:false,managed:true,pid:4321}); expect(JSON.parse(await readFile(pidFile,"utf8"))).toMatchObject({pid:4321}); });
   it("does not treat a different Worker on the same port as the named Worker", async () => {
