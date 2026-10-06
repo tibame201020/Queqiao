@@ -145,6 +145,7 @@ it("keeps process diagnostics and recovery available while both process pools ar
     background: { active: 1, limit: 1 },
     asyncChildren: 1,
     stdioSessions: 1,
+    jobs: { queued: 0, queueLimit: 32, retained: 0 },
   });
   const listed = await service.execute<{ resources: Array<{ handle: string; kind: "async" | "stdio" }> }>({ operation: "process-list" });
   expect(listed.resources).toHaveLength(2);
@@ -156,4 +157,48 @@ it("keeps process diagnostics and recovery available while both process pools ar
   while (processes.activeCount() !== 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
   expect(processes.activeCount()).toBe(0);
   await expect(service.execute({ operation: "process-stop", handle: "00000000-0000-4000-8000-000000000000" })).rejects.toMatchObject({ status: 404, code: "process_handle_not_found" });
+});
+
+
+it("keeps Worker jobs alive across request boundaries and exposes retained result/logs", async () => {
+  temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-worker-job-"));
+  const executable = path.basename(process.execPath);
+  const service = await createWorkerProtocolService({
+    environmentId: "linux",
+    workspaces: [{
+      id: "one",
+      displayName: "One",
+      root: temporary,
+      profile: "coding",
+      tools: { allow: ["run", "workspace_info"], deny: [], explicit: [] },
+      commands: { allow: [executable] },
+    }],
+  });
+
+  const started = await service.execute<{ result: { jobId: string } }>({
+    operation: "invoke-tool",
+    toolName: "job_start",
+    input: { workspaceId: "one", executable, args: ["-e", "setTimeout(()=>process.stdout.write('job-ok'),80)"], cwd: ".", timeoutMs: 2000, idempotencyKey: "worker-job-test" },
+  });
+  expect(started.result.jobId).toMatch(/^[0-9a-f-]{36}$/i);
+
+  let status: { state?: string } = {};
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const response = await service.execute<{ result: { state: string } }>({
+      operation: "invoke-tool",
+      toolName: "job_status",
+      input: { workspaceId: "one", jobId: started.result.jobId },
+    });
+    status = response.result;
+    if (status.state === "completed") break;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  expect(status.state).toBe("completed");
+
+  await expect(service.execute({
+    operation: "invoke-tool",
+    toolName: "job_logs",
+    input: { workspaceId: "one", jobId: started.result.jobId },
+  })).resolves.toMatchObject({ result: { stdout: "job-ok", truncated: false } });
 });

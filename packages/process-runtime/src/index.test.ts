@@ -209,6 +209,7 @@ describe("ProcessRunner", () => {
       background: { active: 1, limit: 1 },
       asyncChildren: 1,
       stdioSessions: 1,
+      jobs: { queued: 0, queueLimit: 32, retained: 0 },
     });
     const resources = runner.listTracked();
     expect(resources).toHaveLength(2);

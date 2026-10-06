@@ -87,6 +87,12 @@ machine-specific paths are not required inside the source checkout.
 
 Use the public `process_list` and `process_stop` Core tools for Workspace-scoped recovery rather than targeting arbitrary OS PIDs.
 
+For long agent work, prefer `job_start` over increasing a synchronous timeout. `job_start` returns an opaque job ID; `job_status` reports queued/running/terminal state and exit metadata, `job_logs` returns bounded retained stdout/stderr, and `job_cancel` stops queued or running work. An idempotency key prevents retry-driven duplicate starts within the retained Worker job lifetime. When background capacity is full, jobs wait in a bounded FIFO queue instead of immediately consuming another Worker slot.
+
+Job v1 survives the initiating MCP request/client disconnect, but it is not restart-persistent in v0.9.17. A Worker restart ends running jobs and clears retained job state.
+
+When two environments expose the same Workspace ID, pass both `environmentId` and `workspaceId`; Workspace-only selection remains supported when the ID is unique.
+
 ## Audit and observability
 
 Audit records use one shared event contract and local bounded JSONL storage. Query the global,

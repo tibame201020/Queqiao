@@ -4,7 +4,7 @@ import { workspaceAllowsTool, workspaceRequiresStepUp, type WorkspaceEntry } fro
 import { WorkerToolError } from "./tool-errors.js";
 
 export type NativeShellName = "default" | "bash" | "powershell" | "cmd" | "git-bash";
-export type WorkerProcessExecutor = Pick<ProcessRunner, "run" | "start">;
+export type WorkerProcessExecutor = Pick<ProcessRunner, "run" | "start" | "startJob" | "jobStatus" | "jobLogs" | "cancelJob">;
 export type WorkerAuthorityMode = "core" | "extension";
 
 function sameCapabilities(left: readonly ToolCapability[], right: readonly ToolCapability[]): boolean {
@@ -56,10 +56,13 @@ export class WorkerCoreCapabilities {
       }
       return;
     }
-    if (workspaceRequiresStepUp(this.#workspace.config, toolName)) {
+    const policyTool = toolName === "job_start" || toolName === "job_cancel" ? "run"
+      : toolName === "job_status" || toolName === "job_logs" ? "workspace_info"
+      : toolName;
+    if (workspaceRequiresStepUp(this.#workspace.config, policyTool)) {
       throw new WorkerToolError(403, "step_up_required", "Step-up approval is required, but approval grants are not available in the verified runtime");
     }
-    if (!workspaceAllowsTool(this.#workspace.config, toolName, requiredCapabilities)) {
+    if (!workspaceAllowsTool(this.#workspace.config, policyTool, requiredCapabilities)) {
       throw new WorkerToolError(403, "tool_denied", `${toolName} is denied by Workspace policy or profile`);
     }
   }
@@ -128,6 +131,38 @@ export class WorkerCoreCapabilities {
     const cwd = await this.#workspace.reader.resolveStrictDirectory(input.cwd);
     const request = { executable: input.executable, args: input.args, cwd, workspaceId: this.#workspace.config.id, timeoutMs: input.timeoutMs, ...(this.#signal ? { signal: this.#signal } : {}) };
     return input.mode === "async" ? this.#processes.start(request) : this.#processes.run(request);
+  }
+
+  async jobStart(input: { executable: string; args: readonly string[]; cwd: string; timeoutMs: number; idempotencyKey?: string }) {
+    this.#require("workspace:exec");
+    const normalizedExecutable = input.executable.toLowerCase();
+    if (this.#authority === "core" && !this.#workspace.config.commands.allow.some((allowed) => allowed.toLowerCase() === normalizedExecutable)) {
+      throw new WorkerToolError(403, "command_denied", `${input.executable} is not allowed by Workspace command policy`);
+    }
+    const cwd = await this.#workspace.reader.resolveStrictDirectory(input.cwd);
+    return this.#processes.startJob({
+      executable: input.executable,
+      args: input.args,
+      cwd,
+      workspaceId: this.#workspace.config.id,
+      timeoutMs: input.timeoutMs,
+      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+    });
+  }
+
+  jobStatus(jobId: string) {
+    this.#require("workspace:read");
+    return this.#processes.jobStatus(jobId, this.#workspace.config.id);
+  }
+
+  jobLogs(jobId: string) {
+    this.#require("workspace:read");
+    return this.#processes.jobLogs(jobId, this.#workspace.config.id);
+  }
+
+  jobCancel(jobId: string) {
+    this.#require("workspace:exec");
+    return this.#processes.cancelJob(jobId, this.#workspace.config.id);
   }
 
   async shell(input: { shell: NativeShellName; command: string; cwd: string; timeoutMs: number; mode: ProcessExecutionMode }) {
