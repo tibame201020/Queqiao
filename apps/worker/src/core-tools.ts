@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { processExecutionModeSchema, type ProcessExecutionMode } from "@queqiao/contracts";
 import { MAX_TEXT_MUTATION_BYTES } from "@queqiao/contracts";
-import { MAX_PROCESS_TIMEOUT_MS } from "@queqiao/process-runtime";
+import { MAX_JOB_TIMEOUT_MS, MAX_PROCESS_TIMEOUT_MS } from "@queqiao/process-runtime";
 import { CORE_PUBLIC_TOOL_CONTRACTS } from "@queqiao/core-manifest";
 import { ExtensionHost, ToolRuntime, type QueqiaoExtension, type RuntimeExtension, type ToolAuthorityGuard } from "@queqiao/tool-runtime";
 import { WorkerCoreCapabilities, type NativeShellName } from "./core-capabilities.js";
@@ -189,6 +189,61 @@ const workerCoreTools: QueqiaoExtension<WorkerToolContext> = {
       async execute(input, context) {
         const { executable, args, cwd, timeoutMs, mode } = input as { workspaceId: string; executable: string; args: string[]; cwd: string; timeoutMs: number; mode: ProcessExecutionMode };
         return context.capabilities.run({ executable, args, cwd, timeoutMs, mode });
+      },
+    });
+
+    api.registerTool({
+      name: "job_start",
+      title: "Start durable Worker job",
+      description: "Start a request-durable Worker job with bounded retained logs.",
+      inputSchema: z.object({ workspaceId: z.string().min(1).max(64), executable: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/), args: z.array(z.string().max(8192)).max(256).default([]), cwd: z.string().min(1).max(4096).default("."), timeoutMs: z.number().int().min(100).max(MAX_JOB_TIMEOUT_MS).default(30_000), idempotencyKey: z.string().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/).optional() }),
+      requiredCapabilities: ["workspace:exec"],
+      risk: "execute",
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+      async execute(input, context) {
+        const { executable, args, cwd, timeoutMs, idempotencyKey } = input as { workspaceId: string; executable: string; args: string[]; cwd: string; timeoutMs: number; idempotencyKey?: string };
+        return context.capabilities.jobStart({ executable, args, cwd, timeoutMs, ...(idempotencyKey ? { idempotencyKey } : {}) });
+      },
+    });
+
+    api.registerTool({
+      name: "job_status",
+      title: "Get Worker job status",
+      description: "Read retained state and completion metadata for one request-durable Worker job.",
+      inputSchema: z.object({ workspaceId: z.string().min(1).max(64), jobId: z.uuid() }),
+      requiredCapabilities: ["workspace:read"],
+      risk: "read",
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
+      async execute(input, context) {
+        return context.capabilities.jobStatus((input as { workspaceId: string; jobId: string }).jobId);
+      },
+    });
+
+    api.registerTool({
+      name: "job_logs",
+      title: "Read Worker job logs",
+      description: "Read bounded retained stdout and stderr for one request-durable Worker job.",
+      inputSchema: z.object({ workspaceId: z.string().min(1).max(64), jobId: z.uuid() }),
+      requiredCapabilities: ["workspace:read"],
+      risk: "read",
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
+      async execute(input, context) {
+        return context.capabilities.jobLogs((input as { workspaceId: string; jobId: string }).jobId);
+      },
+    });
+
+    api.registerTool({
+      name: "job_cancel",
+      title: "Cancel Worker job",
+      description: "Cancel one queued or running request-durable Worker job by opaque job ID.",
+      inputSchema: z.object({ workspaceId: z.string().min(1).max(64), jobId: z.uuid() }),
+      requiredCapabilities: ["workspace:exec"],
+      risk: "execute",
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+      async execute(input, context) {
+        const jobId = (input as { workspaceId: string; jobId: string }).jobId;
+        if (!context.capabilities.jobCancel(jobId)) throw new WorkerToolError(404, "job_not_found", "Worker job is not available");
+        return { jobId, cancelled: true };
       },
     });
 

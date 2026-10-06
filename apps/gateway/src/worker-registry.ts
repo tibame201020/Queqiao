@@ -177,9 +177,11 @@ export class WorkerRegistry {
 
   async listWorkspaces() { const environments = await this.listEnvironments(); return { environments, workspaces: environments.flatMap((environment) => environment.workspaces) }; }
 
-  async implicitRoute(): Promise<{ worker: WorkerClient; workspaceId: string }> {
+  async implicitRoute(environmentId?: string): Promise<{ worker: WorkerClient; workspaceId: string }> {
     const matches: Array<{ worker: WorkerClient; workspaceId: string }> = [];
-    for (const route of this.routes) {
+    const routes = environmentId ? this.routes.filter((route) => route.environmentId === environmentId) : this.routes;
+    if (environmentId && routes.length === 0) throw new QueqiaoError("environment_not_found", `Environment is not available: ${environmentId}`);
+    for (const route of routes) {
       try {
         const state = await this.listRouteWorkspaces(route);
         const worker = this.candidates(route)[0]!;
@@ -191,9 +193,11 @@ export class WorkerRegistry {
     return matches[0]!;
   }
 
-  private async owner(workspaceId: string): Promise<WorkerRouteGroup> {
+  private async owner(workspaceId: string, environmentId?: string): Promise<WorkerRouteGroup> {
     const matches: WorkerRouteGroup[] = [];
-    for (const route of this.routes) {
+    const routes = environmentId ? this.routes.filter((route) => route.environmentId === environmentId) : this.routes;
+    if (environmentId && routes.length === 0) throw new QueqiaoError("environment_not_found", `Environment is not available: ${environmentId}`);
+    for (const route of routes) {
       try { const state = await this.listRouteWorkspaces(route); if (state.workspaces.some((workspace) => workspace.workspaceId === workspaceId)) matches.push(route); } catch { /* advisory discovery */ }
     }
     if (!matches.length) throw new QueqiaoError("workspace_not_found", `Workspace is not available: ${workspaceId}`);
@@ -201,15 +205,15 @@ export class WorkerRegistry {
     return matches[0]!;
   }
 
-  async route(workspaceId: string, transport?: WorkerTransportType): Promise<WorkerRouteSelection> {
-    const route = await this.owner(workspaceId);
+  async route(workspaceId: string, transport?: WorkerTransportType, environmentId?: string): Promise<WorkerRouteSelection> {
+    const route = await this.owner(workspaceId, environmentId);
     return this.selectRoute(route, transport);
   }
 
-  private async executeRouted<T>(workspaceId: string, transport: WorkerTransportType | undefined, execute: (client: WorkerClient) => Promise<T>): Promise<RoutedWorkerResult<T>> {
+  private async executeRouted<T>(workspaceId: string, transport: WorkerTransportType | undefined, execute: (client: WorkerClient) => Promise<T>, environmentId?: string): Promise<RoutedWorkerResult<T>> {
     let selection: WorkerRouteSelection | undefined;
     try {
-      selection = await this.route(workspaceId, transport);
+      selection = await this.route(workspaceId, transport, environmentId);
       await appendAudit(this.audit, {
         component: "gateway",
         category: "transport",
@@ -233,76 +237,82 @@ export class WorkerRegistry {
     }
   }
 
-  async requireTool(workspaceId: string, tool: string): Promise<void> {
+  async requireTool(workspaceId: string, tool: string, environmentId?: string): Promise<void> {
     const state = await this.listWorkspaces();
-    const workspace = state.workspaces.find((entry) => entry.workspaceId === workspaceId);
+    const matches = state.workspaces.filter((entry) => entry.workspaceId === workspaceId && (!environmentId || entry.environmentId === environmentId));
+    if (environmentId && !state.environments.some((entry) => entry.environmentId === environmentId)) throw new QueqiaoError("environment_not_found", `Environment is not available: ${environmentId}`);
+    if (matches.length > 1) throw new QueqiaoError("workspace_ambiguous", `Workspace ID is ambiguous across environments: ${workspaceId}`);
+    const workspace = matches[0];
     if (!workspace) throw new QueqiaoError("workspace_not_found", `Workspace is not available: ${workspaceId}`);
     if (workspace.tools.deny.includes(tool)) throw new QueqiaoError("tool_denied", `${tool} is denied by workspace policy`);
     if (tool === "shell" && !workspace.tools.explicit.includes("shell")) throw new QueqiaoError("tool_denied", "shell requires explicit workspace allow policy");
     if (workspace.tools.allow.length > 0 && !workspace.tools.allow.includes(tool)) throw new QueqiaoError("tool_denied", `${tool} is not allowed by workspace policy`);
   }
 
-  async workspaceRoute(workspaceId: string): Promise<WorkspaceRoute> {
-    const state = await this.listWorkspaces(); const matches = state.workspaces.filter((entry) => entry.workspaceId === workspaceId);
+  async workspaceRoute(workspaceId: string, environmentId?: string): Promise<WorkspaceRoute> {
+    const state = await this.listWorkspaces();
+    if (environmentId && !state.environments.some((entry) => entry.environmentId === environmentId)) throw new QueqiaoError("environment_not_found", `Environment is not available: ${environmentId}`);
+    const matches = state.workspaces.filter((entry) => entry.workspaceId === workspaceId && (!environmentId || entry.environmentId === environmentId));
     if (!matches.length) throw new QueqiaoError("workspace_not_found", `Workspace is not available: ${workspaceId}`);
     if (matches.length > 1) throw new QueqiaoError("workspace_ambiguous", `Workspace ID is ambiguous across environments: ${workspaceId}`);
     return matches[0]!;
   }
 
   async invokeTool<T>(toolName: string, input: unknown, signal?: AbortSignal): Promise<RoutedWorkerResult<T>> {
-    const candidate = input && typeof input === "object" ? input as { workspaceId?: unknown; transport?: unknown; [key: string]: unknown } : undefined;
+    const candidate = input && typeof input === "object" ? input as { workspaceId?: unknown; environmentId?: unknown; transport?: unknown; [key: string]: unknown } : undefined;
     const workspaceId = typeof candidate?.workspaceId === "string" ? candidate.workspaceId : undefined;
     if (!workspaceId) throw new QueqiaoError("invalid_request", "workspaceId is required for Worker-hosted extension tools");
+    const environmentId = typeof candidate?.environmentId === "string" ? candidate.environmentId : undefined;
     const preferred = typeof candidate?.transport === "string" ? candidate.transport : undefined;
-    const { transport: _transport, ...workerInput } = candidate!;
-    return this.executeRouted(workspaceId, preferred, (worker) => worker.invokeTool<T>(toolName, workerInput, signal));
+    const { transport: _transport, environmentId: _environmentId, ...workerInput } = candidate!;
+    return this.executeRouted(workspaceId, preferred, (worker) => worker.invokeTool<T>(toolName, workerInput, signal), environmentId);
   }
 
-  async workspaceInfo(workspaceId: string, tool: "workspace_info" | "open_workspace" = "open_workspace", transport?: WorkerTransportType): Promise<RoutedWorkerResult<Awaited<ReturnType<WorkerClient["workspaceInfo"]>> & { transports: WorkspaceTransportState[]; routing: WorkspaceRoutingState }>> {
-    const route = await this.owner(workspaceId);
+  async workspaceInfo(workspaceId: string, tool: "workspace_info" | "open_workspace" = "open_workspace", transport?: WorkerTransportType, environmentId?: string): Promise<RoutedWorkerResult<Awaited<ReturnType<WorkerClient["workspaceInfo"]>> & { transports: WorkspaceTransportState[]; routing: WorkspaceRoutingState }>> {
+    const route = await this.owner(workspaceId, environmentId);
     const selection = this.selectRoute(route, transport);
     const info = await selection.client.workspaceInfo(workspaceId, tool);
     return { value: { ...info, transports: this.transportStates(route), routing: this.routingState(route) }, routing: selection.routing };
   }
 
-  async processCapacity(input: { workspaceId: string; transport?: WorkerTransportType }) {
-    return this.executeRouted(input.workspaceId, input.transport, (worker) => worker.processCapacity());
+  async processCapacity(input: { workspaceId: string; environmentId?: string; transport?: WorkerTransportType }) {
+    return this.executeRouted(input.workspaceId, input.transport, (worker) => worker.processCapacity(), input.environmentId);
   }
 
-  async processList(input: { workspaceId: string; transport?: WorkerTransportType }) {
-    return this.executeRouted(input.workspaceId, input.transport, (worker) => worker.processList(input.workspaceId));
+  async processList(input: { workspaceId: string; environmentId?: string; transport?: WorkerTransportType }) {
+    return this.executeRouted(input.workspaceId, input.transport, (worker) => worker.processList(input.workspaceId), input.environmentId);
   }
 
-  async processStop(input: { workspaceId: string; handle: string; transport?: WorkerTransportType }) {
-    return this.executeRouted(input.workspaceId, input.transport, (worker) => worker.processStop(input.handle, input.workspaceId));
+  async processStop(input: { workspaceId: string; environmentId?: string; handle: string; transport?: WorkerTransportType }) {
+    return this.executeRouted(input.workspaceId, input.transport, (worker) => worker.processStop(input.handle, input.workspaceId), input.environmentId);
   }
 
-  async readFile(input: { workspaceId: string; path: string; offset: number; limit: number; transport?: WorkerTransportType }) {
-    const { transport, ...request } = input;
-    return this.executeRouted(input.workspaceId, transport, (worker) => worker.readFile(request));
+  async readFile(input: { workspaceId: string; environmentId?: string; path: string; offset: number; limit: number; transport?: WorkerTransportType }) {
+    const { transport, environmentId, ...request } = input;
+    return this.executeRouted(input.workspaceId, transport, (worker) => worker.readFile(request), environmentId);
   }
-  async listDirectory(input: { workspaceId: string; path: string; depth: number; limit: number; cursor?: string; includeHidden: boolean; transport?: WorkerTransportType }) {
-    const { transport, ...request } = input;
-    return this.executeRouted(input.workspaceId, transport, (worker) => worker.listDirectory(request));
+  async listDirectory(input: { workspaceId: string; environmentId?: string; path: string; depth: number; limit: number; cursor?: string; includeHidden: boolean; transport?: WorkerTransportType }) {
+    const { transport, environmentId, ...request } = input;
+    return this.executeRouted(input.workspaceId, transport, (worker) => worker.listDirectory(request), environmentId);
   }
-  async searchText(input: { workspaceId: string; query: string; path: string; globs: string[]; maxResults: number; caseSensitive: boolean; timeoutMs: number; transport?: WorkerTransportType }, signal?: AbortSignal) {
-    const { transport, ...request } = input;
-    return this.executeRouted(input.workspaceId, transport, (worker) => worker.searchText(request, signal));
+  async searchText(input: { workspaceId: string; environmentId?: string; query: string; path: string; globs: string[]; maxResults: number; caseSensitive: boolean; timeoutMs: number; transport?: WorkerTransportType }, signal?: AbortSignal) {
+    const { transport, environmentId, ...request } = input;
+    return this.executeRouted(input.workspaceId, transport, (worker) => worker.searchText(request, signal), environmentId);
   }
-  async writeFile(input: { workspaceId: string; path: string; content: string; transport?: WorkerTransportType }) {
-    const { transport, ...request } = input;
-    return this.executeRouted(input.workspaceId, transport, (worker) => worker.writeFile(request));
+  async writeFile(input: { workspaceId: string; environmentId?: string; path: string; content: string; transport?: WorkerTransportType }) {
+    const { transport, environmentId, ...request } = input;
+    return this.executeRouted(input.workspaceId, transport, (worker) => worker.writeFile(request), environmentId);
   }
-  async editFile(input: { workspaceId: string; path: string; oldText: string; newText: string; transport?: WorkerTransportType }) {
-    const { transport, ...request } = input;
-    return this.executeRouted(input.workspaceId, transport, (worker) => worker.editFile(request));
+  async editFile(input: { workspaceId: string; environmentId?: string; path: string; oldText: string; newText: string; transport?: WorkerTransportType }) {
+    const { transport, environmentId, ...request } = input;
+    return this.executeRouted(input.workspaceId, transport, (worker) => worker.editFile(request), environmentId);
   }
-  async run(input: { workspaceId: string; executable: string; args: string[]; cwd: string; timeoutMs: number; mode: "sync" | "async"; transport?: WorkerTransportType }, signal?: AbortSignal) {
-    const { transport, ...request } = input;
-    return this.executeRouted(input.workspaceId, transport, (worker) => worker.run(request, signal));
+  async run(input: { workspaceId: string; environmentId?: string; executable: string; args: string[]; cwd: string; timeoutMs: number; mode: "sync" | "async"; transport?: WorkerTransportType }, signal?: AbortSignal) {
+    const { transport, environmentId, ...request } = input;
+    return this.executeRouted(input.workspaceId, transport, (worker) => worker.run(request, signal), environmentId);
   }
-  async shell(input: { workspaceId: string; shell: "default" | "bash" | "powershell" | "cmd" | "git-bash"; command: string; cwd: string; timeoutMs: number; mode: "sync" | "async"; transport?: WorkerTransportType }, signal?: AbortSignal) {
-    const { transport, ...request } = input;
-    return this.executeRouted(input.workspaceId, transport, (worker) => worker.shell(request, signal));
+  async shell(input: { workspaceId: string; environmentId?: string; shell: "default" | "bash" | "powershell" | "cmd" | "git-bash"; command: string; cwd: string; timeoutMs: number; mode: "sync" | "async"; transport?: WorkerTransportType }, signal?: AbortSignal) {
+    const { transport, environmentId, ...request } = input;
+    return this.executeRouted(input.workspaceId, transport, (worker) => worker.shell(request, signal), environmentId);
   }
 }

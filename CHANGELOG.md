@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.9.17 - 2026-10-06
+
+- Adds request-durable Worker jobs with bounded retained stdout/stderr, completion metadata, cancellation, idempotency keys, and bounded FIFO admission when background capacity is busy.
+- Adds public `job_start`, `job_status`, `job_logs`, and `job_cancel` tools while preserving existing `run` / `shell` sync and async behavior.
+- Adds explicit `environmentId` workspace routing so duplicate Workspace IDs across environments can be selected without `workspace_ambiguous`.
+- Clarifies that Job v1 is durable across MCP request/client disconnects for the Worker lifetime; restart-persistent job recovery is not part of 0.9.17.
+- Updates transitive `proxy-addr` to 2.0.8 to clear the production critical-severity audit gate.
 - Makes npm release success depend on authoritative registry visibility, with cache-bypassed bounded verification and safe handling for versions that npm has accepted into its asynchronous staged-publish queue.
 
 ## 0.9.16 - 2026-10-05

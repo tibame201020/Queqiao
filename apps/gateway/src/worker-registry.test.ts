@@ -41,6 +41,22 @@ describe("Worker routing security", () => {
     await expect(registry.route("shared")).rejects.toThrow(/ambiguous/);
   });
 
+  it("uses an explicit environment to disambiguate duplicate workspace IDs", async () => {
+    vi.stubGlobal("fetch", vi.fn((url: URL | string) => {
+      const environmentId = String(url).includes("7576") ? "windows" : "wsl";
+      return Promise.resolve(new Response(JSON.stringify(String(url).includes("/v1/hello") ? hello(environmentId) : state(environmentId)), { status: 200, headers: { "content-type": "application/json" } }));
+    }));
+    const registry = new WorkerRegistry([
+      { environmentId: "windows", transport: { type: "http", endpoint: "http://127.0.0.1:7576" }, token: "a" },
+      { environmentId: "wsl", transport: { type: "http", endpoint: "http://127.0.0.1:7577" }, token: "b" },
+    ]);
+
+    await expect(registry.route("shared", undefined, "wsl")).resolves.toMatchObject({
+      routing: { environmentId: "wsl", selectedTransport: "http" },
+    });
+    await expect(registry.route("shared", undefined, "missing")).rejects.toMatchObject({ code: "environment_not_found" });
+  });
+
   it("prefers the healthier transport when omitted while an explicit transport remains exact", async () => {
     const runtime = (healthy: boolean) => ({
       execute: vi.fn(async (request: { operation: string }) => {

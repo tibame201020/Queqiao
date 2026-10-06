@@ -10,6 +10,9 @@ export const MAX_PROCESS_TIMEOUT_MS = 120_000;
 export const MAX_PROCESS_OUTPUT_BYTES = 256 * 1024;
 export const MAX_PROCESS_INPUT_CHUNK_BYTES = 1024 * 1024;
 export const DEFAULT_PROCESS_CONCURRENCY = 2;
+export const MAX_JOB_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+export const DEFAULT_JOB_QUEUE_LIMIT = 32;
+export const DEFAULT_JOB_RETENTION_MS = 15 * 60_000;
 
 type ProcessBaseRequest = {
   executable: string;
@@ -27,6 +30,22 @@ export type StdioSessionRequest = ProcessBaseRequest & {
   stdoutEncoding?: "utf8" | "base64";
   /** null keeps the managed session alive until close(), cancellation, output failure, or Worker shutdown. */
   timeoutMs?: number | null;
+};
+
+export type JobState = "queued" | "running" | "completed" | "failed" | "cancelled" | "timed_out";
+export type JobRequest = Omit<ProcessBaseRequest, "signal"> & { timeoutMs?: number; idempotencyKey?: string };
+export type JobStartResult = { jobId: string; state: JobState; deduplicated: boolean };
+export type JobStatus = {
+  jobId: string; state: JobState; workspaceId?: string; executable: string; createdAt: string;
+  startedAt?: string; finishedAt?: string; timeoutMs: number; pid?: number; exitCode?: number | null;
+  signal?: NodeJS.Signals | null; durationMs?: number; truncated: boolean;
+};
+export type JobLogs = { jobId: string; stdout: string; stderr: string; truncated: boolean };
+type JobEntry = {
+  jobId: string; request: JobRequest & { executable: string; timeoutMs: number }; state: JobState; createdAt: string;
+  startedAt?: string; finishedAt?: string; pid?: number; child?: ChildProcess; timer?: NodeJS.Timeout; retentionTimer?: NodeJS.Timeout;
+  exitCode?: number | null; signal?: NodeJS.Signals | null; durationMs?: number; stdout: Buffer; stderr: Buffer;
+  truncated: boolean; timedOut: boolean; cancelRequested: boolean;
 };
 
 export type ProcessResult = {
@@ -83,6 +102,7 @@ export type ProcessCapacitySnapshot = {
   background: { active: number; limit: number };
   asyncChildren: number;
   stdioSessions: number;
+  jobs: { queued: number; queueLimit: number; retained: number };
 };
 
 export type TrackedProcessInfo = {
@@ -111,14 +131,21 @@ export class ProcessRunner {
   private backgroundActive = 0;
   private readonly asyncChildren = new Map<string, { child: ChildProcess; timer: NodeJS.Timeout; info: TrackedProcessInfo }>();
   private readonly stdioChildren = new Map<string, { child: ChildProcess; info: TrackedProcessInfo }>();
+  private readonly jobs = new Map<string, JobEntry>();
+  private readonly jobQueue: string[] = [];
+  private readonly jobIdempotency = new Map<string, string>();
 
   constructor(
     private readonly foregroundConcurrency = DEFAULT_PROCESS_CONCURRENCY,
     private readonly outputLimitBytes = MAX_PROCESS_OUTPUT_BYTES,
     private readonly backgroundConcurrency = foregroundConcurrency,
+    private readonly jobQueueLimit = DEFAULT_JOB_QUEUE_LIMIT,
+    private readonly jobRetentionMs = DEFAULT_JOB_RETENTION_MS,
   ) {
     if (!Number.isInteger(foregroundConcurrency) || foregroundConcurrency < 1) throw new Error("Foreground process concurrency must be a positive integer");
     if (!Number.isInteger(backgroundConcurrency) || backgroundConcurrency < 1) throw new Error("Background process concurrency must be a positive integer");
+    if (!Number.isInteger(jobQueueLimit) || jobQueueLimit < 0) throw new Error("Job queue limit must be a non-negative integer");
+    if (!Number.isInteger(jobRetentionMs) || jobRetentionMs < 1) throw new Error("Job retention must be a positive integer");
   }
 
   activeCount(): number { return this.foregroundActive + this.backgroundActive; }
@@ -133,7 +160,71 @@ export class ProcessRunner {
       background: { active: this.backgroundActive, limit: this.backgroundConcurrency },
       asyncChildren: this.asyncChildren.size,
       stdioSessions: this.stdioChildren.size,
+      jobs: { queued: this.jobQueue.length, queueLimit: this.jobQueueLimit, retained: this.jobs.size },
     };
+  }
+
+  jobQueueDepth(): number { return this.jobQueue.length; }
+  retainedJobCount(): number { return this.jobs.size; }
+
+  async startJob(request: JobRequest): Promise<JobStartResult> {
+    if (request.idempotencyKey) {
+      const key = this.jobIdempotencyKey(request.workspaceId, request.idempotencyKey);
+      const existing = this.jobIdempotency.get(key);
+      if (existing && this.jobs.has(existing)) {
+        const state = this.jobs.get(existing)!.state;
+        return { jobId: existing, state, deduplicated: true };
+      }
+    }
+    const preparedBase = await this.prepareBase(request);
+    const timeoutMs = request.timeoutMs ?? DEFAULT_PROCESS_TIMEOUT_MS;
+    validateJobTimeout(timeoutMs);
+    if (this.backgroundActive >= this.backgroundConcurrency && this.jobQueue.length >= this.jobQueueLimit) {
+      throw new ProcessCapacityError("background", this.backgroundActive, this.backgroundConcurrency);
+    }
+    const jobId = randomUUID();
+    const entry: JobEntry = {
+      jobId, request: { ...preparedBase, timeoutMs }, state: "queued", createdAt: new Date().toISOString(),
+      stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), truncated: false, timedOut: false, cancelRequested: false,
+    };
+    this.jobs.set(jobId, entry);
+    if (request.idempotencyKey) this.jobIdempotency.set(this.jobIdempotencyKey(request.workspaceId, request.idempotencyKey), jobId);
+    if (this.backgroundActive < this.backgroundConcurrency) this.startJobEntry(entry); else this.jobQueue.push(jobId);
+    return { jobId, state: entry.state as "queued" | "running", deduplicated: false };
+  }
+
+  jobStatus(jobId: string, workspaceId?: string): JobStatus {
+    const entry = this.requireJob(jobId, workspaceId);
+    return {
+      jobId: entry.jobId, state: entry.state, ...(entry.request.workspaceId ? { workspaceId: entry.request.workspaceId } : {}),
+      executable: path.basename(entry.request.executable), createdAt: entry.createdAt,
+      ...(entry.startedAt ? { startedAt: entry.startedAt } : {}), ...(entry.finishedAt ? { finishedAt: entry.finishedAt } : {}),
+      timeoutMs: entry.request.timeoutMs, ...(entry.pid ? { pid: entry.pid } : {}),
+      ...(entry.exitCode !== undefined ? { exitCode: entry.exitCode } : {}),
+      ...(entry.signal !== undefined ? { signal: entry.signal } : {}),
+      ...(entry.durationMs !== undefined ? { durationMs: entry.durationMs } : {}), truncated: entry.truncated,
+    };
+  }
+
+  jobLogs(jobId: string, workspaceId?: string): JobLogs {
+    const entry = this.requireJob(jobId, workspaceId);
+    return { jobId, stdout: entry.stdout.toString("utf8"), stderr: entry.stderr.toString("utf8"), truncated: entry.truncated };
+  }
+
+  cancelJob(jobId: string, workspaceId?: string): boolean {
+    const entry = this.jobs.get(jobId);
+    if (!entry || (workspaceId && entry.request.workspaceId !== workspaceId)) return false;
+    if (entry.state === "queued") {
+      const index = this.jobQueue.indexOf(jobId);
+      if (index >= 0) this.jobQueue.splice(index, 1);
+      entry.cancelRequested = true;
+      this.finishJob(entry, "cancelled", null, null);
+      return true;
+    }
+    if (entry.state !== "running" || !entry.child) return false;
+    entry.cancelRequested = true;
+    terminateTree(entry.child);
+    return true;
   }
 
   listTracked(workspaceId?: string): TrackedProcessInfo[] {
@@ -199,6 +290,10 @@ export class ProcessRunner {
   shutdown(): void {
     for (const { child } of this.asyncChildren.values()) terminateTree(child);
     for (const { child } of this.stdioChildren.values()) terminateTree(child);
+    for (const entry of this.jobs.values()) {
+      if (entry.state === "running" && entry.child) { entry.cancelRequested = true; terminateTree(entry.child); }
+      else if (entry.state === "queued") this.finishJob(entry, "cancelled", null, null);
+    }
   }
 
   private async prepareBase<T extends ProcessBaseRequest>(request: T): Promise<T & { executable: string }> {
@@ -246,6 +341,68 @@ export class ProcessRunner {
 
   private releaseBackground(): void {
     this.backgroundActive = Math.max(0, this.backgroundActive - 1);
+    this.drainJobs();
+  }
+
+  private jobIdempotencyKey(workspaceId: string | undefined, key: string): string {
+    return `${workspaceId ?? ""}\u0000${key}`;
+  }
+  private requireJob(jobId: string, workspaceId?: string): JobEntry {
+    const entry = this.jobs.get(jobId);
+    if (!entry || (workspaceId && entry.request.workspaceId !== workspaceId)) throw new Error("Job is not available");
+    return entry;
+  }
+  private appendJobLog(entry: JobEntry, stream: "stdout" | "stderr", chunk: Buffer): void {
+    const current = stream === "stdout" ? entry.stdout : entry.stderr;
+    const remaining = Math.max(0, this.outputLimitBytes - current.length);
+    if (remaining > 0) {
+      const accepted = chunk.subarray(0, remaining);
+      if (stream === "stdout") entry.stdout = Buffer.concat([entry.stdout, accepted]); else entry.stderr = Buffer.concat([entry.stderr, accepted]);
+    }
+    if (chunk.length > remaining) entry.truncated = true;
+  }
+  private startJobEntry(entry: JobEntry): void {
+    if (entry.state !== "queued" || this.backgroundActive >= this.backgroundConcurrency) return;
+    this.backgroundActive += 1;
+    entry.state = "running";
+    entry.startedAt = new Date().toISOString();
+    const child = spawnNative(entry.request, ["ignore", "pipe", "pipe"]);
+    entry.child = child;
+    child.stdout!.on("data", (chunk: Buffer) => this.appendJobLog(entry, "stdout", chunk));
+    child.stderr!.on("data", (chunk: Buffer) => this.appendJobLog(entry, "stderr", chunk));
+    child.once("spawn", () => {
+      if (child.pid) entry.pid = child.pid;
+      entry.timer = setTimeout(() => { entry.timedOut = true; terminateTree(child); }, entry.request.timeoutMs);
+      entry.timer.unref?.();
+    });
+    child.once("error", () => { if (entry.state === "running") this.finishJob(entry, "failed", null, null); });
+    child.once("close", (exitCode, signal) => {
+      if (entry.state !== "running") return;
+      const state: JobState = entry.cancelRequested ? "cancelled" : entry.timedOut ? "timed_out" : exitCode === 0 ? "completed" : "failed";
+      this.finishJob(entry, state, exitCode, signal as NodeJS.Signals | null);
+    });
+  }
+  private finishJob(entry: JobEntry, state: JobState, exitCode: number | null, signal: NodeJS.Signals | null): void {
+    const wasRunning = entry.state === "running";
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.state = state; entry.exitCode = exitCode; entry.signal = signal; entry.finishedAt = new Date().toISOString();
+    if (entry.startedAt) entry.durationMs = Math.max(0, Date.parse(entry.finishedAt) - Date.parse(entry.startedAt));
+    delete entry.child; delete entry.timer;
+    if (wasRunning) this.releaseBackground();
+    entry.retentionTimer = setTimeout(() => {
+      this.jobs.delete(entry.jobId);
+      if (entry.request.idempotencyKey) {
+        const key = this.jobIdempotencyKey(entry.request.workspaceId, entry.request.idempotencyKey);
+        if (this.jobIdempotency.get(key) === entry.jobId) this.jobIdempotency.delete(key);
+      }
+    }, this.jobRetentionMs);
+    entry.retentionTimer.unref?.();
+  }
+  private drainJobs(): void {
+    while (this.backgroundActive < this.backgroundConcurrency && this.jobQueue.length > 0) {
+      const entry = this.jobs.get(this.jobQueue.shift()!);
+      if (entry?.state === "queued") this.startJobEntry(entry);
+    }
   }
 
   private spawnAndCollect(request: ProcessRequest & { executable: string; timeoutMs: number }): Promise<ProcessResult> {
@@ -516,6 +673,11 @@ export class ProcessRunner {
 function validateTimeout(timeoutMs: number): void {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > MAX_PROCESS_TIMEOUT_MS) {
     throw new Error(`timeoutMs must be between 100 and ${MAX_PROCESS_TIMEOUT_MS}`);
+  }
+}
+function validateJobTimeout(timeoutMs: number): void {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > MAX_JOB_TIMEOUT_MS) {
+    throw new Error(`timeoutMs must be between 100 and ${MAX_JOB_TIMEOUT_MS}`);
   }
 }
 

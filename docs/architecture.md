@@ -133,7 +133,9 @@ Revision 7 adds a public external-extension SDK export at `@tibame201020/queqiao
 
 Environment-native process execution with trusted executable resolution, bounded synchronous output, timeout/cancellation propagation, process-tree termination, minimal child environment, and shared per-Worker concurrency limits across synchronous and asynchronous execution.
 
-`run` and `shell` support `mode: sync | async`. Sync remains request-bound. Async returns after native process acceptance with a Worker-owned opaque recovery handle plus native start metadata, keeps lifetime/concurrency policy authoritative, and discards stdout/stderr. The handle can be used with `process_stop` while that Worker tracks the process; it does not create a Queqiao Job domain or durable restart-recovery contract.
+`run` and `shell` support `mode: sync | async`. Sync remains request-bound. Async returns after native process acceptance with a Worker-owned opaque recovery handle plus native start metadata, keeps lifetime/concurrency policy authoritative, and discards stdout/stderr.
+
+Core Manifest Revision 11 adds a separate request-durable Job v1 surface: `job_start`, `job_status`, `job_logs`, and `job_cancel`. Accepted jobs continue independently of the initiating MCP request, retain bounded stdout/stderr plus terminal metadata, support idempotency keys, and wait in a bounded FIFO queue when background capacity is busy. Job v1 is Worker-lifetime durable only; Worker restart persistence/recovery is intentionally not claimed in v0.9.17.
 
 ### `packages/workspace`
 
@@ -209,7 +211,7 @@ Per ADR-0010, Core Manifest Revision 5 introduced `run` and `shell` with `mode: 
 
 Sync retains request-bound cancellation semantics. Async detaches an accepted native process from the initiating MCP request while keeping Worker lifetime/concurrency/resource policy authoritative.
 
-This does not introduce a Queqiao Job domain, durable JobStore, restart recovery guarantee, or Core tmux dependency.
+Revision 11 adds the request-durable Job v1 domain described above without changing `run` / `shell` semantics. It does not add restart-persistent JobStore recovery or a Core tmux dependency.
 
 ## Security invariants
 

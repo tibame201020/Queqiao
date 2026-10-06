@@ -55,6 +55,11 @@ export const workerProcessCapacitySchema = z.object({
   background: z.object({ active: z.number().int().nonnegative(), limit: z.number().int().positive() }).strict(),
   asyncChildren: z.number().int().nonnegative(),
   stdioSessions: z.number().int().nonnegative(),
+  jobs: z.object({
+    queued: z.number().int().nonnegative(),
+    queueLimit: z.number().int().nonnegative(),
+    retained: z.number().int().nonnegative(),
+  }).strict().optional(),
 }).strict();
 export const workerTrackedProcessSchema = z.object({
   handle: z.uuid(),
