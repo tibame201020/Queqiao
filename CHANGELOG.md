@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Adds a provider-neutral Runtime Lease contract for disposable execution runtimes, separating runtime provisioning/TTL/disposal from Worker membership, liveness, and Worker Job v1 while keeping provider credentials and APIs outside Core semantics.
+
 ## 0.9.17 - 2026-10-06
 
 - Adds request-durable Worker jobs with bounded retained stdout/stderr, completion metadata, cancellation, idempotency keys, and bounded FIFO admission when background capacity is busy.
