@@ -33,3 +33,33 @@ The first real MCP call in GitHub Actions successfully completed OAuth and retur
 On 2026-10-08, controller run `37783245944` completed the real OAuth-authenticated MCP `read_file` request, verified the ephemeral Worker routing receipt and exact marker, and disposed the Runtime Lease. Its final GitHub run-cancellation assertion failed because the POC allowed only 45 seconds, although the worker run `37783321062` eventually reached `completed/cancelled` about 77 seconds after disposal began. This is a GitHub Actions control-plane observation delay, not a failed MCP read.
 
 The acceptance now polls cancellation for at most 120 seconds, retains the strict `disposed` and `cancelled` assertions, and has a CI contract test to prevent shrinking the wait below the observed control-plane delay. Treat the short-task execution as passing only when the full live controller run succeeds.
+
+## Hybrid preflight evidence (2026-10-08)
+
+A fresh manual **Runtime Provider Phase 3 POC** run [37800867392](https://github.com/tibame201020/Queqiao/actions/runs/37800867392) completed successfully on `main` at `8505a03`.
+
+- Temporary GitHub Actions Gateway + Worker started successfully.
+- The Worker joined through GitHub OIDC + reverse WebSocket and its Runtime Lease became `ready`.
+- The authenticated MCP `read_file` returned `workerRead=true` from workspace `runtime` and the intended ephemeral Worker environment.
+- The Runtime Lease ended in `disposed`; the Worker workflow run `37800918193` ended in `cancelled`.
+
+The first run of this session [37800590692](https://github.com/tibame201020/Queqiao/actions/runs/37800590692) failed before enrollment because the ephemeral Cloudflare quick tunnel returned HTTP 530. This is a transient test-network dependency, not a production-ready ingress pattern.
+
+On the persistent Browser Harness host, a read-only check of the already-authenticated Chrome profile returned `verdict=authenticated`, with the ChatGPT composer present. It did not submit a message.
+
+**Gate C remains open.** The existing fixed Gateway did not expose the Runtime Provider management route. Its local configuration has no GitHub Actions provider configured. The new read-only preflight verified `browser=authenticated` and `reason=provider_missing`. A complete user-facing POC still needs a stable Gateway identity, an isolated/approved runtime-provider configuration and a ChatGPT-initiated MCP call which returns the Actions Worker result to the browser.
+
+### Repeatable hybrid readiness check
+
+Use an authenticated *persistent* Chrome on loopback CDP and a local Gateway management listener. Supply the management secret as a **file path** through `QUEQIAO_GATEWAY_MANAGEMENT_SECRET_FILE` in the operator's process environment; do not copy the secret into source, logs, issues, or workflow artifacts.
+
+```shell
+BROWSER_CDP_URL=http://127.0.0.1:9333 \
+QUEQIAO_GATEWAY_MANAGEMENT_URL=http://127.0.0.1:12990 \
+QUEQIAO_GATEWAY_MANAGEMENT_SECRET_FILE=/secure/path/management.secret \
+npx tsx packages/browser-harness-runtime/src/hybrid-readiness-cli.ts
+```
+
+The probe checks the existing ChatGPT composer and performs only `GET /runtimes` on the **loopback** management interface. It does **not** provision, dispose, restart, or edit any Gateway. It prints only `browser`, `providerAvailable`, `ready`, and `reason` without tokens or profile data. Exit status `0` means both browser and provider are ready; `2` means at least one gate is blocked.
+
+Tests: `packages/browser-harness-runtime/src/hybrid-readiness.test.ts`.
