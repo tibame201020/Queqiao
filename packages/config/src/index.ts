@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse, stringify } from "yaml";
@@ -224,6 +224,16 @@ const runtimeConfigBaseSchema = z.object({
     trustProxyHops: z.number().int().min(0).max(16).default(1),
     stateDirectory: z.string().min(1), approvalSecretFile: z.string().min(1), jwtSigningSecretFile: z.string().min(1),
     allowedRedirectOrigins: z.array(z.url()).default(["https://chatgpt.com", "http://127.0.0.1", "http://localhost"]),
+    runtimeProviders: z.object({
+      githubActions: z.object({
+        owner: z.string().min(1).max(100).regex(/^[A-Za-z0-9_.-]+$/),
+        repo: z.string().min(1).max(100).regex(/^[A-Za-z0-9_.-]+$/),
+        workflowId: z.string().min(1).max(255),
+        ref: z.string().min(1).max(255).default("main"),
+        tokenFile: z.string().min(1),
+        audience: z.string().min(1).max(2048).optional(),
+      }).optional(),
+    }).default({}),
   }).optional(),
   worker: z.object({
     workerId: workerIdSchema.optional(),
