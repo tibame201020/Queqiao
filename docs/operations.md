@@ -83,7 +83,7 @@ machine-specific paths are not required inside the source checkout.
 
 ## Process diagnostics and recovery
 
-`queqiao doctor` reports each active local Worker's foreground/background capacity and tracked async/stdio resources. A saturated class is shown explicitly so an occupied execution slot can be distinguished from Worker unreachability. Tracked resources expose only Worker-owned recovery handles and bounded metadata; local Worker credentials are never emitted.
+`queqiao doctor` reports each active local Worker's foreground/background/session capacity and tracked sync/async/stdio resources. A saturated class is shown explicitly so an occupied execution slot can be distinguished from Worker unreachability. Tracked resources expose only Worker-owned recovery handles and bounded metadata; local Worker credentials are never emitted.
 
 Use the public `process_list` and `process_stop` Core tools for Workspace-scoped recovery rather than targeting arbitrary OS PIDs.
 

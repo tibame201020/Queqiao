@@ -49,12 +49,13 @@ export const workerShellResultSchema = z.union([
   workerAsyncProcessResultSchema.extend({ shell: z.string().min(1) }),
 ]);
 
-export const workerProcessCapacityClassSchema = z.enum(["foreground", "background"]);
+export const workerProcessCapacityClassSchema = z.enum(["foreground", "background", "session"]);
 export const workerProcessCapacitySchema = z.object({
   foreground: z.object({ active: z.number().int().nonnegative(), limit: z.number().int().positive() }).strict(),
   background: z.object({ active: z.number().int().nonnegative(), limit: z.number().int().positive() }).strict(),
   asyncChildren: z.number().int().nonnegative(),
   stdioSessions: z.number().int().nonnegative(),
+  sessions: z.object({ active: z.number().int().nonnegative(), limit: z.number().int().positive() }).strict().optional(),
   jobs: z.object({
     queued: z.number().int().nonnegative(),
     queueLimit: z.number().int().nonnegative(),
@@ -63,7 +64,7 @@ export const workerProcessCapacitySchema = z.object({
 }).strict();
 export const workerTrackedProcessSchema = z.object({
   handle: z.uuid(),
-  kind: z.enum(["async", "stdio"]),
+  kind: z.enum(["sync", "async", "stdio"]),
   pid: z.number().int().positive(),
   executable: z.string().min(1).max(128),
   workspaceId: z.string().min(1).max(64).optional(),

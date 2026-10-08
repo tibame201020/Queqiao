@@ -217,7 +217,7 @@ queqiao doctor tool explain <tool> [--gateway <name>]
 queqiao doctor paths
 ```
 
-`doctor` scans named Gateways, Workers, and Extension Hub integrity. For each active local Worker it also reports bounded foreground/background process capacity, tracked async/stdio resources, and saturated capacity classes using the Worker's authenticated process-control endpoints. Worker credentials are used only for the local diagnostic request and are never included in Doctor output. Manifest/tool composition is Gateway-owned, so those diagnostics target a Gateway.
+`doctor` scans named Gateways, Workers, and Extension Hub integrity. For each active local Worker it also reports bounded foreground/background/session process capacity, tracked sync/async/stdio resources, and saturated capacity classes using the Worker's authenticated process-control endpoints. Worker credentials are used only for the local diagnostic request and are never included in Doctor output. Manifest/tool composition is Gateway-owned, so those diagnostics target a Gateway.
 
 ## Cleanup and migration
 
