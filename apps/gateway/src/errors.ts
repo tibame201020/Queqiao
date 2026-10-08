@@ -5,7 +5,7 @@ export type QueqiaoErrorEnvelope = {
   message: string;
   layer: QueqiaoErrorLayer;
   retryable: boolean;
-  capacityClass?: "foreground" | "background";
+  capacityClass?: "foreground" | "background" | "session";
   active?: number;
   limit?: number;
 };
@@ -28,7 +28,7 @@ export class WorkerRemoteError extends QueqiaoError {
     code: string,
     message: string,
     retryable = workerErrorIsRetryable(code, status),
-    readonly capacityClass?: "foreground" | "background",
+    readonly capacityClass?: "foreground" | "background" | "session",
     readonly active?: number,
     readonly limit?: number,
   ) {
@@ -42,7 +42,7 @@ export class WorkerHttpError extends WorkerRemoteError {
     status: number,
     code: string,
     message: string,
-    capacityClass?: "foreground" | "background",
+    capacityClass?: "foreground" | "background" | "session",
     active?: number,
     limit?: number,
   ) {

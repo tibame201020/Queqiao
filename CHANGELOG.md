@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.9.18 - 2026-10-08
+
+- Tracks synchronous run/shell process ownership with workspace-scoped opaque recovery handles and includes it in orderly shutdown.
+- Gives managed stdio sessions an independent bounded capacity pool so persistent connections cannot starve foreground commands or background jobs; Doctor reports session saturation.
+- Uses the absolute Windows taskkill path and handles terminator failure with parent termination fallback; reservations remain held until native close.
 
 - Adds a provider-neutral Runtime Lease contract for disposable execution runtimes, separating runtime provisioning/TTL/disposal from Worker membership, liveness, and Worker Job v1 while keeping provider credentials and APIs outside Core semantics.
 

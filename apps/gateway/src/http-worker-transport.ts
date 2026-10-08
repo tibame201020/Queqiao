@@ -26,7 +26,7 @@ export class HttpWorkerTransport implements WorkerTransport {
     const data = await response.json() as T & {
       error?: string;
       message?: string;
-      capacityClass?: "foreground" | "background";
+      capacityClass?: "foreground" | "background" | "session";
       active?: number;
       limit?: number;
     };

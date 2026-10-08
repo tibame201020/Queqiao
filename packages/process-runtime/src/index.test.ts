@@ -205,17 +205,18 @@ describe("ProcessRunner", () => {
     });
 
     expect(runner.capacity()).toEqual({
-      foreground: { active: 1, limit: 1 },
+      foreground: { active: 0, limit: 1 },
       background: { active: 1, limit: 1 },
       asyncChildren: 1,
       stdioSessions: 1,
+      sessions: { active: 1, limit: 1 },
       jobs: { queued: 0, queueLimit: 32, retained: 0 },
     });
     const resources = runner.listTracked();
     expect(resources).toHaveLength(2);
     expect(resources).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "async", pid: asyncResult.pid, executable: nodeExecutable, workspaceId: "one", capacityClass: "background", timeoutMs: 2000 }),
-      expect.objectContaining({ kind: "stdio", pid: session.pid, executable: nodeExecutable, workspaceId: "one", capacityClass: "foreground", timeoutMs: null }),
+      expect.objectContaining({ kind: "stdio", pid: session.pid, executable: nodeExecutable, workspaceId: "one", capacityClass: "session", timeoutMs: null }),
     ]));
     const asyncResource = resources.find((resource) => resource.kind === "async")!;
     const stdioResource = resources.find((resource) => resource.kind === "stdio")!;
