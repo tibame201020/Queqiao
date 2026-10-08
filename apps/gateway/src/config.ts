@@ -21,6 +21,14 @@ export type GatewayRuntimeConfig = {
   allowedRedirectOrigins: Set<string>;
   extensions: readonly InstalledExtensionConfig[];
   configDirectory: string;
+  githubActionsRuntime?: {
+    owner: string;
+    repo: string;
+    workflowId: string;
+    ref: string;
+    token: string;
+    audience: string;
+  };
 };
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -93,6 +101,17 @@ export function loadGatewayConfigFile(file: string): GatewayRuntimeConfig {
   const workerSessionTls = gateway.workerSessionTls
     ? { cert: readFileSync(path.resolve(gateway.workerSessionTls.certFile)), key: readFileSync(path.resolve(gateway.workerSessionTls.keyFile)) }
     : undefined;
+  const githubActions = gateway.runtimeProviders.githubActions;
+  const githubActionsRuntime = githubActions
+    ? {
+        owner: githubActions.owner,
+        repo: githubActions.repo,
+        workflowId: githubActions.workflowId,
+        ref: githubActions.ref,
+        token: readFileSync(path.resolve(githubActions.tokenFile), "utf8").trim(),
+        audience: githubActions.audience ?? new URL("runtime/github-actions/claim", publicBaseUrl).href,
+      }
+    : undefined;
   return {
     host: gateway.listen.host,
     port: gateway.listen.port,
@@ -111,5 +130,6 @@ export function loadGatewayConfigFile(file: string): GatewayRuntimeConfig {
     allowedRedirectOrigins: new Set(gateway.allowedRedirectOrigins.map((item) => new URL(item).origin)),
     extensions: document.extensions,
     configDirectory: path.dirname(path.resolve(file)),
+    ...(githubActionsRuntime ? { githubActionsRuntime } : {}),
   };
 }
