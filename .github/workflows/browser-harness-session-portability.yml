@@ -38,8 +38,15 @@ jobs:
           CHATGPT_BROWSER_SESSION_CAPSULE: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE }}
         run: |
           set -euo pipefail
-          test -n "$CHATGPT_BROWSER_SESSION_CAPSULE"
-          test "${#CHATGPT_BROWSER_SESSION_CAPSULE}" -lt 48000
+          # Repository secrets are captured when a NEW workflow run is queued.
+          if [ -z "$CHATGPT_BROWSER_SESSION_CAPSULE" ]; then
+            echo "::error::CHATGPT_BROWSER_SESSION_CAPSULE is not available to this run"
+            exit 1
+          fi
+          if [ "${#CHATGPT_BROWSER_SESSION_CAPSULE}" -ge 48000 ]; then
+            echo "::error::Session capsule exceeds the workflow size limit"
+            exit 1
+          fi
 
       - name: Start manual Chrome Browser Harness
         shell: bash
