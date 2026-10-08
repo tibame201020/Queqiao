@@ -6,6 +6,7 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
 export const DEFAULT_PROCESS_TIMEOUT_MS = 30_000;
+export const PROCESS_STDIO_DRAIN_GRACE_MS = 250;
 export const MAX_PROCESS_TIMEOUT_MS = 120_000;
 export const MAX_PROCESS_OUTPUT_BYTES = 256 * 1024;
 export const MAX_PROCESS_INPUT_CHUNK_BYTES = 1024 * 1024;
@@ -57,6 +58,7 @@ export type ProcessResult = {
   timedOut: boolean;
   aborted: boolean;
   outputLimitExceeded: boolean;
+  stdioDrainTimedOut?: boolean;
 };
 
 /**
@@ -84,6 +86,7 @@ export type ManagedProcessClose = {
   timedOut: boolean;
   aborted: boolean;
   outputLimitExceeded: boolean;
+  stdioDrainTimedOut?: boolean;
 };
 
 export type ManagedStdioSession = {
@@ -436,6 +439,8 @@ export class ProcessRunner {
       let aborted = false;
       let outputLimitExceeded = false;
       let settled = false;
+      let stdioDrainTimedOut = false;
+      let drainTimer: NodeJS.Timeout | undefined;
       const child = spawnNative(request, ["ignore", "pipe", "pipe"]);
 
       const handle = randomUUID();
@@ -444,8 +449,9 @@ export class ProcessRunner {
         settled = true;
         this.syncChildren.delete(handle);
         clearTimeout(timer);
+        if (drainTimer) clearTimeout(drainTimer);
         request.signal?.removeEventListener("abort", onAbort);
-        resolve({ exitCode, signal, stdout: stdout.toString("utf8"), stderr: stderr.toString("utf8"), durationMs: Date.now() - startedAt, timedOut, aborted, outputLimitExceeded });
+        resolve({ exitCode, signal, stdout: stdout.toString("utf8"), stderr: stderr.toString("utf8"), durationMs: Date.now() - startedAt, timedOut, aborted, outputLimitExceeded, ...(stdioDrainTimedOut ? { stdioDrainTimedOut: true } : {}) });
       };
       const terminate = () => terminateTree(child);
       const append = (stream: "stdout" | "stderr", chunk: Buffer) => {
@@ -466,11 +472,24 @@ export class ProcessRunner {
           settled = true;
           this.syncChildren.delete(handle);
           clearTimeout(timer);
+        if (drainTimer) clearTimeout(drainTimer);
           request.signal?.removeEventListener("abort", onAbort);
           reject(error);
         }
       });
       child.once("close", finish);
+      child.once("exit", (exitCode, signal) => {
+        // Native execution is over. Inherited pipes must not turn it into an
+        // unbounded foreground request when an independently launched child
+        // (for example PowerShell Start-Process -NoNewWindow) keeps them open.
+        clearTimeout(timer);
+        drainTimer = setTimeout(() => {
+          stdioDrainTimedOut = true;
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          finish(exitCode, signal);
+        }, PROCESS_STDIO_DRAIN_GRACE_MS);
+      });
       const timer = setTimeout(() => { timedOut = true; terminate(); }, request.timeoutMs);
       const onAbort = () => { aborted = true; terminate(); };
       if (child.pid) this.syncChildren.set(handle, { child, stop: onAbort, info: {
