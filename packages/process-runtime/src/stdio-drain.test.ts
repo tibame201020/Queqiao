@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile, access } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, access, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -22,21 +22,22 @@ it('drains ordinary final output without marking it truncated',async()=>{
   const result=await runner.run({executable:path.basename(process.execPath),cwd,args:['-e',"process.stdout.write('x'.repeat(65536));process.stderr.write('done')"]});
   expect(result.stdout.length).toBe(65536);expect(result.stderr).toBe('done');expect(result).not.toHaveProperty('stdioDrainTimedOut');
 });
-it.skipIf(process.platform!=='win32')('reproduces PowerShell Start-Process inherited Windows handles',async()=>{
-  cwd=await mkdtemp(path.join(os.tmpdir(),'queqiao-powershell-drain-'));
-  const child=path.join(cwd,'child.cjs');const completed=path.join(cwd,'child-completed.txt');await writeFile(child,`setTimeout(()=>require('fs').writeFileSync(${JSON.stringify(completed)},'done'),8000)`);
-  const quote=(s:string)=>s.replaceAll("'","''");const runner=new ProcessRunner(1);
-  const previousPath=process.env.PATH;
-  const systemRoot=process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "C:/Windows";
-  process.env.PATH=[path.join(systemRoot,"System32","WindowsPowerShell","v1.0"),path.dirname(process.execPath),previousPath].join(path.delimiter);
-  let result;
-  try { result=await runner.run({executable:'powershell.exe',cwd,timeoutMs:15000,args:['-NoProfile','-NonInteractive','-Command',`[Console]::Error.WriteLine('ps-command-started'); Start-Process -FilePath '${quote(process.execPath)}' -ArgumentList @('${quote(child)}') -NoNewWindow -PassThru | Select-Object -ExpandProperty Id; exit 0`]}); } finally { if(previousPath===undefined)delete process.env.PATH;else process.env.PATH=previousPath; }
+// cmd start /b exercises the same Win32 inherited-handle behavior as
+// PowerShell Start-Process -NoNewWindow, without loading PowerShell modules.
+it.skipIf(process.platform!=='win32')('reproduces native Windows inherited handles and preserves the background child',async()=>{
+  cwd=await mkdtemp(path.join(os.tmpdir(),'queqiao-windows-drain-'));
+  const child=path.join(cwd,'child.cjs');const completed=path.join(cwd,'child-completed.txt');const pidFile=path.join(cwd,'child.pid');
+  await writeFile(child,`require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setTimeout(()=>require('fs').writeFileSync(${JSON.stringify(completed)},'done'),8000)`);
+  const previousPath=process.env.PATH;process.env.PATH=[path.dirname(process.execPath),previousPath].join(path.delimiter);
+  const runner=new ProcessRunner(1);let result;
+  try { result=await runner.run({executable:'cmd.exe',cwd,timeoutMs:15000,args:['/d','/s','/c','start /b node child.cjs & echo parent-complete & exit /b 0']}); }
+  finally { if(previousPath===undefined)delete process.env.PATH;else process.env.PATH=previousPath; }
+  let pid:number|undefined;
   try {
-    expect(result, JSON.stringify({result,environmentKeys:Object.keys(process.env).filter(k=>["systemroot","path","windir","temp"].includes(k.toLowerCase()))})).toMatchObject({exitCode:0,timedOut:false,stdioDrainTimedOut:true});
-    expect(syncProcessResultSchema.parse(result)).toEqual(result);
-    await expect(access(completed)).rejects.toMatchObject({code:'ENOENT'});
-    expect(runner.foregroundActiveCount()).toBe(0);
-  } finally {
-    const pid=Number(result.stdout.trim());if(Number.isInteger(pid)&&pid>0)try{process.kill(pid)}catch{}
-  }
+    for(let i=0;i<100;i++){try{pid=Number(await readFile(pidFile,'utf8'));break}catch{await new Promise(r=>setTimeout(r,50))}}
+    expect(result,JSON.stringify(result)).toMatchObject({exitCode:0,timedOut:false,stdioDrainTimedOut:true});
+    expect(result.stdout).toContain('parent-complete');expect(syncProcessResultSchema.parse(result)).toEqual(result);
+    expect(pid).toBeGreaterThan(0);expect(()=>process.kill(pid!,0)).not.toThrow();
+    await expect(access(completed)).rejects.toMatchObject({code:'ENOENT'});expect(runner.foregroundActiveCount()).toBe(0);
+  } finally { if(pid!==undefined&&Number.isInteger(pid)&&pid>0)try{process.kill(pid)}catch{} }
 },20000);
