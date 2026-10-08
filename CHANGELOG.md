@@ -3,6 +3,7 @@
 ## 0.9.19 - 2026-10-08
 
 - Completes synchronous run/shell results after confirmed native process exit and a bounded output drain. Windows PowerShell commands that launch background services with inherited output handles no longer retain foreground capacity indefinitely.
+- Normalizes allowlisted Windows environment variable names case-insensitively for worker-thread and embedded runtimes, preserving the minimal environment boundary.
 - Reports `stdioDrainTimedOut: true` when inherited output pipes exceed the 250 ms drain grace; normal command output and exit status remain intact.
 - Leaves independently launched services running. Use Worker jobs, managed stdio sessions, or explicit output redirection when background output and lifecycle must remain managed.
 

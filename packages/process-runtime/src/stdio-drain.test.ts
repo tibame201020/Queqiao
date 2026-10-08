@@ -28,7 +28,7 @@ it.skipIf(process.platform!=='win32')('reproduces PowerShell Start-Process inher
   const quote=(s:string)=>s.replaceAll("'","''");const runner=new ProcessRunner(1);
   const result=await runner.run({executable:'powershell.exe',cwd,timeoutMs:15000,args:['-NoProfile','-NonInteractive','-Command',`Start-Process -FilePath '${quote(process.execPath)}' -ArgumentList @('${quote(child)}') -NoNewWindow -PassThru | Select-Object -ExpandProperty Id; exit 0`]});
   try {
-    expect(result, JSON.stringify(result)).toMatchObject({exitCode:0,timedOut:false,stdioDrainTimedOut:true});
+    expect(result, JSON.stringify({result,environmentKeys:Object.keys(process.env).filter(k=>["systemroot","path","windir","temp"].includes(k.toLowerCase()))})).toMatchObject({exitCode:0,timedOut:false,stdioDrainTimedOut:true});
     expect(syncProcessResultSchema.parse(result)).toEqual(result);
     await expect(access(completed)).rejects.toMatchObject({code:'ENOENT'});
     expect(runner.foregroundActiveCount()).toBe(0);

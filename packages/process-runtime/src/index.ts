@@ -747,7 +747,7 @@ function validateExecutable(executable: string): void {
 }
 
 async function resolveExecutable(executable: string): Promise<string> {
-  const directories = String(process.env["PATH"] || "").split(path.delimiter).filter(Boolean);
+  const directories = String(environmentValue("PATH") || "").split(path.delimiter).filter(Boolean);
   const suffixes = process.platform === "win32"
     ? (path.extname(executable) ? [""] : [".exe", ".com"])
     : [""];
@@ -767,17 +767,27 @@ async function resolveExecutable(executable: string): Promise<string> {
   throw new Error(`Executable was not found on the Worker PATH: ${executable}`);
 }
 
+function environmentValue(name: string): string | undefined {
+  if (process.env[name] !== undefined) return process.env[name];
+  if (process.platform !== "win32") return undefined;
+  const key = Object.keys(process.env).find((key) => key.toLowerCase() === name.toLowerCase());
+  return key === undefined ? undefined : process.env[key];
+}
+
 function minimalEnvironment(): NodeJS.ProcessEnv {
   const names = process.platform === "win32"
     ? ["PATH", "PATHEXT", "SystemRoot", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"]
     : ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR"];
-  return Object.fromEntries(names.flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]]])) as NodeJS.ProcessEnv;
+  return Object.fromEntries(names.flatMap((name) => {
+    const value = environmentValue(name);
+    return value === undefined ? [] : [[name, value]];
+  })) as NodeJS.ProcessEnv;
 }
 
 function terminateTree(child: ChildProcess): void {
   if (!child.pid || child.killed) return;
   if (process.platform === "win32") {
-    const taskkill = path.join(process.env["SystemRoot"] || "C:/Windows", "System32", "taskkill.exe");
+    const taskkill = path.join(environmentValue("SystemRoot") || "C:/Windows", "System32", "taskkill.exe");
     const fallback = () => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); };
     const killer = spawn(taskkill, ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
     killer.once("error", fallback);
