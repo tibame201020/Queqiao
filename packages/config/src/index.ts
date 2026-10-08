@@ -230,7 +230,8 @@ const runtimeConfigBaseSchema = z.object({
         repo: z.string().min(1).max(100).regex(/^[A-Za-z0-9_.-]+$/),
         workflowId: z.string().min(1).max(255),
         ref: z.string().min(1).max(255).default("main"),
-        tokenFile: z.string().min(1),
+        tokenFile: z.string().min(1).optional(),
+        auth: z.literal("gh-cli").optional(),
         audience: z.string().min(1).max(2048).optional(),
         // Gate C test-only MCP controls; disabled by default on every Gateway.
         mcpPocEnabled: z.boolean().optional(),
@@ -273,6 +274,13 @@ const runtimeConfigBaseSchema = z.object({
 });
 
 export const runtimeConfigRepairSchema = runtimeConfigBaseSchema.superRefine((config, ctx) => {
+  const githubActions = config.gateway?.runtimeProviders.githubActions;
+  if (githubActions && !githubActions.tokenFile && githubActions.auth !== "gh-cli") {
+    ctx.addIssue({ code: "custom", path: ["gateway", "runtimeProviders", "githubActions", "tokenFile"], message: "tokenFile is required unless auth is gh-cli" });
+  }
+  if (githubActions?.auth === "gh-cli" && !githubActions.mcpPocEnabled) {
+    ctx.addIssue({ code: "custom", path: ["gateway", "runtimeProviders", "githubActions", "auth"], message: "gh-cli authentication requires mcpPocEnabled" });
+  }
   if (config.gateway?.workerSessionListen?.host === "0.0.0.0") {
     if (!config.gateway.workerSessionAdvertiseHost) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionAdvertiseHost"], message: "Remote Worker session listener requires an advertised host" });
     if (!config.gateway.workerSessionTls) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionTls"], message: "Remote Worker session listener requires TLS" });

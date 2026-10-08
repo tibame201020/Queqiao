@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { environmentIdSchema, workerIdSchema } from "@queqiao/contracts";
 import {
   bindRuntimeWorker,
@@ -524,5 +525,64 @@ export class GitHubActionsFetchApi implements GitHubActionsApi {
     });
     if (response.status === 409) return;
     if (!response.ok) throw new Error(`GitHub workflow cancel failed with HTTP ${response.status}`);
+  }
+}
+/** Local POC-only GitHub API adapter. Relies on an existing gh credential store.
+ * Never exports, reads, logs or serializes its GitHub authentication token.
+ */
+export type GitHubCliInvoker = (args: readonly string[], input?: string) => Promise<string>;
+
+export const invokeGitHubCli: GitHubCliInvoker = (args, input) => new Promise((resolve, reject) => {
+  const child = spawn("gh", [...args], { shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+  const chunks: Buffer[] = [];
+  let received = 0;
+  let settled = false;
+  const rejectOnce = (error: Error) => { if (!settled) { settled = true; reject(error); } };
+  const timer = setTimeout(() => { child.kill(); rejectOnce(new Error("GitHub CLI request timed out")); }, 30_000);
+  timer.unref?.();
+  child.stdout.on("data", (chunk: Buffer) => {
+    received += chunk.length;
+    if (received > 256 * 1024) {
+      child.kill();
+      rejectOnce(new Error("GitHub CLI response exceeds limit"));
+    } else chunks.push(chunk);
+  });
+  // Drain stderr but do not forward any response containing credentials.
+  child.stderr.resume();
+  child.once("error", (error) => { clearTimeout(timer); rejectOnce(new Error("GitHub CLI launch failed: " + (error as NodeJS.ErrnoException).code)); });
+  child.once("close", (code) => {
+    clearTimeout(timer);
+    if (code !== 0) rejectOnce(new Error("GitHub CLI API request failed (exit " + code + ")"));
+    else if (!settled) { settled = true; resolve(Buffer.concat(chunks).toString("utf8")); }
+  });
+  child.stdin.on("error", () => undefined);
+  child.stdin.end(input ?? "");
+});
+
+export class GitHubActionsGhCliApi implements GitHubActionsApi {
+  constructor(private readonly invoke: GitHubCliInvoker = invokeGitHubCli) {}
+
+  async dispatch(request: GitHubWorkflowDispatchRequest): Promise<GitHubWorkflowDispatchResult> {
+    const owner = repoPartSchema.parse(request.owner);
+    const repo = repoPartSchema.parse(request.repo);
+    const workflow = encodeURIComponent(workflowIdSchema.parse(request.workflowId));
+    const output = await this.invoke([
+      "api", "--method", "POST", "--input", "-",
+      "-H", "X-GitHub-Api-Version: 2026-03-10",
+      `repos/${owner}/${repo}/actions/workflows/${workflow}/dispatches`,
+    ], JSON.stringify({ ref: request.ref, inputs: request.inputs }));
+    const body = JSON.parse(output) as Record<string, unknown>;
+    return {
+      runId: runIdSchema.parse(body["workflow_run_id"]),
+      runUrl: z.string().url().parse(body["run_url"]),
+      htmlUrl: z.string().url().parse(body["html_url"]),
+    };
+  }
+
+  async cancel(request: { owner: string; repo: string; runId: number }): Promise<void> {
+    const owner = repoPartSchema.parse(request.owner);
+    const repo = repoPartSchema.parse(request.repo);
+    const runId = runIdSchema.parse(request.runId);
+    await this.invoke(["api", "--method", "POST", `repos/${owner}/${repo}/actions/runs/${runId}/cancel`]);
   }
 }

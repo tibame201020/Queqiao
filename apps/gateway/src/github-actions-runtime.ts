@@ -1,5 +1,6 @@
 import {
   GitHubActionsFetchApi,
+  GitHubActionsGhCliApi,
   GitHubActionsRuntimeClaimRegistry,
   GitHubActionsRuntimeCoordinator,
   GitHubActionsRuntimeProvider,
@@ -11,7 +12,7 @@ export function createConfiguredGitHubActionsRuntime(
   publicBaseUrl: URL,
 ): GitHubActionsRuntimeCoordinator {
   const claims = new GitHubActionsRuntimeClaimRegistry(config.audience);
-  const api = new GitHubActionsFetchApi({ token: config.token });
+  const api = config.auth === "gh-cli" ? new GitHubActionsGhCliApi() : new GitHubActionsFetchApi({ token: config.token ?? "" });
   const provider = new GitHubActionsRuntimeProvider({
     owner: config.owner,
     repo: config.repo,

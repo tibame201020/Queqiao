@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   GitHubActionsFetchApi,
+  GitHubActionsGhCliApi,
   GitHubActionsRuntimeClaimRegistry,
   GitHubActionsRuntimeCoordinator,
   GitHubActionsRuntimeProvider,
@@ -405,5 +406,24 @@ describe("GitHub Actions REST adapter", () => {
       ref: "main",
       inputs: { lease_id: leaseId },
     })).resolves.toMatchObject({ runId: 77 });
+  });
+});
+describe("GitHub Actions gh-cli adapter", () => {
+  it("dispatches and cancels using bounded gh api arguments without token materialization", async () => {
+    const invoke = vi.fn(async (args: readonly string[], input?: string) => {
+      expect(args[0]).toBe("api");
+      expect(args).not.toContain("--hostname");
+      expect(args.join(" ")).not.toContain("Authorization");
+      if (args.some((arg) => arg.endsWith("/dispatches"))) {
+        expect(JSON.parse(input ?? "")).toEqual({ ref: "main", inputs: { lease_id: leaseId } });
+        return JSON.stringify({ workflow_run_id: 77, run_url: "https://api.github.test/runs/77", html_url: "https://github.test/runs/77" });
+      }
+      expect(args.join(" ")).toContain("/actions/runs/77/cancel");
+      return "";
+    });
+    const api = new GitHubActionsGhCliApi(invoke);
+    await expect(api.dispatch({ owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main", inputs: { lease_id: leaseId } })).resolves.toMatchObject({ runId: 77 });
+    await api.cancel({ owner: "example", repo: "runtime-host", runId: 77 });
+    expect(invoke).toHaveBeenCalledTimes(2);
   });
 });

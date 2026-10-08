@@ -123,3 +123,37 @@ offline. Moving it to a continuously running host requires a separate security
 review and session lifecycle plan. The legacy
 `CHATGPT_BROWSER_SESSION_CAPSULE` is not used by this design; revoke and remove
 it only through the authorized credential cleanup procedure.
+
+## Continuation: verified runtime, pending ChatGPT OAuth user approval (2026-10-09)
+
+The previous snapshot above is superseded by this execution evidence:
+
+- **PASS — GitHub CLI credential provider**: isolated opt-in config supports
+  `auth: gh-cli` only with `mcpPocEnabled: true`. The Gateway invokes
+  `gh api` using the machine's existing authenticated credential manager
+  without copying or exporting the GitHub token.
+- **PASS — true OAuth MCP client, not a mock**: DCR registration, PKCE approval,
+  MCP initialization and four opt-in tool registrations succeeded.
+- **PASS — GitHub Actions dispatch and live OIDC enrollment**: workflow
+  [run 37830611693](https://github.com/tibame201020/Queqiao/actions/runs/37830611693)
+  returned a registered, reachable Worker, with environment ID
+  `gha_c3c630ca59fe4f0e91b01d6c`.
+- **PASS — real MCP routing and marker**: `actions_worker_read_marker`
+  returned `QUEQIAO-GITHUB-CONNECTOR-OK`, `selectedTransport: websocket`,
+  and lease `state: disposed`.
+- **PASS — GitHub resource recovery**: run `37830611693` eventually reached
+  `completed/cancelled`; its workflow `Cleanup` step succeeded.
+- **PARTIAL — ChatGPT UI entry point**: the signed-in Chrome session opened
+  ChatGPT Plugins and created a temporary plugin named
+  `Queqiao Gate C E2E POC` pointing at the isolated public HTTPS Gateway.
+  ChatGPT registered an OAuth client with the Gateway and navigated to its
+  `/oauth/authorize` page. The human owner must complete approval in
+  the browser. **No ChatGPT conversation has yet invoked the Worker tool.**
+
+For the ephemeral local POC, private config and approval material are under
+`%LOCALAPPDATA%/Queqiao/gate-c-poc-110`, outside the git worktree. The public
+Quick Tunnel URL is session-bound and is not a persistent production ingress.
+Once the owner authorizes the ChatGPT connector, the final acceptance must
+capture the **ChatGPT conversation's own** tool invocation, actual marker,
+routing receipt and correlated cancelled Actions run. Do not claim full Gate C
+acceptance based solely on the local OAuth MCP client.

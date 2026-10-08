@@ -77,6 +77,15 @@ describe("extension config schema", () => {
     const enabled = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gateway.runtimeProviders.githubActions, mcpPocEnabled: true } } } });
     expect(enabled.gateway?.runtimeProviders.githubActions?.mcpPocEnabled).toBe(true);
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gateway.runtimeProviders.githubActions, mcpPocEnabled: "true" } } } })).toThrow();
+    const ghCli = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: {
+      owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main",
+      auth: "gh-cli", mcpPocEnabled: true,
+    } } } });
+    expect(ghCli.gateway?.runtimeProviders.githubActions?.auth).toBe("gh-cli");
+    expect(ghCli.gateway?.runtimeProviders.githubActions?.tokenFile).toBeUndefined();
+    expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: {
+      owner: "example", repo: "runtime-host", workflowId: "runtime.yml",
+    } } } })).toThrow(/tokenFile/);
     expect(parsed.gateway?.runtimeProviders.githubActions).toEqual({
       owner: "example",
       repo: "runtime-host",
