@@ -76,6 +76,40 @@ A passing MCP integration test alone **is not Gate C PASS**. The real acceptance
 requires a ChatGPT Web-triggered tool invocation, stable ingress, OIDC Worker
 enrollment, marker returned to the browser, and verified cancellation.
 
+## Live acceptance progress (2026-10-09, local POC host)
+
+- **PASS — isolated process/config**: built and launched the #110 Gateway on
+  loopback ports 13010 (MCP), 13011 (management), and 13012 (gRPC);
+  state, generated signing secrets, and runtime YAML remained outside git.
+- **PASS — HTTPS routing smoke test**: an account-less Cloudflare Quick Tunnel
+  forwarded a real public HTTPS GET of
+  `/.well-known/oauth-authorization-server` to the isolated Gateway.
+  Local and external requests both returned HTTP 200 while both processes
+  stayed alive in the same controlled execution. The isolated OAuth issuer
+  matched the tunnel hostname. The processes were stopped after this check.
+- **EXPECTED LIMITATION — ephemeral ingress**: Quick Tunnel hostname changes
+  when restarted and provides no uptime guarantee. This proves ingress
+  connectivity only; it does **not** meet the stable-host Gate C criterion.
+- **NOT TESTED — GitHub dispatch**: the local config uses an intentionally
+  nonfunctional GitHub token placeholder. The connector's authenticated
+  credential is not exported by the assistant. The target workflow is
+  active on GitHub and the POC branch exists, but this is not dispatch proof.
+- **NOT TESTED — ChatGPT connector end-to-end**: no new ChatGPT OAuth MCP
+  connector was registered or used, so no genuine
+  `actions_worker_start → status → read_marker` ChatGPT UI transcript or
+  matching Actions cancellation record exists yet.
+
+An earlier attempt using separate background processes returned Cloudflare
+HTTP 530 after both managed processes disappeared. The subsequent
+same-lifetime controlled test returned HTTP 200. The exact source of the
+background process termination has not been established; do not label it
+a Cloudflare or Gateway defect without further evidence.
+
+Before final acceptance, use a stable, owned HTTPS hostname, a separately
+authorized fine-grained GitHub credential stored outside git, and a new
+ChatGPT OAuth MCP connector. Preserve the exact Worker run ID, verified
+marker, and disposal/cancellation receipt.
+
 ## Limitations
 
 This POC is single-tenant and process-local. A Gateway restart loses its
