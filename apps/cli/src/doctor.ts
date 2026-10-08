@@ -34,7 +34,7 @@ export type WorkerProcessDoctorResult = {
   reachable: boolean;
   capacity?: WorkerProcessCapacity;
   resources?: WorkerTrackedProcess[];
-  saturated?: Array<"foreground" | "background">;
+  saturated?: Array<"foreground" | "background" | "session">;
   error?: string;
 };
 
@@ -96,9 +96,10 @@ export async function doctorWorkerProcesses(config: RuntimeConfig, fetchImpl: ty
     if (!listResponse.ok) throw new Error(`Worker process list diagnostics failed (${listResponse.status})`);
     const capacity = workerProcessCapacitySchema.parse(await capacityResponse.json());
     const list = workerProcessListSchema.parse(await listResponse.json());
-    const saturated: Array<"foreground" | "background"> = [];
+    const saturated: Array<"foreground" | "background" | "session"> = [];
     if (capacity.foreground.active >= capacity.foreground.limit) saturated.push("foreground");
     if (capacity.background.active >= capacity.background.limit) saturated.push("background");
+    if (capacity.sessions && capacity.sessions.active >= capacity.sessions.limit) saturated.push("session");
     return { ok: true, reachable: true, capacity, resources: list.resources, saturated };
   } catch (error) {
     return { ok: false, reachable, error: error instanceof Error ? error.message : "Unknown Worker process diagnostics error" };

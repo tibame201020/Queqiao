@@ -6,6 +6,7 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
 export const DEFAULT_PROCESS_TIMEOUT_MS = 30_000;
+export const PROCESS_STDIO_DRAIN_GRACE_MS = 250;
 export const MAX_PROCESS_TIMEOUT_MS = 120_000;
 export const MAX_PROCESS_OUTPUT_BYTES = 256 * 1024;
 export const MAX_PROCESS_INPUT_CHUNK_BYTES = 1024 * 1024;
@@ -57,6 +58,7 @@ export type ProcessResult = {
   timedOut: boolean;
   aborted: boolean;
   outputLimitExceeded: boolean;
+  stdioDrainTimedOut?: boolean;
 };
 
 /**
@@ -84,6 +86,7 @@ export type ManagedProcessClose = {
   timedOut: boolean;
   aborted: boolean;
   outputLimitExceeded: boolean;
+  stdioDrainTimedOut?: boolean;
 };
 
 export type ManagedStdioSession = {
@@ -94,14 +97,15 @@ export type ManagedStdioSession = {
   readonly closed: Promise<ManagedProcessClose>;
 };
 
-export type ProcessCapacityClass = "foreground" | "background";
-export type TrackedProcessKind = "async" | "stdio";
+export type ProcessCapacityClass = "foreground" | "background" | "session";
+export type TrackedProcessKind = "sync" | "async" | "stdio";
 
 export type ProcessCapacitySnapshot = {
   foreground: { active: number; limit: number };
   background: { active: number; limit: number };
   asyncChildren: number;
   stdioSessions: number;
+  sessions?: { active: number; limit: number };
   jobs: { queued: number; queueLimit: number; retained: number };
 };
 
@@ -122,13 +126,15 @@ export class ProcessCapacityError extends Error {
     readonly active?: number,
     readonly limit?: number,
   ) {
-    super(capacityClass === "foreground" ? "Worker process concurrency limit reached" : "Worker background process concurrency limit reached");
+    super(capacityClass === "foreground" ? "Worker process concurrency limit reached" : `Worker ${capacityClass} process concurrency limit reached`);
   }
 }
 
 export class ProcessRunner {
   private foregroundActive = 0;
   private backgroundActive = 0;
+  private sessionActive = 0;
+  private readonly syncChildren = new Map<string, { child: ChildProcess; info: TrackedProcessInfo; stop(): void }>();
   private readonly asyncChildren = new Map<string, { child: ChildProcess; timer: NodeJS.Timeout; info: TrackedProcessInfo }>();
   private readonly stdioChildren = new Map<string, { child: ChildProcess; info: TrackedProcessInfo }>();
   private readonly jobs = new Map<string, JobEntry>();
@@ -141,14 +147,16 @@ export class ProcessRunner {
     private readonly backgroundConcurrency = foregroundConcurrency,
     private readonly jobQueueLimit = DEFAULT_JOB_QUEUE_LIMIT,
     private readonly jobRetentionMs = DEFAULT_JOB_RETENTION_MS,
+    private readonly sessionConcurrency = foregroundConcurrency,
   ) {
     if (!Number.isInteger(foregroundConcurrency) || foregroundConcurrency < 1) throw new Error("Foreground process concurrency must be a positive integer");
     if (!Number.isInteger(backgroundConcurrency) || backgroundConcurrency < 1) throw new Error("Background process concurrency must be a positive integer");
+    if (!Number.isInteger(sessionConcurrency) || sessionConcurrency < 1) throw new Error("Session process concurrency must be a positive integer");
     if (!Number.isInteger(jobQueueLimit) || jobQueueLimit < 0) throw new Error("Job queue limit must be a non-negative integer");
     if (!Number.isInteger(jobRetentionMs) || jobRetentionMs < 1) throw new Error("Job retention must be a positive integer");
   }
 
-  activeCount(): number { return this.foregroundActive + this.backgroundActive; }
+  activeCount(): number { return this.foregroundActive + this.backgroundActive + this.sessionActive; }
   foregroundActiveCount(): number { return this.foregroundActive; }
   backgroundActiveCount(): number { return this.backgroundActive; }
   asyncCount(): number { return this.asyncChildren.size; }
@@ -160,6 +168,7 @@ export class ProcessRunner {
       background: { active: this.backgroundActive, limit: this.backgroundConcurrency },
       asyncChildren: this.asyncChildren.size,
       stdioSessions: this.stdioChildren.size,
+      sessions: { active: this.sessionActive, limit: this.sessionConcurrency },
       jobs: { queued: this.jobQueue.length, queueLimit: this.jobQueueLimit, retained: this.jobs.size },
     };
   }
@@ -228,13 +237,19 @@ export class ProcessRunner {
   }
 
   listTracked(workspaceId?: string): TrackedProcessInfo[] {
-    return [...this.asyncChildren.values(), ...this.stdioChildren.values()]
+    return [...this.syncChildren.values(), ...this.asyncChildren.values(), ...this.stdioChildren.values()]
       .map(({ info }) => ({ ...info }))
       .filter((info) => !workspaceId || info.workspaceId === workspaceId)
       .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
   }
 
   stopTracked(handle: string, workspaceId?: string): boolean {
+    const synchronous = this.syncChildren.get(handle);
+    if (synchronous) {
+      if (workspaceId && synchronous.info.workspaceId !== workspaceId) return false;
+      synchronous.stop();
+      return true;
+    }
     const tracked = this.asyncChildren.get(handle) ?? this.stdioChildren.get(handle);
     if (!tracked) return false;
     if (workspaceId && tracked.info.workspaceId !== workspaceId) return false;
@@ -270,24 +285,25 @@ export class ProcessRunner {
   /**
    * Open a managed native stdio session. Numeric timeoutMs applies an explicit
    * lifetime bound. timeoutMs:null makes the session lifecycle-bound instead:
-   * explicit close/cancellation, output bounds, concurrency and Worker shutdown
+   * explicit close/cancellation, output bounds, independent session concurrency and Worker shutdown
    * remain authoritative for the entire session lifetime.
    */
   async openStdio(request: StdioSessionRequest): Promise<ManagedStdioSession> {
     const prepared = await this.prepareStdio(request);
-    this.acquireForeground();
+    this.acquireSession();
     let handedOff = false;
     try {
       const session = await this.spawnStdioSession(prepared);
       handedOff = true;
       return session;
     } finally {
-      if (!handedOff) this.releaseForeground();
+      if (!handedOff) this.releaseSession();
     }
   }
 
   /** Terminate tracked process trees during an orderly Worker shutdown. */
   shutdown(): void {
+    for (const tracked of this.syncChildren.values()) tracked.stop();
     for (const { child } of this.asyncChildren.values()) terminateTree(child);
     for (const { child } of this.stdioChildren.values()) terminateTree(child);
     for (const entry of this.jobs.values()) {
@@ -330,6 +346,15 @@ export class ProcessRunner {
 
   private releaseForeground(): void {
     this.foregroundActive = Math.max(0, this.foregroundActive - 1);
+  }
+
+  private acquireSession(): void {
+    if (this.sessionActive >= this.sessionConcurrency) throw new ProcessCapacityError("session", this.sessionActive, this.sessionConcurrency);
+    this.sessionActive += 1;
+  }
+
+  private releaseSession(): void {
+    this.sessionActive = Math.max(0, this.sessionActive - 1);
   }
 
   private acquireBackground(): void {
@@ -414,14 +439,19 @@ export class ProcessRunner {
       let aborted = false;
       let outputLimitExceeded = false;
       let settled = false;
+      let stdioDrainTimedOut = false;
+      let drainTimer: NodeJS.Timeout | undefined;
       const child = spawnNative(request, ["ignore", "pipe", "pipe"]);
 
+      const handle = randomUUID();
       const finish = (exitCode: number | null, signal: NodeJS.Signals | null) => {
         if (settled) return;
         settled = true;
+        this.syncChildren.delete(handle);
         clearTimeout(timer);
+        if (drainTimer) clearTimeout(drainTimer);
         request.signal?.removeEventListener("abort", onAbort);
-        resolve({ exitCode, signal, stdout: stdout.toString("utf8"), stderr: stderr.toString("utf8"), durationMs: Date.now() - startedAt, timedOut, aborted, outputLimitExceeded });
+        resolve({ exitCode, signal, stdout: stdout.toString("utf8"), stderr: stderr.toString("utf8"), durationMs: Date.now() - startedAt, timedOut, aborted, outputLimitExceeded, ...(stdioDrainTimedOut ? { stdioDrainTimedOut: true } : {}) });
       };
       const terminate = () => terminateTree(child);
       const append = (stream: "stdout" | "stderr", chunk: Buffer) => {
@@ -440,15 +470,35 @@ export class ProcessRunner {
       child.once("error", (error) => {
         if (!settled) {
           settled = true;
+          this.syncChildren.delete(handle);
           clearTimeout(timer);
+        if (drainTimer) clearTimeout(drainTimer);
           request.signal?.removeEventListener("abort", onAbort);
           reject(error);
         }
       });
       child.once("close", finish);
+      child.once("exit", (exitCode, signal) => {
+        // Native execution is over. Inherited pipes must not turn it into an
+        // unbounded foreground request when an independently launched child
+        // (for example PowerShell Start-Process -NoNewWindow) keeps them open.
+        clearTimeout(timer);
+        drainTimer = setTimeout(() => {
+          stdioDrainTimedOut = true;
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          finish(exitCode, signal);
+        }, PROCESS_STDIO_DRAIN_GRACE_MS);
+      });
       const timer = setTimeout(() => { timedOut = true; terminate(); }, request.timeoutMs);
       const onAbort = () => { aborted = true; terminate(); };
+      if (child.pid) this.syncChildren.set(handle, { child, stop: onAbort, info: {
+        handle, kind: "sync", pid: child.pid, executable: path.basename(request.executable),
+        ...(request.workspaceId ? { workspaceId: request.workspaceId } : {}),
+        startedAt: new Date(startedAt).toISOString(), timeoutMs: request.timeoutMs, capacityClass: "foreground",
+      } });
       request.signal?.addEventListener("abort", onAbort, { once: true });
+      if (request.signal?.aborted) onAbort();
     });
   }
 
@@ -580,7 +630,7 @@ export class ProcessRunner {
       };
       const releaseTracked = () => {
         if (handle) this.stdioChildren.delete(handle);
-        this.releaseForeground();
+        this.releaseSession();
       };
       const settleClose = (exitCode: number | null, signal: NodeJS.Signals | null) => {
         if (closeSettled) return;
@@ -629,7 +679,7 @@ export class ProcessRunner {
           ...(request.workspaceId ? { workspaceId: request.workspaceId } : {}),
           startedAt: new Date(startedAt).toISOString(),
           timeoutMs: request.timeoutMs,
-          capacityClass: "foreground",
+          capacityClass: "session",
         };
         this.stdioChildren.set(handle, { child, info });
         if (request.timeoutMs !== null) timer = setTimeout(() => { timedOut = true; terminate(); }, request.timeoutMs);
@@ -727,7 +777,11 @@ function minimalEnvironment(): NodeJS.ProcessEnv {
 function terminateTree(child: ChildProcess): void {
   if (!child.pid || child.killed) return;
   if (process.platform === "win32") {
-    const killer = spawn("taskkill.exe", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
+    const taskkill = path.join(process.env["SystemRoot"] || "C:/Windows", "System32", "taskkill.exe");
+    const fallback = () => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); };
+    const killer = spawn(taskkill, ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
+    killer.once("error", fallback);
+    killer.once("exit", (code) => { if (code !== 0) fallback(); });
     killer.unref();
   } else {
     try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); }

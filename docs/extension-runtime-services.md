@@ -60,7 +60,7 @@ The Worker remains authoritative for:
 
 - executable declaration and native PATH resolution;
 - Workspace cwd containment, including symlink/junction escape rejection;
-- bounded Worker foreground process capacity for the entire managed stdio session lifetime;
+- an independent bounded Worker session pool for the entire managed stdio session lifetime;
 - explicit numeric session timeout when configured;
 - explicit session cancellation;
 - bounded output and bounded individual stdin writes;
@@ -70,13 +70,13 @@ The returned object is a managed process session, not an unrestricted Node `Chil
 
 ### Capacity diagnostics and recovery
 
-Worker-managed async processes and stdio sessions are tracked with opaque Worker-owned handles. Accepted async `run` / `shell` results return their handle directly so callers can recover or stop the exact process without inferring identity from an OS PID. Public MCP recovery remains Workspace-scoped:
+Worker-managed synchronous/async processes and stdio sessions are tracked with opaque Worker-owned handles. Accepted async `run` / `shell` results return their handle directly so callers can recover or stop the exact process without inferring identity from an OS PID. Public MCP recovery remains Workspace-scoped:
 
-- `process_capacity` reports foreground/background active and limit counts plus managed async/stdio totals;
+- `process_capacity` reports foreground/background/session active and limit counts plus managed async/stdio totals;
 - `process_list` returns bounded metadata for tracked resources in the selected Workspace;
 - `process_stop` accepts only an opaque handle returned for a tracked resource in that Workspace.
 
-The recovery path operates directly on Worker-owned tracking state: it does not launch a helper process and does not accept an arbitrary OS PID. Therefore diagnostics and stopping a tracked resource remain available when either bounded process pool is saturated.
+The recovery path operates directly on Worker-owned tracking state: it does not launch a helper process and does not accept an arbitrary OS PID. Therefore diagnostics and stopping a tracked resource remain available when any bounded process pool is saturated.
 
 ## Outbound HTTP
 
@@ -127,7 +127,7 @@ Important Worker errors include:
 
 | Code | Meaning |
 | --- | --- |
-| `process_capacity` | A bounded foreground or background process pool is full; structured errors include the capacity class and, when available, active/limit counts. |
+| `process_capacity` | A bounded foreground, background, or session process pool is full; structured errors include the capacity class and, when available, active/limit counts. |
 | `extension_process_denied` | Executable is not declared by the owning Extension manifest. |
 | `extension_network_denied` | HTTP origin is not declared by the owning Extension manifest. |
 | `extension_runtime_unavailable` | The Worker process executor does not provide managed stdio. |
@@ -155,3 +155,9 @@ They do not need private Worker types or imports from `@queqiao/*` source packag
 This contract is for downstream transport I/O used by Worker-hosted registered Extension capabilities. It does not change the public Queqiao MCP manifest or the Gateway/Worker transport contract.
 
 `extend` and `replace` contributions continue to execute inside the Core tool contract they extend or replace. The managed downstream runtime service is bound to registered Extension capability ownership rather than becoming a general Core escape hatch.
+
+Persistent stdio sessions reserve session capacity, not foreground command or background job capacity. The default session limit is the foreground limit, enforced independently. Synchronous run/shell executions expose workspace-scoped opaque recovery handles until native close. A stop request does not release a live reservation. Windows tree termination uses the absolute system taskkill path; errors fall back to terminating the parent process. That fallback does not guarantee descendant cleanup. Extensions that spawn directly through a third-party SDK bypass these managed pools and must implement their own lifecycle or adopt runtime.stdio.
+
+Deploy v0.9.18 Gateway and Worker together: earlier strict process-diagnostic parsers do not recognize the new session capacity class or synchronous resource kind.
+
+Synchronous run/shell completion follows the native process lifetime. After native exit, output has 250 ms to drain. If another process still holds inherited output handles, the Worker closes its local readers, returns the native exit status, and adds `stdioDrainTimedOut: true`. It never releases a foreground reservation for a still-running native command. Independently launched services remain running; route long-running work through managed jobs/stdio sessions or redirect service output explicitly. Deploy matching Gateway/Worker versions for the new result field.

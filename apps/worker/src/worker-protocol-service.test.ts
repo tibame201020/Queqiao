@@ -141,10 +141,11 @@ it("keeps process diagnostics and recovery available while both process pools ar
   await processes.openStdio({ executable: path.basename(process.execPath), args: ["-e", "setInterval(()=>{},1000)"], cwd: temporary, workspaceId: "one", timeoutMs: null });
 
   await expect(service.execute({ operation: "process-capacity" })).resolves.toEqual({
-    foreground: { active: 1, limit: 1 },
+    foreground: { active: 0, limit: 1 },
     background: { active: 1, limit: 1 },
     asyncChildren: 1,
     stdioSessions: 1,
+    sessions: { active: 1, limit: 1 },
     jobs: { queued: 0, queueLimit: 32, retained: 0 },
   });
   const listed = await service.execute<{ resources: Array<{ handle: string; kind: "async" | "stdio" }> }>({ operation: "process-list" });

@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.9.19 - 2026-10-08
+
+- Completes synchronous run/shell results after confirmed native process exit and a bounded output drain. Windows PowerShell commands that launch background services with inherited output handles no longer retain foreground capacity indefinitely.
+- Reports `stdioDrainTimedOut: true` when inherited output pipes exceed the 250 ms drain grace; normal command output and exit status remain intact.
+- Leaves independently launched services running. Use Worker jobs, managed stdio sessions, or explicit output redirection when background output and lifecycle must remain managed.
+
+## 0.9.18 - 2026-10-08
+
+- Tracks synchronous run/shell process ownership with workspace-scoped opaque recovery handles and includes it in orderly shutdown.
+- Gives managed stdio sessions an independent bounded capacity pool so persistent connections cannot starve foreground commands or background jobs; Doctor reports session saturation.
+- Uses the absolute Windows taskkill path and handles terminator failure with parent termination fallback; reservations remain held until native close.
 
 - Adds a GitHub Actions Runtime Provider with exact-run OIDC bootstrap, lease correlation/cancellation, and an outbound reverse WebSocket Worker transport for ephemeral runners without exposing enrollment credentials through workflow inputs.
 - Adds a provider-neutral Runtime Lease contract for disposable execution runtimes, separating runtime provisioning/TTL/disposal from Worker membership, liveness, and Worker Job v1 while keeping provider credentials and APIs outside Core semantics.
