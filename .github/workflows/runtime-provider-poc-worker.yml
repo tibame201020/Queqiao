@@ -86,6 +86,8 @@ jobs:
           fs.writeFileSync(process.env.CONFIG_FILE, JSON.stringify(config, null, 2));
           NODE
 
+          printf 'QUEQIAO-GITHUB-CONNECTOR-OK\n' > "$GITHUB_WORKSPACE/poc-marker.txt"
+
           echo "WORKER_ID=$worker_id" >> "$GITHUB_ENV"
           echo "LOCAL_WORKER_TOKEN=$local_token" >> "$GITHUB_ENV"
           echo "QUEQIAO_CONFIG_FILE=$runtime_dir/config.json" >> "$GITHUB_ENV"

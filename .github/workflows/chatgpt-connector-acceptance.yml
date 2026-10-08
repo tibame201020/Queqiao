@@ -1,0 +1,241 @@
+name: ChatGPT Connector GitHub Actions Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      hold_minutes:
+        description: Minutes to keep the live Connector session available
+        required: true
+        default: "10"
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  connector-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - run: npm run build
+
+      - name: Validate approval secret
+        shell: bash
+        env:
+          APPROVAL_SECRET: ${{ secrets.CHATGPT_CONNECTOR_POC_APPROVAL }}
+        run: |
+          set -euo pipefail
+          test -n "$APPROVAL_SECRET"
+          test "${#APPROVAL_SECRET}" -ge 32
+
+      - name: Start temporary public tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/cloudflared"             https://github.com/cloudflare/cloudflared/releases/download/2026.8.3/cloudflared-linux-amd64
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          nohup "$RUNNER_TEMP/cloudflared" tunnel --no-autoupdate --url http://127.0.0.1:7575             > "$RUNNER_TEMP/cloudflared.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/cloudflared.pid"
+
+          public_url=""
+          for i in {1..45}; do
+            public_url="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared.log" | head -1 || true)"
+            if [ -n "$public_url" ]; then break; fi
+            sleep 1
+          done
+          if [ -z "$public_url" ]; then
+            cat "$RUNNER_TEMP/cloudflared.log"
+            exit 1
+          fi
+          echo "PUBLIC_URL=${public_url%/}" >> "$GITHUB_ENV"
+
+      - name: Bootstrap live Gateway
+        shell: bash
+        env:
+          APPROVAL_SECRET: ${{ secrets.CHATGPT_CONNECTOR_POC_APPROVAL }}
+          PROVIDER_TOKEN: ${{ github.token }}
+          HOLD_MINUTES: ${{ inputs.hold_minutes }}
+        run: |
+          set -euo pipefail
+          runtime_dir="$RUNNER_TEMP/queqiao-chatgpt-connector"
+          mkdir -p "$runtime_dir/state"
+
+          jwt="$(node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))")"
+          printf '%s\n' "$APPROVAL_SECRET" > "$runtime_dir/approval.secret"
+          printf '%s\n' "$jwt" > "$runtime_dir/jwt.secret"
+          printf '%s\n' "$PROVIDER_TOKEN" > "$runtime_dir/github.token"
+
+          RUNTIME_DIR="$runtime_dir" HOLD_MINUTES="$HOLD_MINUTES" node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
+          const runtimeDir = process.env.RUNTIME_DIR;
+          const publicUrl = process.env.PUBLIC_URL.replace(/\/$/, "") + "/";
+          const config = {
+            version: 1,
+            gateway: {
+              publicBaseUrl: publicUrl,
+              listen: { host: "127.0.0.1", port: 7575 },
+              managementListen: { host: "127.0.0.1", port: 7574 },
+              workerSessionListen: { host: "127.0.0.1", port: 7573 },
+              livenessIntervalMs: 5000,
+              trustProxyHops: 1,
+              stateDirectory: path.join(runtimeDir, "state"),
+              approvalSecretFile: path.join(runtimeDir, "approval.secret"),
+              jwtSigningSecretFile: path.join(runtimeDir, "jwt.secret"),
+              allowedRedirectOrigins: ["https://chatgpt.com"],
+              runtimeProviders: {
+                githubActions: {
+                  owner,
+                  repo,
+                  workflowId: "runtime-provider-poc-worker.yml",
+                  ref: "main",
+                  tokenFile: path.join(runtimeDir, "github.token"),
+                  audience: new URL("runtime/github-actions/claim", publicUrl).href
+                }
+              }
+            },
+            extensions: [],
+            workspaces: []
+          };
+          fs.writeFileSync(path.join(runtimeDir, "config.json"), JSON.stringify(config, null, 2));
+          NODE
+
+          echo "QUEQIAO_CONFIG_FILE=$runtime_dir/config.json" >> "$GITHUB_ENV"
+          echo "POC_RUNTIME_DIR=$runtime_dir" >> "$GITHUB_ENV"
+
+      - name: Start Gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup npx tsx apps/gateway/src/index.ts > "$RUNNER_TEMP/queqiao-gateway.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/queqiao-gateway.pid"
+
+          for i in {1..45}; do
+            if [ -f "$POC_RUNTIME_DIR/state/management.secret" ] && curl -sS -o /dev/null http://127.0.0.1:7575/; then
+              break
+            fi
+            sleep 1
+          done
+          test -f "$POC_RUNTIME_DIR/state/management.secret"
+
+          external_ok=0
+          for i in {1..45}; do
+            code="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "$PUBLIC_URL/.well-known/oauth-authorization-server" || true)"
+            if [ "$code" = "200" ]; then external_ok=1; break; fi
+            sleep 1
+          done
+          if [ "$external_ok" -ne 1 ]; then
+            cat "$RUNNER_TEMP/cloudflared.log"
+            cat "$RUNNER_TEMP/queqiao-gateway.log"
+            exit 1
+          fi
+
+      - name: Provision Connector Worker
+        shell: bash
+        env:
+          HOLD_MINUTES: ${{ inputs.hold_minutes }}
+        run: |
+          set -euo pipefail
+          management_secret="$(cat "$POC_RUNTIME_DIR/state/management.secret")"
+          echo "::add-mask::$management_secret"
+          ttl_seconds="$((HOLD_MINUTES * 60 + 120))"
+
+          response="$(curl -fsS             -H 'content-type: application/json'             -H "x-queqiao-management-secret: $management_secret"             -d "{\"ttlSeconds\":$ttl_seconds,\"metadata\":{\"poc\":\"chatgpt-connector\"}}"             http://127.0.0.1:7574/runtimes/github-actions)"
+
+          lease_id="$(printf '%s' "$response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).leaseId))")"
+          worker_run_id="$(printf '%s' "$response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).providerMetadata?.runId||''))")"
+          environment_id="$(printf '%s' "$response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).providerMetadata?.environmentId||''))")"
+
+          test -n "$lease_id"
+          test -n "$worker_run_id"
+          test -n "$environment_id"
+
+          echo "LEASE_ID=$lease_id" >> "$GITHUB_ENV"
+          echo "WORKER_RUN_ID=$worker_run_id" >> "$GITHUB_ENV"
+          echo "EXPECTED_ENVIRONMENT_ID=$environment_id" >> "$GITHUB_ENV"
+          echo "MANAGEMENT_SECRET=$management_secret" >> "$GITHUB_ENV"
+
+      - name: Wait for ready Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=""
+          for i in {1..120}; do
+            lease="$(curl -fsS -H "x-queqiao-management-secret: $MANAGEMENT_SECRET" "http://127.0.0.1:7574/runtimes/$LEASE_ID")"
+            state="$(printf '%s' "$lease" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).state))")"
+            if [ "$state" = "ready" ]; then break; fi
+            if [ "$state" = "failed" ] || [ "$state" = "expired" ] || [ "$state" = "disposed" ]; then
+              printf '%s\n' "$lease"
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$state" = "ready"
+
+      - name: Publish Connector endpoint
+        shell: bash
+        env:
+          HOLD_MINUTES: ${{ inputs.hold_minutes }}
+        run: |
+          set -euo pipefail
+          mcp_url="${PUBLIC_URL%/}/mcp"
+          echo "CHATGPT_CONNECTOR_MCP_URL=$mcp_url"
+          echo "CHATGPT_CONNECTOR_EXPECTED_MARKER=QUEQIAO-GITHUB-CONNECTOR-OK"
+          echo "CHATGPT_CONNECTOR_WORKSPACE=runtime"
+          {
+            echo "## ChatGPT Connector acceptance is live"
+            echo ""
+            echo "- MCP URL: `$mcp_url`"
+            echo "- Authentication: OAuth"
+            echo "- Workspace: `runtime`"
+            echo "- Acceptance read: `poc-marker.txt`"
+            echo "- Expected value: `QUEQIAO-GITHUB-CONNECTOR-OK`"
+            echo "- Live hold: `$HOLD_MINUTES minutes`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep live for interactive ChatGPT test
+        shell: bash
+        env:
+          HOLD_MINUTES: ${{ inputs.hold_minutes }}
+        run: |
+          set -euo pipefail
+          sleep "$((HOLD_MINUTES * 60))"
+
+      - name: Dispose Worker
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${LEASE_ID:-}" ] && [ -n "${MANAGEMENT_SECRET:-}" ]; then
+            curl -fsS -X POST               -H "x-queqiao-management-secret: $MANAGEMENT_SECRET"               "http://127.0.0.1:7574/runtimes/$LEASE_ID/complete" >/dev/null || true
+          fi
+
+      - name: Diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo '--- gateway log ---'
+          tail -200 "$RUNNER_TEMP/queqiao-gateway.log" 2>/dev/null || true
+          echo '--- cloudflared log ---'
+          tail -120 "$RUNNER_TEMP/cloudflared.log" 2>/dev/null || true
+
+      - name: Cleanup Gateway
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/queqiao-gateway.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/queqiao-gateway.pid")" 2>/dev/null || true
+          fi
+          if [ -f "$RUNNER_TEMP/cloudflared.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/cloudflared.pid")" 2>/dev/null || true
+          fi
