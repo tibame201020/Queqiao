@@ -44,6 +44,9 @@
       "path": "packages/runtime-control"
     },
     {
+      "path": "packages/runtime-provider-github-actions"
+    },
+    {
       "path": "packages/platform-paths"
     },
     {
