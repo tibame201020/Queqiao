@@ -1,6 +1,7 @@
 name: Runtime Provider Phase 3 POC
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
@@ -18,7 +19,7 @@ permissions:
 
 jobs:
   phase3-e2e:
-    if: github.head_ref == 'feat/92-github-actions-runtime-provider'
+    if: (github.event_name == 'pull_request' && github.head_ref == 'feat/92-github-actions-runtime-provider') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -59,7 +60,7 @@ jobs:
         shell: bash
         env:
           PROVIDER_TOKEN: ${{ github.token }}
-          SOURCE_REF: ${{ github.head_ref }}
+          SOURCE_REF: ${{ github.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
           runtime_dir="$RUNNER_TEMP/queqiao-phase3-poc"
@@ -199,6 +200,15 @@ jobs:
           }
           NODE
 
+      - name: Execute authenticated MCP read_file through ephemeral Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          export QUEQIAO_POC_PUBLIC_URL="$PUBLIC_URL"
+          export QUEQIAO_POC_LOCAL_URL="http://127.0.0.1:7575"
+          export QUEQIAO_POC_APPROVAL_SECRET_FILE="$POC_RUNTIME_DIR/approval.secret"
+          export QUEQIAO_POC_ENVIRONMENT_ID="$EXPECTED_ENVIRONMENT_ID"
+          npx tsx apps/gateway/src/poc-runtime-reader-client.ts
       - name: Complete lease and verify provider cancellation
         shell: bash
         env:
@@ -229,6 +239,15 @@ jobs:
           echo '--- cloudflared log ---'
           tail -120 "$RUNNER_TEMP/cloudflared.log" 2>/dev/null || true
 
+      - name: Dispose Worker if MCP acceptance fails
+        if: failure()
+        shell: bash
+        run: |
+          if [ -n "${LEASE_ID:-}" ] && [ -n "${MANAGEMENT_SECRET:-}" ]; then
+            curl -fsS -X POST \
+              -H "x-queqiao-management-secret: $MANAGEMENT_SECRET" \
+              "http://127.0.0.1:7574/runtimes/$LEASE_ID/complete" >/dev/null || true
+          fi
       - name: Cleanup controller
         if: always()
         shell: bash
