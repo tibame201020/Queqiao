@@ -70,7 +70,7 @@ export function validateBrowserSessionState(input: unknown): BrowserSessionState
 }
 
 export function decodeBrowserSessionCapsule(capsule: string): BrowserSessionState {
-  const normalized = typeof capsule === "string" ? capsule.replace(/\\s/g, "") : "";
+  const normalized = typeof capsule === "string" ? capsule.replace(/\s/g, "") : "";
   if (normalized.length < 16 || normalized.length > 65_536 || !/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) {
     throw new Error("CAPSULE_FORMAT");
   }
