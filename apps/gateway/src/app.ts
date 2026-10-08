@@ -12,6 +12,7 @@ import { EnrollmentError, EnrollmentService } from "./enrollment-service.js";
 import { WorkerMembershipStore } from "./worker-membership-store.js";
 import { GatewayLivenessMonitor } from "./liveness-monitor.js";
 import type { WorkerSessionRegistry } from "./worker-session-registry.js";
+import type { GitHubActionsRuntimeCoordinator } from "@queqiao/runtime-provider-github-actions";
 
 function authAuditOutcome(status: number): "success" | "denied" | "failed" {
   if (status < 400) return "success";
@@ -34,7 +35,7 @@ async function appendAuthAudit(audit: AuditSink | undefined, action: string | un
   }
 }
 
-export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService, sessions?: WorkerSessionRegistry, audit?: AuditSink): Promise<Express> {
+export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService, sessions?: WorkerSessionRegistry, audit?: AuditSink, githubActionsRuntime?: GitHubActionsRuntimeCoordinator): Promise<Express> {
   const oauth = new OAuthService(config); await oauth.initialize();
   const memberships = enrollment?.memberships ?? new WorkerMembershipStore(config.stateDir);
   const workerSource = new MembershipWorkerRegistry(memberships, sessions, audit);
@@ -63,6 +64,24 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
     void liveness.probeNow().catch(() => undefined);
   });
   await liveness.start();
+
+  if (enrollment && githubActionsRuntime) {
+    const runtimeClaimLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false });
+    app.post("/runtime/github-actions/claim", runtimeClaimLimiter, async (req, res) => {
+      try {
+        const leaseId = typeof req.body?.leaseId === "string" ? req.body.leaseId : "";
+        const oidcToken = typeof req.body?.oidcToken === "string" ? req.body.oidcToken : "";
+        const workerId = typeof req.body?.workerId === "string" ? req.body.workerId : "";
+        if (!leaseId || !oidcToken || !workerId) throw new EnrollmentError(400, "runtime_claim_invalid", "leaseId, oidcToken, and workerId are required");
+        const authorized = await githubActionsRuntime.authorizeClaim({ leaseId, oidcToken, workerId });
+        const join = enrollment.createJoinToken({ workerId, environmentId: authorized.environmentId, expiresSeconds: authorized.expiresSeconds });
+        res.status(201).json({ gateway: config.publicBaseUrl.href, token: join.token, expiresAt: join.expiresAt, environmentId: authorized.environmentId, runId: authorized.runId });
+      } catch (error) {
+        const failure = error instanceof EnrollmentError ? error : new EnrollmentError(403, "runtime_claim_denied", error instanceof Error ? error.message : "Runtime claim denied");
+        res.status(failure.status).json({ error: failure.code, message: failure.message });
+      }
+    });
+  }
 
   if (enrollment) {
     const enrollmentLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false });
@@ -117,7 +136,18 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
         if (!transactionId || !credential) throw new EnrollmentError(400, "invalid_confirmation", "transactionId and provisional credential are required");
         const membership = await enrollment.confirmJoin(transactionId, credential);
         await liveness.probeNow().catch(() => undefined);
-        res.json({ joined: true, workerId: membership.workerId, environmentId: membership.environmentId });
+        let runtimeLease;
+        try {
+          runtimeLease = githubActionsRuntime?.workerJoined({ workerId: membership.workerId, environmentId: membership.environmentId });
+        } catch (error) {
+          console.error("GitHub Actions runtime reconciliation failed", error instanceof Error ? error.message : "unknown error");
+        }
+        res.json({
+          joined: true,
+          workerId: membership.workerId,
+          environmentId: membership.environmentId,
+          ...(runtimeLease ? { runtimeLease: { leaseId: runtimeLease.leaseId, state: runtimeLease.state } } : {}),
+        });
       } catch (error) { const failure = error instanceof EnrollmentError ? error : new EnrollmentError(400, "join_confirmation_failed", error instanceof Error ? error.message : "Join confirmation failed"); res.status(failure.status).json({ error: failure.code, message: failure.message }); }
     });
   }
