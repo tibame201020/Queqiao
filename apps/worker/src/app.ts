@@ -18,6 +18,7 @@ export type WorkerAppConfig = WorkerProtocolServiceConfig & {
   };
   reverseSessionControl?: {
     activate(input: { gateway?: string; target: string; credential: string; security?: "tls" | "loopback"; caCertificate?: string }): Promise<void>;
+    activateWebSocket?(input: { gateway: string; url: string; credential: string }): Promise<void>;
     deactivate?(gateway: string): void | Promise<void>;
   };
 };
@@ -92,6 +93,20 @@ export async function createWorkerApp(config: WorkerAppConfig): Promise<Express>
       if (!parsed.success) return res.status(400).json({ error: "invalid_request", message: "gateway is required" });
       try { await config.reverseSessionControl!.deactivate?.(parsed.data.gateway); res.status(204).end(); }
       catch (error) { res.status(502).json({ error: "worker_session_disconnect_failed", message: error instanceof Error ? error.message : "Worker reverse session disconnect failed" }); }
+    });
+    app.post("/enrollment/reverse-session/connect-websocket", async (req, res) => {
+      const parsed = z.object({ gateway: z.url(), url: z.url(), credential: z.string().min(32).max(256).optional() }).strict().safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "invalid_request", message: "gateway and url are required" });
+      try {
+        const url = new URL(parsed.data.url);
+        if (url.protocol !== "ws:" && url.protocol !== "wss:") return res.status(400).json({ error: "invalid_request", message: "url must use ws or wss" });
+        if (!config.reverseSessionControl!.activateWebSocket) return res.status(501).json({ error: "websocket_reverse_unavailable" });
+        const credential = parsed.data.credential ?? await localCredential();
+        await config.reverseSessionControl!.activateWebSocket({ gateway: parsed.data.gateway, url: url.href, credential });
+        res.status(204).end();
+      } catch (error) {
+        res.status(502).json({ error: "worker_websocket_session_connect_failed", message: error instanceof Error ? error.message : "Worker WebSocket reverse session activation failed" });
+      }
     });
     app.post("/enrollment/reverse-session/connect", async (req, res) => {
       const parsed = z.object({ gateway: z.url().optional(), target: z.string().min(1).max(512), credential: z.string().min(32).max(256).optional(), security: z.enum(["tls", "loopback"]).optional(), caCertificate: z.string().min(64).max(32_768).optional() }).strict().safeParse(req.body);

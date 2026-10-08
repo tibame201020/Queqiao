@@ -31,7 +31,7 @@ Gateway-observed liveness is configurable and low-frequency; no Worker lease/hea
 
 Runtime Lease is a separate control-plane concept governed by ADR-0015. It tracks the lifecycle of a disposable execution runtime from provider provisioning through one enrolled Worker binding, readiness, execution, terminal outcome, TTL expiry, and explicit disposal. It does not replace Worker membership or liveness, and it is not the same lifecycle as Worker Job v1 inside `@queqiao/process-runtime`. Provider APIs and credentials remain outside Core semantics.
 
-Persistent Worker membership stores one or more selected transport descriptors. Transport identifiers are intentionally open lowercase tokens rather than a closed HTTP/gRPC enum. The currently registered providers are authenticated loopback HTTP and Worker-initiated TLS gRPC/HTTP2; both preserve the same Worker Protocol semantics, Gateway routing responsibilities, and Worker-authoritative execution policy.
+Persistent Worker membership stores one or more selected transport descriptors. Transport identifiers are intentionally open lowercase tokens rather than a closed HTTP/gRPC enum. The currently registered providers are authenticated loopback HTTP, Worker-initiated TLS gRPC/HTTP2, and Worker-initiated WebSocket. All preserve the same Worker Protocol semantics, Gateway routing responsibilities, and Worker-authoritative execution policy. WebSocket uses the public Gateway HTTP endpoint and is the reverse transport for HTTPS-only/NAT-hosted runtimes.
 
 The current development candidate is **Core Manifest Revision 11**. Revision 11 retains the dynamic Workspace-bound `transport` identifier contract introduced in Revision 9 (`^[a-z][a-z0-9.-]*$`, 1-64 characters), includes bounded process capacity/recovery diagnostics, and adds request-durable Worker Job v1. Available transports, health, mode, traits, and the deterministic omitted-selection projection are discovered through `list_workspaces` / `workspace_info`. Explicit selection is exact and never silently falls back. An unknown syntactically valid identifier fails at the Gateway with `transport_unknown`; a known provider that the Worker membership did not enable fails with `transport_not_enabled`.
 
@@ -88,7 +88,7 @@ Environment-local authoritative execution root. It loads native Workspace policy
 
 A Worker MUST NOT rely on Gateway authorization alone and MUST NOT implement the public OAuth authorization server.
 
-Loopback HTTP and Worker-initiated gRPC are adapters around the same `WorkerProtocolService`; neither transport defines the Worker authority boundary.
+Loopback HTTP, Worker-initiated gRPC, and Worker-initiated WebSocket are adapters around the same `WorkerProtocolService`; none defines the Worker authority boundary.
 
 ### `apps/cli`
 
@@ -149,6 +149,10 @@ Core Manifest Revision 11 adds a separate request-durable Job v1 surface: `job_s
 ### `packages/runtime-control`
 
 Provider-neutral Runtime Lease contract. It owns lifecycle state validation, TTL expiry, one-Worker binding, terminal/disposal idempotency, bounded non-secret provider metadata, and the minimal Runtime Provider interface. It does not call cloud-provider APIs, store provider credentials, own Worker tools, or expose a public MCP provisioning tool. Persistence and provider adapters are later integration decisions.
+
+### `packages/runtime-provider-github-actions`
+
+Provider adapter for disposable GitHub Actions runtimes. It owns workflow dispatch/cancel, run correlation, GitHub OIDC verification, lease-derived environment identity, and provider reconciliation. GitHub credentials remain outside Runtime Lease state. The package depends on `@queqiao/runtime-control`; Core lifecycle packages do not depend on GitHub APIs.
 
 ### `packages/workspace`
 

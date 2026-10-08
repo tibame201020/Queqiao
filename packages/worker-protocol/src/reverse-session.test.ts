@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeWorkerSessionFrame, encodeWorkerSessionFrame, MAX_WORKER_SESSION_FRAME_BYTES, workerProtocolRequestSchema, workerSessionFrameSchema } from "./index.js";
+import { decodeWorkerSessionFrame, encodeWorkerSessionFrame, MAX_WORKER_SESSION_FRAME_BYTES, workerProtocolRequestSchema, workerSessionAuthenticateFrameSchema, workerSessionFrameSchema } from "./index.js";
 
 const hello = {
   protocolVersion: "3.0",
@@ -19,6 +19,7 @@ describe("reverse Worker session protocol", () => {
   });
 
   it("accepts only bounded reverse-session frame shapes", () => {
+    expect(workerSessionAuthenticateFrameSchema.parse({ kind: "authenticate", credential: "x".repeat(32), connect: { kind: "connect", hello } })).toMatchObject({ kind: "authenticate", connect: { hello: { workerId: hello.workerId } } });
     expect(workerSessionFrameSchema.parse({ kind: "connect", hello })).toMatchObject({ kind: "connect", hello: { workerId: hello.workerId } });
     expect(workerSessionFrameSchema.parse({ kind: "request", requestId: "req_1", request: { operation: "health" } })).toMatchObject({ kind: "request", requestId: "req_1" });
     expect(workerSessionFrameSchema.parse({ kind: "response", requestId: "req_1", result: { ok: true } })).toMatchObject({ kind: "response" });

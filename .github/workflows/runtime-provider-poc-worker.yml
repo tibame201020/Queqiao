@@ -38,6 +38,8 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
+      - run: npm run build
+
       - name: Bootstrap Worker
         shell: bash
         env:

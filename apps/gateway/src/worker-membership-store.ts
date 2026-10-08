@@ -16,10 +16,8 @@ export const workerTransportDescriptorSchema = z.discriminatedUnion("type", [
       if (url.username || url.password) ctx.addIssue({ code: "custom", message: "Worker transport endpoint must not contain credentials" });
     }),
   }),
-  z.object({
-    type: z.literal("grpc"),
-    mode: z.literal("reverse"),
-  }),
+  z.object({ type: z.literal("grpc"), mode: z.literal("reverse") }),
+  z.object({ type: z.literal("websocket"), mode: z.literal("reverse") }),
 ]);
 
 export function gatewayVisibleTransportKey(transport: WorkerTransportDescriptor): string | undefined {

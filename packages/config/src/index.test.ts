@@ -55,6 +55,33 @@ describe("extension config schema", () => {
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, listen: { host: "0.0.0.0", port: 7575 } } })).toThrow();
   });
 
+  it("accepts an optional GitHub Actions runtime provider without embedding its token", () => {
+    const gateway = {
+      publicBaseUrl: "https://queqiao.example/",
+      listen: { host: "127.0.0.1", port: 7575 },
+      stateDirectory: "state",
+      approvalSecretFile: "approval.secret",
+      jwtSigningSecretFile: "jwt.secret",
+      runtimeProviders: {
+        githubActions: {
+          owner: "example",
+          repo: "runtime-host",
+          workflowId: "runtime.yml",
+          ref: "main",
+          tokenFile: "github-runtime.secret",
+        },
+      },
+    };
+    const parsed = runtimeConfigSchema.parse({ ...base, gateway });
+    expect(parsed.gateway?.runtimeProviders.githubActions).toEqual({
+      owner: "example",
+      repo: "runtime-host",
+      workflowId: "runtime.yml",
+      ref: "main",
+      tokenFile: "github-runtime.secret",
+    });
+  });
+
   it("rejects Gateway listener collisions including the implicit local Worker-session port", () => {
     const gateway = { publicBaseUrl: "https://queqiao.example/", listen: { host: "127.0.0.1", port: 7575 }, stateDirectory: "state", approvalSecretFile: "approval.secret", jwtSigningSecretFile: "jwt.secret" };
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, managementListen: { host: "127.0.0.1", port: 7573 } } })).toThrow(/Worker session.*Management/i);

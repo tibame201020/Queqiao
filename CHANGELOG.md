@@ -12,6 +12,7 @@
 - Gives managed stdio sessions an independent bounded capacity pool so persistent connections cannot starve foreground commands or background jobs; Doctor reports session saturation.
 - Uses the absolute Windows taskkill path and handles terminator failure with parent termination fallback; reservations remain held until native close.
 
+- Adds a GitHub Actions Runtime Provider with exact-run OIDC bootstrap, lease correlation/cancellation, and an outbound reverse WebSocket Worker transport for ephemeral runners without exposing enrollment credentials through workflow inputs.
 - Adds a provider-neutral Runtime Lease contract for disposable execution runtimes, separating runtime provisioning/TTL/disposal from Worker membership, liveness, and Worker Job v1 while keeping provider credentials and APIs outside Core semantics.
 
 ## 0.9.17 - 2026-10-06

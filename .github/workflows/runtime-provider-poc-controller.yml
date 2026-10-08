@@ -1,0 +1,241 @@
+name: Runtime Provider Phase 3 POC
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/runtime-provider-poc-controller.yml"
+      - ".github/workflows/runtime-provider-poc-worker.yml"
+      - "packages/runtime-provider-github-actions/**"
+      - "packages/runtime-control/**"
+      - "packages/worker-protocol/**"
+      - "apps/gateway/**"
+      - "apps/worker/**"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  phase3-e2e:
+    if: github.head_ref == 'feat/92-github-actions-runtime-provider'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - run: npm run build
+
+      - name: Start temporary public tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/cloudflared"             https://github.com/cloudflare/cloudflared/releases/download/2026.8.3/cloudflared-linux-amd64
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          nohup "$RUNNER_TEMP/cloudflared" tunnel --no-autoupdate --url http://127.0.0.1:7575             > "$RUNNER_TEMP/cloudflared.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/cloudflared.pid"
+
+          public_url=""
+          for i in {1..45}; do
+            public_url="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared.log" | head -1 || true)"
+            if [ -n "$public_url" ]; then break; fi
+            sleep 1
+          done
+          if [ -z "$public_url" ]; then
+            cat "$RUNNER_TEMP/cloudflared.log"
+            exit 1
+          fi
+          echo "PUBLIC_URL=${public_url%/}" >> "$GITHUB_ENV"
+
+      - name: Bootstrap Phase 3 Gateway
+        shell: bash
+        env:
+          PROVIDER_TOKEN: ${{ github.token }}
+          SOURCE_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          runtime_dir="$RUNNER_TEMP/queqiao-phase3-poc"
+          mkdir -p "$runtime_dir/state"
+          approval="$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"
+          jwt="$(node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))")"
+          printf '%s\n' "$approval" > "$runtime_dir/approval.secret"
+          printf '%s\n' "$jwt" > "$runtime_dir/jwt.secret"
+          printf '%s\n' "$PROVIDER_TOKEN" > "$runtime_dir/github.token"
+
+          RUNTIME_DIR="$runtime_dir" SOURCE_REF="$SOURCE_REF" node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
+          const runtimeDir = process.env.RUNTIME_DIR;
+          const publicUrl = process.env.PUBLIC_URL.replace(/\/$/, "") + "/";
+          const config = {
+            version: 1,
+            gateway: {
+              publicBaseUrl: publicUrl,
+              listen: { host: "127.0.0.1", port: 7575 },
+              managementListen: { host: "127.0.0.1", port: 7574 },
+              workerSessionListen: { host: "127.0.0.1", port: 7573 },
+              livenessIntervalMs: 5000,
+              trustProxyHops: 1,
+              stateDirectory: path.join(runtimeDir, "state"),
+              approvalSecretFile: path.join(runtimeDir, "approval.secret"),
+              jwtSigningSecretFile: path.join(runtimeDir, "jwt.secret"),
+              allowedRedirectOrigins: ["https://chatgpt.com"],
+              runtimeProviders: {
+                githubActions: {
+                  owner,
+                  repo,
+                  workflowId: "runtime-provider-poc-worker.yml",
+                  ref: process.env.SOURCE_REF,
+                  tokenFile: path.join(runtimeDir, "github.token"),
+                  audience: new URL("runtime/github-actions/claim", publicUrl).href
+                }
+              }
+            },
+            extensions: [],
+            workspaces: []
+          };
+          fs.writeFileSync(path.join(runtimeDir, "config.json"), JSON.stringify(config, null, 2));
+          NODE
+          echo "QUEQIAO_CONFIG_FILE=$runtime_dir/config.json" >> "$GITHUB_ENV"
+          echo "POC_RUNTIME_DIR=$runtime_dir" >> "$GITHUB_ENV"
+
+      - name: Start Gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup npx tsx apps/gateway/src/index.ts > "$RUNNER_TEMP/queqiao-gateway.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/queqiao-gateway.pid"
+
+          for i in {1..45}; do
+            if [ -f "$POC_RUNTIME_DIR/state/management.secret" ] && curl -sS -o /dev/null http://127.0.0.1:7575/; then
+              break
+            fi
+            sleep 1
+          done
+          test -f "$POC_RUNTIME_DIR/state/management.secret"
+
+          external_ok=0
+          for i in {1..45}; do
+            code="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "$PUBLIC_URL/" || true)"
+            case "$code" in
+              000|502|503|530|"") ;;
+              *) external_ok=1; break ;;
+            esac
+            sleep 1
+          done
+          if [ "$external_ok" -ne 1 ]; then
+            cat "$RUNNER_TEMP/cloudflared.log"
+            cat "$RUNNER_TEMP/queqiao-gateway.log"
+            exit 1
+          fi
+
+      - name: Provision ephemeral Worker through Runtime Provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          management_secret="$(cat "$POC_RUNTIME_DIR/state/management.secret")"
+          echo "::add-mask::$management_secret"
+
+          response="$(curl -fsS             -H 'content-type: application/json'             -H "x-queqiao-management-secret: $management_secret"             -d '{"ttlSeconds":180,"metadata":{"poc":"phase3-e2e"}}'             http://127.0.0.1:7574/runtimes/github-actions)"
+
+          lease_id="$(printf '%s' "$response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).leaseId))")"
+          worker_run_id="$(printf '%s' "$response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).providerMetadata?.runId||''))")"
+          environment_id="$(printf '%s' "$response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).providerMetadata?.environmentId||''))")"
+          state="$(printf '%s' "$response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).state))")"
+          test "$state" = "provisioning"
+          test -n "$worker_run_id"
+          test -n "$environment_id"
+
+          echo "LEASE_ID=$lease_id" >> "$GITHUB_ENV"
+          echo "WORKER_RUN_ID=$worker_run_id" >> "$GITHUB_ENV"
+          echo "EXPECTED_ENVIRONMENT_ID=$environment_id" >> "$GITHUB_ENV"
+          echo "MANAGEMENT_SECRET=$management_secret" >> "$GITHUB_ENV"
+
+      - name: Wait for Worker registration and ready lease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          final_state=""
+          for i in {1..120}; do
+            lease="$(curl -fsS -H "x-queqiao-management-secret: $MANAGEMENT_SECRET" "http://127.0.0.1:7574/runtimes/$LEASE_ID")"
+            final_state="$(printf '%s' "$lease" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).state))")"
+            if [ "$final_state" = "ready" ]; then
+              break
+            fi
+            if [ "$final_state" = "failed" ] || [ "$final_state" = "expired" ] || [ "$final_state" = "disposed" ]; then
+              printf '%s\n' "$lease"
+              exit 1
+            fi
+
+            run_state="$(curl -fsS               -H 'Accept: application/vnd.github+json'               -H "Authorization: Bearer $GH_TOKEN"               -H 'X-GitHub-Api-Version: 2026-03-10'               "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$WORKER_RUN_ID")"
+            worker_status="$(printf '%s' "$run_state" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).status||''))")"
+            worker_conclusion="$(printf '%s' "$run_state" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).conclusion||''))")"
+            if [ "$worker_status" = "completed" ] && [ "$worker_conclusion" != "success" ]; then
+              echo "Worker run completed before lease became ready: $worker_conclusion"
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$final_state" = "ready"
+
+          curl -fsS "$PUBLIC_URL/health" >/dev/null
+          workers="$(curl -fsS -H "x-queqiao-management-secret: $MANAGEMENT_SECRET" http://127.0.0.1:7574/workers)"
+          WORKERS_JSON="$workers" node <<'NODE'
+          const body = JSON.parse(process.env.WORKERS_JSON);
+          const expected = process.env.EXPECTED_ENVIRONMENT_ID;
+          if (!body.workers?.some((worker) => worker.environmentId === expected)) {
+            throw new Error("Expected ephemeral Worker membership was not found");
+          }
+          NODE
+
+      - name: Complete lease and verify provider cancellation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          completed="$(curl -fsS -X POST             -H "x-queqiao-management-secret: $MANAGEMENT_SECRET"             "http://127.0.0.1:7574/runtimes/$LEASE_ID/complete")"
+          final_state="$(printf '%s' "$completed" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).state))")"
+          test "$final_state" = "disposed"
+
+          conclusion=""
+          for i in {1..45}; do
+            run_state="$(curl -fsS               -H 'Accept: application/vnd.github+json'               -H "Authorization: Bearer $GH_TOKEN"               -H 'X-GitHub-Api-Version: 2026-03-10'               "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$WORKER_RUN_ID")"
+            status="$(printf '%s' "$run_state" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).status||''))")"
+            conclusion="$(printf '%s' "$run_state" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).conclusion||''))")"
+            if [ "$status" = "completed" ]; then break; fi
+            sleep 1
+          done
+          test "$conclusion" = "cancelled"
+          printf '{"leaseId":"%s","workerRunId":"%s","environmentId":"%s","leaseState":"disposed","workerConclusion":"cancelled"}\n'             "$LEASE_ID" "$WORKER_RUN_ID" "$EXPECTED_ENVIRONMENT_ID"
+
+      - name: Diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo '--- gateway log ---'
+          tail -200 "$RUNNER_TEMP/queqiao-gateway.log" 2>/dev/null || true
+          echo '--- cloudflared log ---'
+          tail -120 "$RUNNER_TEMP/cloudflared.log" 2>/dev/null || true
+
+      - name: Cleanup controller
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/queqiao-gateway.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/queqiao-gateway.pid")" 2>/dev/null || true
+          fi
+          if [ -f "$RUNNER_TEMP/cloudflared.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/cloudflared.pid")" 2>/dev/null || true
+          fi

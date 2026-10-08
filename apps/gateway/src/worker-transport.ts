@@ -10,7 +10,15 @@ export type WorkerGrpcReverseTransportDescriptor = {
   mode: "reverse";
 };
 
-export type WorkerTransportDescriptor = WorkerHttpTransportDescriptor | WorkerGrpcReverseTransportDescriptor;
+export type WorkerWebSocketReverseTransportDescriptor = {
+  type: "websocket";
+  mode: "reverse";
+};
+
+export type WorkerTransportDescriptor =
+  | WorkerHttpTransportDescriptor
+  | WorkerGrpcReverseTransportDescriptor
+  | WorkerWebSocketReverseTransportDescriptor;
 
 export type WorkerTransportTraits = {
   requestResponse: boolean;
@@ -19,14 +27,14 @@ export type WorkerTransportTraits = {
   topology: "direct" | "reverse" | "peer";
 };
 
-const REGISTERED_WORKER_TRANSPORT_TYPES = new Set<string>(["http", "grpc"]);
+const REGISTERED_WORKER_TRANSPORT_TYPES = new Set<string>(["http", "grpc", "websocket"]);
 
 export function isRegisteredWorkerTransportType(type: string): boolean {
   return REGISTERED_WORKER_TRANSPORT_TYPES.has(type);
 }
 
 export function workerTransportProjection(descriptor: WorkerTransportDescriptor) {
-  if (descriptor.type === "grpc") {
+  if (descriptor.type === "grpc" || descriptor.type === "websocket") {
     return {
       mode: descriptor.mode,
       traits: { requestResponse: true, streaming: "bidirectional", connection: "persistent", topology: "reverse" } satisfies WorkerTransportTraits,

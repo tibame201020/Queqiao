@@ -59,7 +59,11 @@ const app = await createWorkerApp({
   processes,
   extensionRuntime,
   protocolService,
-  reverseSessionControl: { activate: (input) => reverseSessions.activate(input), deactivate: (gateway) => reverseSessions.deactivate(gateway) },
+  reverseSessionControl: {
+    activate: (input) => reverseSessions.activate(input),
+    activateWebSocket: (input) => reverseSessions.activateWebSocket(input),
+    deactivate: (gateway) => reverseSessions.deactivate(gateway),
+  },
 });
 const server = app.listen(port, "127.0.0.1", () => {
   console.log(`Queqiao Worker listening on http://127.0.0.1:${port}`);
