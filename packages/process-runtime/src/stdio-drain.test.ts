@@ -26,9 +26,9 @@ it.skipIf(process.platform!=='win32')('reproduces PowerShell Start-Process inher
   cwd=await mkdtemp(path.join(os.tmpdir(),'queqiao-powershell-drain-'));
   const child=path.join(cwd,'child.cjs');const completed=path.join(cwd,'child-completed.txt');await writeFile(child,`setTimeout(()=>require('fs').writeFileSync(${JSON.stringify(completed)},'done'),8000)`);
   const quote=(s:string)=>s.replaceAll("'","''");const runner=new ProcessRunner(1);
-  const result=await runner.run({executable:'powershell.exe',cwd,timeoutMs:15000,args:['-NoProfile','-Command',`Start-Process -FilePath '${quote(process.execPath)}' -ArgumentList @('${quote(child)}') -NoNewWindow -PassThru | Select-Object -ExpandProperty Id`]});
+  const result=await runner.run({executable:'powershell.exe',cwd,timeoutMs:15000,args:['-NoProfile','-NonInteractive','-Command',`Start-Process -FilePath '${quote(process.execPath)}' -ArgumentList @('${quote(child)}') -NoNewWindow -PassThru | Select-Object -ExpandProperty Id; exit 0`]});
   try {
-    expect(result).toMatchObject({exitCode:0,timedOut:false,stdioDrainTimedOut:true});
+    expect(result, JSON.stringify(result)).toMatchObject({exitCode:0,timedOut:false,stdioDrainTimedOut:true});
     expect(syncProcessResultSchema.parse(result)).toEqual(result);
     await expect(access(completed)).rejects.toMatchObject({code:'ENOENT'});
     expect(runner.foregroundActiveCount()).toBe(0);
