@@ -28,6 +28,7 @@ export type GatewayRuntimeConfig = {
     ref: string;
     token: string;
     audience: string;
+    mcpPocEnabled?: boolean;
   };
 };
 
@@ -110,6 +111,7 @@ export function loadGatewayConfigFile(file: string): GatewayRuntimeConfig {
         ref: githubActions.ref,
         token: readFileSync(path.resolve(githubActions.tokenFile), "utf8").trim(),
         audience: githubActions.audience ?? new URL("runtime/github-actions/claim", publicBaseUrl).href,
+        mcpPocEnabled: githubActions.mcpPocEnabled,
       }
     : undefined;
   return {

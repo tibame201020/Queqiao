@@ -73,6 +73,10 @@ describe("extension config schema", () => {
       },
     };
     const parsed = runtimeConfigSchema.parse({ ...base, gateway });
+    expect(parsed.gateway?.runtimeProviders.githubActions?.mcpPocEnabled).toBeUndefined();
+    const enabled = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gateway.runtimeProviders.githubActions, mcpPocEnabled: true } } } });
+    expect(enabled.gateway?.runtimeProviders.githubActions?.mcpPocEnabled).toBe(true);
+    expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gateway.runtimeProviders.githubActions, mcpPocEnabled: "true" } } } })).toThrow();
     expect(parsed.gateway?.runtimeProviders.githubActions).toEqual({
       owner: "example",
       repo: "runtime-host",

@@ -232,6 +232,8 @@ const runtimeConfigBaseSchema = z.object({
         ref: z.string().min(1).max(255).default("main"),
         tokenFile: z.string().min(1),
         audience: z.string().min(1).max(2048).optional(),
+        // Gate C test-only MCP controls; disabled by default on every Gateway.
+        mcpPocEnabled: z.boolean().optional(),
       }).optional(),
     }).default({}),
   }).optional(),

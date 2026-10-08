@@ -8,6 +8,8 @@ import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "@queqiao/mcp-compat";
 import { buildOperationsDiagnostics, publicOperationsProjection } from "@queqiao/operations";
 import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import type { McpCancellationRegistry } from "./cancellation-registry.js";
+import type { ActionsMcpPoc } from "./actions-mcp-poc.js";
+import { z } from "zod";
 import { toQueqiaoErrorEnvelope } from "./errors.js";
 
 export const QUEQIAO_V0_TOOL_NAMES = ["workspace_info", "read_file"] as const;
@@ -58,7 +60,7 @@ export function createGatewayToolRuntime(): ToolRuntime<GatewayToolContext> {
   return runtime.seal();
 }
 
-export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = []): McpServer {
+export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = [], actionsMcpPoc?: ActionsMcpPoc): McpServer {
   const server = new McpServer({ name: "queqiao-mcp", version: "0.1.0" }, { supportedProtocolVersions: [...QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS] });
   const runtime = createGatewayToolRuntime();
   const diagnostics = buildOperationsDiagnostics({
@@ -131,6 +133,27 @@ export function createMcpServer(workers: WorkerRegistry, scopes: readonly string
         }
       },
     );
+  }
+  // Test-only capabilities. Never exposed without explicit provider opt-in.
+  // All actions are bound to the authenticated OAuth client ID.
+  if (actionsMcpPoc) {
+    const principal = cancellation?.principalId ?? "";
+    const register = (name: string, description: string, action: () => Promise<unknown> | unknown, readOnly: boolean) => {
+      server.registerTool(name, {
+        description,
+        inputSchema: z.object({}).shape,
+        annotations: { readOnlyHint: readOnly, destructiveHint: !readOnly, idempotentHint: readOnly, openWorldHint: !readOnly },
+      }, async () => {
+        try {
+          if (!scopes.includes("queqiao:access") || !principal) throw new Error("Authenticated Queqiao OAuth client required");
+          return result(await action());
+        } catch (error) { return failure(error); }
+      });
+    };
+    register("actions_worker_start", "Gate C POC only: start one short-lived GitHub Actions Worker (max 3 dispatches per Gateway).", () => actionsMcpPoc.start(principal), false);
+    register("actions_worker_status", "Gate C POC only: check readiness of your GitHub Actions Worker.", () => actionsMcpPoc.status(principal), true);
+    register("actions_worker_read_marker", "Gate C POC only: read runtime/poc-marker.txt from your Worker, validate routing, and dispose the lease.", () => actionsMcpPoc.readMarker(principal), false);
+    register("actions_worker_cancel", "Gate C POC only: cancel your active GitHub Actions Worker and dispose its lease.", () => actionsMcpPoc.cancel(principal), false);
   }
   return server;
 }

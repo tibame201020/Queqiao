@@ -73,13 +73,13 @@ jobs:
               id: "runtime",
               displayName: "Runtime POC",
               root: process.env.GITHUB_WORKSPACE,
-              profile: "coding",
+              profile: "read-only",
               tools: {
-                allow: ["workspace_info","read_file","list_workspaces","open_workspace","list_directory","search_text","run","shell"],
+                allow: ["workspace_info","read_file","list_workspaces"],
                 deny: [],
                 explicit: []
               },
-              commands: { allow: ["git","node","npm"] },
+              commands: { allow: [] },
               stepUp: []
             }]
           };
