@@ -1,14 +1,18 @@
-﻿import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { readRuntimeConfig } from "@queqiao/config";
 import type { WorkerProtocolService } from "./worker-protocol-service.js";
 import { WorkerReverseSessionManager, type PersistentReverseSession } from "./reverse-session-manager.js";
+import { WorkerWebSocketReverseClient } from "./websocket-reverse-worker-client.js";
 
 type Activation = { gateway?: string; target: string; credential: string; security?: "tls" | "loopback"; caCertificate?: string };
+type WebSocketActivation = { gateway: string; url: string; credential: string };
 
 export class WorkerGatewaySessionManager {
+  private stopped = false;
   private readonly managers = new Map<string, WorkerReverseSessionManager>();
   private readonly discoveredConnections = new Map<string, PersistentReverseSession>();
+  private readonly websocketClients = new Map<string, WorkerWebSocketReverseClient>();
 
   constructor(private readonly configFile: string, private readonly service: WorkerProtocolService) {}
 
@@ -46,23 +50,55 @@ export class WorkerGatewaySessionManager {
     await this.manager(input.gateway).activate({ target: input.target, credential: input.credential, ...(input.security ? { security: input.security } : {}), ...(input.caCertificate ? { caCertificate: input.caCertificate } : {}) });
   }
 
+  async activateWebSocket(input: WebSocketActivation): Promise<void> {
+    if (this.stopped) throw new Error("Worker Gateway session manager is stopped");
+    const key = this.key(input.gateway);
+    this.websocketClients.get(key)?.close();
+    const client = new WorkerWebSocketReverseClient({
+      url: input.url,
+      credential: input.credential,
+      service: this.service,
+      onDisconnect: () => {
+        if (this.websocketClients.get(key) !== client) return;
+        this.websocketClients.delete(key);
+        if (!this.stopped) void this.reconnectWebSocket(key).catch(() => undefined);
+      },
+    });
+    this.websocketClients.set(key, client);
+    try {
+      await client.connect();
+    } catch (error) {
+      if (this.websocketClients.get(key) === client) this.websocketClients.delete(key);
+      client.close();
+      throw error;
+    }
+  }
+
   deactivate(gateway: string): void {
     const key = this.key(gateway);
     const manager = this.managers.get(key);
     manager?.close();
     this.managers.delete(key);
     this.discoveredConnections.delete(key);
+    this.websocketClients.get(key)?.close();
+    this.websocketClients.delete(key);
   }
 
   async startPersistent(): Promise<void> {
+    if (this.stopped) return;
     const runtime = await readRuntimeConfig(this.configFile);
     if (!runtime.worker?.workerId) return;
     await Promise.all((runtime.worker.memberships ?? []).map(async (membership) => {
       const credential = (await readFile(path.resolve(membership.credentialRef.path), "utf8")).trim();
+      if (membership.protocols.websocket?.url) {
+        await this.activateWebSocket({ gateway: membership.gateway, url: membership.protocols.websocket.url, credential });
+        return;
+      }
       const authoritative = await this.discoverGrpc(membership.gateway, runtime.worker!.workerId!, credential).catch(() => undefined);
       if (authoritative === null) {
         this.discoveredConnections.delete(membership.gateway);
-        this.deactivate(membership.gateway);
+        this.managers.get(membership.gateway)?.close();
+        this.managers.delete(membership.gateway);
         return;
       }
       if (authoritative) this.discoveredConnections.set(membership.gateway, authoritative);
@@ -84,10 +120,12 @@ export class WorkerGatewaySessionManager {
       const body = await response.json() as { enabled?: unknown };
       const enabled = Array.isArray(body.enabled) ? body.enabled.filter((value): value is string => typeof value === "string") : [];
       if (!enabled.length) return;
-      if (enabled.some((type) => type !== "http" && type !== "grpc")) return;
+      if (enabled.some((type) => type !== "http" && type !== "grpc" && type !== "websocket")) return;
       const transports = enabled.map((type) => type === "http"
         ? { type: "http" as const, endpoint: `http://127.0.0.1:${localPort}/` }
-        : { type: "grpc" as const, mode: "reverse" as const });
+        : type === "grpc"
+          ? { type: "grpc" as const, mode: "reverse" as const }
+          : { type: "websocket" as const, mode: "reverse" as const });
       const update = await fetch(new URL("enrollment/protocols", membership.gateway), {
         method: "PUT",
         headers: { "content-type": "application/json", "x-queqiao-worker-token": credential },
@@ -99,6 +137,18 @@ export class WorkerGatewaySessionManager {
         throw new Error(`${typeof failure.error === "string" ? failure.error : "protocol_reconciliation_failed"}: ${typeof failure.message === "string" ? failure.message : `HTTP ${update.status}`}`);
       }
     }));
+  }
+
+  private async reconnectWebSocket(gateway: string): Promise<void> {
+    if (this.stopped) return;
+    const runtime = await readRuntimeConfig(this.configFile);
+    const membership = runtime.worker?.memberships.find((entry) => entry.gateway === gateway);
+    const url = membership?.protocols.websocket?.url;
+    if (!membership || !url) return;
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    if (this.stopped) return;
+    const credential = (await readFile(path.resolve(membership.credentialRef.path), "utf8")).trim();
+    if (!this.websocketClients.has(gateway)) await this.activateWebSocket({ gateway, url, credential });
   }
 
   private async discoverGrpc(gateway: string, workerId: string, credential: string): Promise<PersistentReverseSession | null> {
@@ -118,5 +168,11 @@ export class WorkerGatewaySessionManager {
     return { target: offer.connection.target, security, ...(typeof offer.connection.caCertificate === "string" ? { caCertificate: offer.connection.caCertificate } : {}) };
   }
 
-  close(): void { for (const manager of this.managers.values()) manager.close(); }
+  close(): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    for (const manager of this.managers.values()) manager.close();
+    for (const client of this.websocketClients.values()) client.close();
+    this.websocketClients.clear();
+  }
 }

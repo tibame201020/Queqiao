@@ -35,13 +35,19 @@ type JoinCodeEnvelope = {
 
 export type GatewayProtocolOffer =
   | { type: "http"; capable: boolean }
-  | { type: "grpc"; capable: boolean; connection?: { target: string; security?: "tls" | "loopback"; caCertificate?: string } };
+  | { type: "grpc"; capable: boolean; connection?: { target: string; security?: "tls" | "loopback"; caCertificate?: string } }
+  | { type: "websocket"; capable: boolean; connection?: { url: string } };
 
 export function describeGatewayProtocolOffer(offer: GatewayProtocolOffer): string {
   if (offer.type === "grpc") {
     const target = offer.connection?.target;
     if (!offer.capable) return target ? `Unavailable · session target ${target}` : "Currently unavailable";
     return target ? `Available · session target ${target}` : "Available · gRPC session";
+  }
+  if (offer.type === "websocket") {
+    const url = offer.connection?.url;
+    if (!offer.capable) return url ? `Unavailable · reverse WebSocket ${url}` : "Currently unavailable";
+    return url ? `Available · reverse WebSocket ${url}` : "Available · reverse WebSocket";
   }
   return offer.capable ? "Available · loopback Worker endpoint" : "Currently unavailable";
 }
@@ -243,6 +249,10 @@ async function discoverGatewayProtocols(gateway: URL, joinToken: string): Promis
         ...(typeof connection.caCertificate === "string" ? { caCertificate: connection.caCertificate } : {}),
       } } : {}) }];
     }
+    if (value.type === "websocket") {
+      const connection = value.connection && typeof value.connection === "object" ? value.connection as Record<string, unknown> : undefined;
+      return [{ type: "websocket", capable, ...(connection && typeof connection.url === "string" ? { connection: { url: connection.url } } : {}) }];
+    }
     return [];
   });
 }
@@ -273,6 +283,10 @@ async function discoverMembershipProtocols(gateway: URL, workerId: string, crede
         ...(typeof connection.caCertificate === "string" ? { caCertificate: connection.caCertificate } : {}),
       } } : {}) }];
     }
+    if (value.type === "websocket") {
+      const connection = value.connection && typeof value.connection === "object" ? value.connection as Record<string, unknown> : undefined;
+      return [{ type: "websocket", capable, ...(connection && typeof connection.url === "string" ? { connection: { url: connection.url } } : {}) }];
+    }
     return [];
   });
   const enabled = Array.isArray(body.enabled) ? body.enabled.filter((value): value is string => typeof value === "string") : [];
@@ -301,7 +315,7 @@ async function selectJoinProtocols(args: string[], prompt: JoinPrompt | undefine
   }
   const selected = assertPromptNotCancelled(await queqiaoMultiselect({
     message: "Worker protocols",
-    choices: offers.map((offer) => ({ value: offer.type, label: offer.type === "grpc" ? "gRPC" : "HTTP", description: describeGatewayProtocolOffer(offer), disabled: !offer.capable })),
+    choices: offers.map((offer) => ({ value: offer.type, label: offer.type === "grpc" ? "gRPC" : offer.type === "websocket" ? "WebSocket" : "HTTP", description: describeGatewayProtocolOffer(offer), disabled: !offer.capable })),
     initialValues: capable.map((offer) => offer.type),
     required: true,
     validate: (value) => value?.length ? undefined : "Please select at least one protocol.",
@@ -328,7 +342,9 @@ async function persistGatewayMembership(
   let caCertificateFile: string | undefined;
   try {
     const grpc = selected.find((offer): offer is Extract<GatewayProtocolOffer, { type: "grpc" }> => offer.type === "grpc");
+    const websocket = selected.find((offer): offer is Extract<GatewayProtocolOffer, { type: "websocket" }> => offer.type === "websocket");
     let grpcState: { target: string; security: "tls" | "loopback"; caCertificateFile?: string } | undefined;
+    const websocketState = websocket?.connection ? { url: websocket.connection.url } : undefined;
     if (grpc?.connection) {
       const security = grpc.connection.security ?? (grpc.connection.caCertificate ? "tls" : "loopback");
       if (security === "tls") {
@@ -348,7 +364,7 @@ async function persistGatewayMembership(
           {
             gateway: gateway.href,
             credentialRef: { kind: "secret-file", path: credentialFile },
-            protocols: { ...(grpcState ? { grpc: grpcState } : {}) },
+            protocols: { ...(grpcState ? { grpc: grpcState } : {}), ...(websocketState ? { websocket: websocketState } : {}) },
           },
         ],
       },
@@ -393,6 +409,17 @@ async function activateLocalReverseSession(endpoint: URL, localCredential: strin
   await jsonOrThrow(response);
 }
 
+async function activateLocalWebSocketSession(endpoint: URL, localCredential: string, membershipCredential: string, gateway: URL, websocket: Extract<GatewayProtocolOffer, { type: "websocket" }>): Promise<void> {
+  if (!websocket.connection) throw new Error("Gateway WebSocket connection metadata is unavailable");
+  const response = await fetch(new URL("enrollment/reverse-session/connect-websocket", endpoint), {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-queqiao-worker-token": localCredential },
+    body: JSON.stringify({ gateway: gateway.href, url: websocket.connection.url, credential: membershipCredential }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  await jsonOrThrow(response);
+}
+
 async function disconnectLocalReverseSession(endpoint: URL, localCredential: string, gateway: URL): Promise<void> {
   const response = await fetch(new URL("enrollment/reverse-session/disconnect", endpoint), {
     method: "POST",
@@ -411,6 +438,7 @@ async function persistChangedMembershipProtocols(configFile: string, gateway: UR
   const membership = latest.worker.memberships[index]!;
   const directory = path.dirname(path.resolve(latest.worker.tokenFile));
   const grpc = selected.find((offer): offer is Extract<GatewayProtocolOffer, { type: "grpc" }> => offer.type === "grpc");
+  const websocket = selected.find((offer): offer is Extract<GatewayProtocolOffer, { type: "websocket" }> => offer.type === "websocket");
   const oldCa = membership.protocols.grpc?.caCertificateFile;
   let newCa: string | undefined;
   try {
@@ -426,8 +454,9 @@ async function persistChangedMembershipProtocols(configFile: string, gateway: UR
       }
       grpcState = { target: grpc.connection.target, security, ...(newCa ? { caCertificateFile: newCa } : {}) };
     }
+    const websocketState = websocket?.connection ? { url: websocket.connection.url } : undefined;
     const memberships = [...latest.worker.memberships];
-    memberships[index] = { ...membership, protocols: { ...(grpcState ? { grpc: grpcState } : {}) } };
+    memberships[index] = { ...membership, protocols: { ...(grpcState ? { grpc: grpcState } : {}), ...(websocketState ? { websocket: websocketState } : {}) } };
     const next = runtimeConfigSchema.parse({ ...latest, worker: { ...latest.worker, memberships } });
     await persistRuntimeConfig(configFile, next, true);
   } catch (error) {
@@ -458,7 +487,7 @@ export async function reconcileWorkerMembershipProtocols(configFile: string, gat
   const membership = runtime.worker.memberships.find((entry) => entry.gateway === gateway.href);
   if (!membership) throw new Error(`Worker Gateway membership is unavailable: ${gateway.href}`);
   const state = await inspectWorkerMembershipProtocols(configFile, gateway.href);
-  if (state.enabled.some((type) => type !== "http" && type !== "grpc")) return state;
+  if (state.enabled.some((type) => type !== "http" && type !== "grpc" && type !== "websocket")) return state;
   const grpcEnabled = state.enabled.includes("grpc");
   const grpcOffer = state.offers.find((offer): offer is Extract<GatewayProtocolOffer, { type: "grpc" }> => offer.type === "grpc");
   if (grpcEnabled) {
@@ -502,7 +531,10 @@ export async function changeWorkerMembershipProtocols(configFile: string, gatewa
   const enabledSet = new Set(enabled);
   const addingGrpc = selectedSet.has("grpc") && !enabledSet.has("grpc");
   const removingGrpc = !selectedSet.has("grpc") && enabledSet.has("grpc");
+  const addingWebSocket = selectedSet.has("websocket") && !enabledSet.has("websocket");
+  const removingWebSocket = !selectedSet.has("websocket") && enabledSet.has("websocket");
   let preparedGrpc = false;
+  let preparedWebSocket = false;
   let gatewayCommitted = false;
   try {
     if (addingGrpc) {
@@ -511,9 +543,17 @@ export async function changeWorkerMembershipProtocols(configFile: string, gatewa
       await activateLocalReverseSession(endpoint, localCredential, credential, gateway, grpc);
       preparedGrpc = true;
     }
+    if (addingWebSocket) {
+      const websocket = selected.find((offer): offer is Extract<GatewayProtocolOffer, { type: "websocket" }> => offer.type === "websocket");
+      if (!websocket) throw new Error("WebSocket capability is unavailable");
+      await activateLocalWebSocketSession(endpoint, localCredential, credential, gateway, websocket);
+      preparedWebSocket = true;
+    }
     const transports = selected.map((offer) => offer.type === "http"
       ? { type: "http" as const, endpoint: endpoint.href }
-      : { type: "grpc" as const, mode: "reverse" as const });
+      : offer.type === "grpc"
+        ? { type: "grpc" as const, mode: "reverse" as const }
+        : { type: "websocket" as const, mode: "reverse" as const });
     const updated = await jsonOrThrow(await fetch(new URL("enrollment/protocols", gateway), {
       method: "PUT",
       headers: { "content-type": "application/json", "x-queqiao-worker-token": credential },
@@ -522,10 +562,10 @@ export async function changeWorkerMembershipProtocols(configFile: string, gatewa
     }));
     gatewayCommitted = true;
     await persistChangedMembershipProtocols(configFile, gateway, selected);
-    if (removingGrpc) await disconnectLocalReverseSession(endpoint, localCredential, gateway);
+    if (removingGrpc || removingWebSocket) await disconnectLocalReverseSession(endpoint, localCredential, gateway);
     return updated;
   } catch (error) {
-    if (preparedGrpc && !gatewayCommitted) await disconnectLocalReverseSession(endpoint, localCredential, gateway).catch(() => undefined);
+    if ((preparedGrpc || preparedWebSocket) && !gatewayCommitted) await disconnectLocalReverseSession(endpoint, localCredential, gateway).catch(() => undefined);
     throw error;
   }
 }
@@ -559,7 +599,9 @@ export async function joinWorker(configFile: string, args: string[], prompt?: Jo
   const selected = await selectJoinProtocols(args, prompt, offers);
   const transports = selected.map((offer) => offer.type === "http"
     ? { type: "http" as const, endpoint: endpoint.href }
-    : { type: "grpc" as const, mode: "reverse" as const });
+    : offer.type === "grpc"
+      ? { type: "grpc" as const, mode: "reverse" as const }
+      : { type: "websocket" as const, mode: "reverse" as const });
   const start = await jsonOrThrow(await fetch(new URL("enrollment/join/start", gateway), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -573,7 +615,9 @@ export async function joinWorker(configFile: string, args: string[], prompt?: Jo
   let gatewayCommitted = false;
   try {
     const grpc = selected.find((offer): offer is Extract<GatewayProtocolOffer, { type: "grpc" }> => offer.type === "grpc");
+    const websocket = selected.find((offer): offer is Extract<GatewayProtocolOffer, { type: "websocket" }> => offer.type === "websocket");
     if (grpc) await activateLocalReverseSession(endpoint, localCredential, credential, gateway, grpc);
+    if (websocket) await activateLocalWebSocketSession(endpoint, localCredential, credential, gateway, websocket);
     const confirmed = await jsonOrThrow(await fetch(new URL("enrollment/join/confirm", gateway), {
       method: "POST",
       headers: { "content-type": "application/json", "x-queqiao-worker-token": credential },
@@ -588,7 +632,7 @@ export async function joinWorker(configFile: string, args: string[], prompt?: Jo
   } catch (error) {
     if (!gatewayCommitted) {
       await controlMembershipTransaction(endpoint, localCredential, "revoke", { transactionId }).catch(() => undefined);
-      if (selected.some((offer) => offer.type === "grpc")) await disconnectLocalReverseSession(endpoint, localCredential, gateway).catch(() => undefined);
+      if (selected.some((offer) => offer.type === "grpc" || offer.type === "websocket")) await disconnectLocalReverseSession(endpoint, localCredential, gateway).catch(() => undefined);
     } else {
       await controlMembershipTransaction(endpoint, localCredential, "commit", { transactionId }).catch(() => undefined);
     }

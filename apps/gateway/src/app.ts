@@ -97,6 +97,9 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
         else throw new EnrollmentError(401, "protocol_discovery_unauthorized", "Join token or Worker membership credential is required");
 
         const protocols: Array<Record<string, unknown>> = [{ type: "http", capable: true }];
+        const workerWebSocketUrl = new URL("worker-session", config.publicBaseUrl);
+        workerWebSocketUrl.protocol = config.publicBaseUrl.protocol === "https:" ? "wss:" : "ws:";
+        protocols.push({ type: "websocket", capable: true, connection: { url: workerWebSocketUrl.href } });
         if (Number.isInteger(config.workerSessionPort) && config.workerSessionPort >= 1 && config.workerSessionPort <= 65535) {
           if (config.workerSessionTls && config.workerSessionAdvertiseHost) {
             const host = config.workerSessionAdvertiseHost.includes(":") ? `[${config.workerSessionAdvertiseHost}]` : config.workerSessionAdvertiseHost;

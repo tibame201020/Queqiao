@@ -149,7 +149,7 @@ export class EnrollmentService {
     }
 
     const provisional = [...this.provisional.values()].find((candidate) =>
-      candidate.transports.some((transport) => transport.type === "grpc")
+      candidate.transports.some((transport) => transport.type === "grpc" || transport.type === "websocket")
       && candidate.workerId === hello.workerId
       && candidate.environmentId === hello.environmentId
       && safeEqual(candidate.credential, credential));
@@ -181,7 +181,7 @@ export class EnrollmentService {
       const membership: WorkerMembership = workerMembershipSchema.parse({ workerId: join.workerId, environmentId: join.environmentId, transports: join.transports, credentialRefs: [{ kind: "secret-file", path: credentialFile }] });
       await this.memberships.add(membership);
       membershipCommitted = true;
-      if (join.transports.some((transport) => transport.type === "grpc")) {
+      if (join.transports.some((transport) => transport.type === "grpc" || transport.type === "websocket")) {
         if (!this.sessions) throw new EnrollmentError(500, "worker_session_registry_unavailable", "Worker session registry is unavailable");
         this.sessions.promote(join.workerId, transactionId);
       }
@@ -255,7 +255,7 @@ export class EnrollmentService {
   }
 
   private async verifyTransport(join: ProvisionalJoin, transport: WorkerTransportDescriptor): Promise<void> {
-    if (transport.type === "grpc") {
+    if (transport.type === "grpc" || transport.type === "websocket") {
       if (!this.sessions) throw new EnrollmentError(502, "worker_session_unavailable", "Worker reverse session registry is unavailable");
       let session;
       try { session = this.sessions.require(join.workerId); }

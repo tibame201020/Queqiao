@@ -503,7 +503,6 @@ export class GitHubActionsFetchApi implements GitHubActionsApi {
       body: JSON.stringify({
         ref: request.ref,
         inputs: request.inputs,
-        return_run_details: true,
       }),
     });
     if (!response.ok) {

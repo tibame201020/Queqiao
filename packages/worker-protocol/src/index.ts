@@ -11,13 +11,8 @@ export const QUEQIAO_WORKER_PROTOCOL_VERSION = "3.0" as const;
 export const QUEQIAO_WORKER_LEGACY_PROTOCOL_VERSION = "2.0" as const;
 export const QUEQIAO_WORKER_HTTP_API_PREFIX = "/v1" as const;
 
-// Protocol 2.0 represented mandatory functionality as a capability list.
-// Protocol 3.0 owns mandatory functionality in the protocol version itself;
-// capabilities are reserved for optional Worker-native operations.
 export const QUEQIAO_WORKER_LEGACY_CAPABILITIES = ["workspace-routing", "tool-invocation", "async-process-v1"] as const;
 export const QUEQIAO_WORKER_OPTIONAL_CAPABILITIES = ["process-control-v1"] as const;
-// Compatibility export retained during the rolling-upgrade window. New code must
-// use QUEQIAO_WORKER_LEGACY_CAPABILITIES or QUEQIAO_WORKER_OPTIONAL_CAPABILITIES explicitly.
 export const QUEQIAO_WORKER_CAPABILITIES = QUEQIAO_WORKER_LEGACY_CAPABILITIES;
 
 export const workerPlatformSchema = z.enum(["windows", "linux", "darwin"]);
@@ -132,6 +127,11 @@ export const workerSessionConnectFrameSchema = z.object({
   kind: z.literal("connect"),
   hello: workerHelloV3Schema,
 }).strict();
+export const workerSessionAuthenticateFrameSchema = z.object({
+  kind: z.literal("authenticate"),
+  credential: z.string().min(32).max(256),
+  connect: workerSessionConnectFrameSchema,
+}).strict();
 export const workerSessionReadyFrameSchema = z.object({
   kind: z.literal("ready"),
   sessionId: z.uuid(),
@@ -198,6 +198,7 @@ export const workerGrpcServiceDefinition = Object.freeze({ connect: workerGrpcCo
 
 export type WorkerProtocolRequest = z.infer<typeof workerProtocolRequestSchema>;
 export type WorkerSessionFrame = z.infer<typeof workerSessionFrameSchema>;
+export type WorkerSessionAuthenticateFrame = z.infer<typeof workerSessionAuthenticateFrameSchema>;
 export type WorkerSessionConnectFrame = z.infer<typeof workerSessionConnectFrameSchema>;
 export type WorkerSessionReadyFrame = z.infer<typeof workerSessionReadyFrameSchema>;
 export type WorkerSessionRequestFrame = z.infer<typeof workerSessionRequestFrameSchema>;

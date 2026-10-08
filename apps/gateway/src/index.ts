@@ -10,6 +10,7 @@ import { ensureGatewayManagementSecret } from "./management-secret.js";
 import { createGatewayManagementApp } from "./management-app.js";
 import { WorkerSessionRegistry } from "./worker-session-registry.js";
 import { WorkerGrpcSessionServer } from "./grpc-worker-session-server.js";
+import { WorkerWebSocketSessionServer } from "./websocket-worker-session-server.js";
 import { createConfiguredGitHubActionsRuntime, startGitHubActionsRuntimeExpiryMonitor } from "./github-actions-runtime.js";
 
 const config = loadGatewayConfigFile(requireRuntimeConfigFile());
@@ -28,6 +29,8 @@ console.log(`Queqiao Worker gRPC session listener: ${workerSessionTarget}${confi
 const app = await createGatewayApp(config, enrollment, sessions, audit, githubActionsRuntime);
 const host = config.host ?? "127.0.0.1";
 const gatewayServer = listenGateway(app, config, () => { console.log(`Queqiao Gateway listening on http://${host}:${config.port}`); console.log(`Public MCP URL: ${config.resourceUrl}`); });
+const workerWebSocketSessionServer = new WorkerWebSocketSessionServer({ sessions, authenticate: (hello, credential) => enrollment.authenticateWorkerSession(hello, credential), audit });
+workerWebSocketSessionServer.attach(gatewayServer);
 const managementApp = createGatewayManagementApp({ secret: managementSecret.secret, enrollment, memberships, stateDirectory: config.stateDir, sessions, ...(githubActionsRuntime ? { githubActionsRuntime } : {}) });
 const managementServer = managementApp.listen(config.managementPort, "127.0.0.1", () => console.log(`Queqiao Gateway management listening on http://127.0.0.1:${config.managementPort}`));
 
@@ -49,6 +52,7 @@ const shutdown = () => {
     closeHttpServer(gatewayServer),
     closeHttpServer(managementServer),
     workerSessionServer.close().catch((error) => console.error("Worker gRPC session shutdown failed", error)),
+    workerWebSocketSessionServer.close().catch((error) => console.error("Worker WebSocket session shutdown failed", error)),
   ]).catch((error) => console.error("Gateway shutdown failed", error));
 };
 process.once("SIGINT", shutdown);

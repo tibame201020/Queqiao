@@ -252,6 +252,12 @@ const runtimeConfigBaseSchema = z.object({
         }).superRefine((grpc, ctx) => {
           if (grpc.security === "tls" && !grpc.caCertificateFile) ctx.addIssue({ code: "custom", path: ["caCertificateFile"], message: "TLS gRPC membership requires a CA certificate file" });
         }).optional(),
+        websocket: z.object({
+          url: z.url().superRefine((value, ctx) => {
+            const url = new URL(value);
+            if (url.protocol !== "ws:" && url.protocol !== "wss:") ctx.addIssue({ code: "custom", message: "WebSocket membership URL must use ws or wss" });
+          }),
+        }).optional(),
       }).catchall(z.unknown()).default({}),
     })).default([]),
     // Legacy single-Gateway reverse-session state. Readable during migration only.

@@ -15,8 +15,8 @@ async function membershipClients(registry: WorkerMembershipRegistry, sessions?: 
     const token = (await readFile(path.resolve(reference.path), "utf8")).trim();
     if (Buffer.byteLength(token) < 32) throw new Error(`Worker credential is invalid: ${worker.workerId}`);
     for (const transport of worker.transports) {
-      const runtimeTransport = transport.type === "grpc"
-        ? sessions ? new SessionRegistryWorkerTransport(sessions, worker.workerId) : (() => { throw new Error("Worker reverse session registry is required for gRPC membership"); })()
+      const runtimeTransport = transport.type === "grpc" || transport.type === "websocket"
+        ? sessions ? new SessionRegistryWorkerTransport(sessions, worker.workerId) : (() => { throw new Error("Worker reverse session registry is required for reverse membership"); })()
         : undefined;
       clients.push({ workerId: worker.workerId, environmentId: worker.environmentId, transport, token, ...(runtimeTransport ? { runtimeTransport } : {}) });
     }

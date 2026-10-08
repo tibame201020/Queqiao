@@ -385,11 +385,11 @@ describe("GitHub Actions Runtime Coordinator", () => {
 });
 
 describe("GitHub Actions REST adapter", () => {
-  it("requests run details from workflow_dispatch without leaking the bearer token into the body", async () => {
+  it("uses the workflow_dispatch request shape without leaking the bearer token into the body", async () => {
     const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       expect(init?.method).toBe("POST");
       const body = JSON.parse(String(init?.body));
-      expect(body.return_run_details).toBe(true);
+      expect(body).toEqual({ ref: "main", inputs: { lease_id: leaseId } });
       expect(JSON.stringify(body)).not.toContain("top-secret-token");
       return new Response(JSON.stringify({
         workflow_run_id: 77,
