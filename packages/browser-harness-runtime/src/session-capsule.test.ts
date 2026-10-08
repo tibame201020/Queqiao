@@ -66,6 +66,25 @@ describe("browser session capsule", () => {
   });
 
   it("rejects malformed capsules without exposing their content", () => {
-    expect(() => decodeBrowserSessionCapsule("not-a-capsule")).toThrow(/session capsule/i);
+    expect(() => decodeBrowserSessionCapsule("not-a-capsule")).toThrow("CAPSULE_FORMAT");
+  });
+  it("distinguishes corrupt compression without exposing content", () => {
+    expect(() => decodeBrowserSessionCapsule(Buffer.from("not-gzip").toString("base64")))
+      .toThrow("CAPSULE_COMPRESSION");
+  });
+
+  it("distinguishes invalid JSON without exposing content", () => {
+    expect(() => decodeBrowserSessionCapsule(gzipSync(Buffer.from("not-json")).toString("base64")))
+      .toThrow("CAPSULE_JSON");
+  });
+
+  it("distinguishes invalid state schema without exposing content", () => {
+    expect(() => decodeBrowserSessionCapsule(capsule({ cookies: [], origins: [{ origin: "https://example.com", localStorage: [] }] })))
+      .toThrow("CAPSULE_SCHEMA");
+  });
+
+  it("accepts whitespace-surrounded base64 capsule", () => {
+    const state: BrowserSessionState = { cookies: [], origins: [] };
+    expect(decodeBrowserSessionCapsule("\\n" + capsule(state) + "\\r\\n")).toEqual(state);
   });
 });
