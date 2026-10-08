@@ -1,5 +1,6 @@
 import { chromium, type BrowserContext } from "playwright-core";
 import { decodeBrowserSessionCapsule } from "./session-capsule.js";
+import { classifySessionPage, type SessionPageSignals, type SessionPageVerdict } from "./session-verdict.js";
 
 const capsule = process.env["CHATGPT_BROWSER_SESSION_CAPSULE"];
 if (!capsule) throw new Error("CHATGPT_BROWSER_SESSION_CAPSULE is required");
@@ -17,31 +18,46 @@ try {
 
   const page = context.pages()[0] ?? await context.newPage();
   await page.goto("https://chatgpt.com/", { waitUntil: "domcontentloaded", timeout: 30_000 });
-  await page.waitForTimeout(12_000);
+  // Allow a normal page load to settle. Do not interact with or attempt to bypass browser challenges.
+  const deadline = Date.now() + 45_000;
+  let verdict: SessionPageVerdict = "pending";
+  let last: SessionPageSignals = {
+    url: page.url(),
+    title: "",
+    loginLinks: 0,
+    signupLinks: 0,
+    composerCount: 0,
+  };
 
-  const url = page.url();
-  const title = await page.title();
-  const loginLink = await page.getByRole("link", { name: /log in|登入/i }).count().catch(() => 0);
-  const signupLink = await page.getByRole("link", { name: /sign up|註冊/i }).count().catch(() => 0);
-  const composer = await page.locator('textarea,[contenteditable="true"]').count().catch(() => 0);
-  const body = await page.locator("body").innerText().catch(() => "");
-  const waitPage = /請稍候|just a moment|checking your browser/i.test(`${title} ${body.slice(0, 1000)}`);
-  const loggedIn = !/\/auth\//i.test(url) && loginLink === 0 && signupLink === 0 && composer > 0 && !waitPage;
+  while (Date.now() < deadline) {
+    last = {
+      url: page.url(),
+      title: await page.title().catch(() => ""),
+      loginLinks: await page.getByRole("link", { name: /log in|登入/i }).count().catch(() => 0),
+      signupLinks: await page.getByRole("link", { name: /sign up|註冊/i }).count().catch(() => 0),
+      composerCount: await page.locator('textarea,[contenteditable="true"]').count().catch(() => 0),
+    };
+    verdict = classifySessionPage(last);
+    if (verdict === "authenticated" || verdict === "logged_out") break;
+    await page.waitForTimeout(1_500);
+  }
 
   const result = {
-    loggedIn,
-    url,
-    title,
-    loginLink,
-    signupLink,
-    composer,
-    waitPage,
+    verdict,
+    loggedIn: verdict === "authenticated",
+    urlHost: new URL(last.url).hostname,
+    loginLink: last.loginLinks,
+    signupLink: last.signupLinks,
+    composer: last.composerCount,
+    waitPage: verdict === "browser_challenge",
     cookieCount: state.cookies.length,
     originCount: state.origins.length,
   };
   console.log(JSON.stringify(result));
 
-  if (!loggedIn) throw new Error("ChatGPT session portability check failed");
+  if (verdict !== "authenticated") {
+    throw new Error(`CHATGPT_${verdict.toUpperCase()}`);
+  }
 } finally {
   await browser.close();
 }
