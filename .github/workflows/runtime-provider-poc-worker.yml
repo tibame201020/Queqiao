@@ -1,0 +1,158 @@
+name: Runtime Provider POC Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      lease_id:
+        description: Runtime Lease ID
+        required: true
+        type: string
+      environment_id:
+        description: Expected Queqiao environment ID
+        required: true
+        type: string
+      ttl_seconds:
+        description: Runtime TTL in seconds
+        required: true
+        type: string
+      gateway_url:
+        description: Public Queqiao Gateway URL
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  runtime-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Bootstrap Worker
+        shell: bash
+        env:
+          LEASE_ID: ${{ inputs.lease_id }}
+          ENVIRONMENT_ID: ${{ inputs.environment_id }}
+          GATEWAY_URL: ${{ inputs.gateway_url }}
+          TTL_SECONDS: ${{ inputs.ttl_seconds }}
+        run: |
+          set -euo pipefail
+          runtime_dir="${RUNNER_TEMP}/queqiao-runtime-worker"
+          mkdir -p "$runtime_dir"
+
+          worker_id="$(node -e "console.log(require('node:crypto').randomUUID())")"
+          local_token="$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"
+          echo "::add-mask::$local_token"
+          printf '%s\n' "$local_token" > "$runtime_dir/worker.local.secret"
+
+          WORKER_ID="$worker_id" LOCAL_TOKEN_FILE="$runtime_dir/worker.local.secret" CONFIG_FILE="$runtime_dir/config.json" node <<'NODE'
+          const fs = require("node:fs");
+          const config = {
+            version: 1,
+            worker: {
+              workerId: process.env.WORKER_ID,
+              environmentId: process.env.ENVIRONMENT_ID,
+              listen: { host: "127.0.0.1", port: 7576 },
+              tokenFile: process.env.LOCAL_TOKEN_FILE,
+              memberships: []
+            },
+            extensions: [],
+            workspaces: [{
+              id: "runtime",
+              displayName: "Runtime POC",
+              root: process.env.GITHUB_WORKSPACE,
+              profile: "coding",
+              tools: {
+                allow: ["workspace_info","read_file","list_workspaces","open_workspace","list_directory","search_text","run","shell"],
+                deny: [],
+                explicit: []
+              },
+              commands: { allow: ["git","node","npm"] },
+              stepUp: []
+            }]
+          };
+          fs.writeFileSync(process.env.CONFIG_FILE, JSON.stringify(config, null, 2));
+          NODE
+
+          echo "WORKER_ID=$worker_id" >> "$GITHUB_ENV"
+          echo "LOCAL_WORKER_TOKEN=$local_token" >> "$GITHUB_ENV"
+          echo "QUEQIAO_CONFIG_FILE=$runtime_dir/config.json" >> "$GITHUB_ENV"
+
+      - name: Start Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup npm run start:worker > "$RUNNER_TEMP/queqiao-worker.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/queqiao-worker.pid"
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:7576/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/queqiao-worker.log"
+          exit 1
+
+      - name: Claim lease and enroll reverse WebSocket Worker
+        shell: bash
+        env:
+          LEASE_ID: ${{ inputs.lease_id }}
+          ENVIRONMENT_ID: ${{ inputs.environment_id }}
+          GATEWAY_URL: ${{ inputs.gateway_url }}
+        run: |
+          set -euo pipefail
+          gateway="${GATEWAY_URL%/}/"
+          audience="${gateway}runtime/github-actions/claim"
+          encoded_audience="$(node -e "console.log(encodeURIComponent(process.argv[1]))" "$audience")"
+          oidc_response="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${encoded_audience}")"
+          oidc_token="$(printf '%s' "$oidc_response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).value))")"
+          echo "::add-mask::$oidc_token"
+
+          claim="$(node -e "process.stdout.write(JSON.stringify({leaseId:process.argv[1],oidcToken:process.argv[2],workerId:process.argv[3]}))" "$LEASE_ID" "$oidc_token" "$WORKER_ID")"
+          claim_response="$(curl -fsS -H 'content-type: application/json' -d "$claim" "${gateway}runtime/github-actions/claim")"
+          join_token="$(printf '%s' "$claim_response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).token))")"
+          claimed_environment="$(printf '%s' "$claim_response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).environmentId))")"
+          test "$claimed_environment" = "$ENVIRONMENT_ID"
+          echo "::add-mask::$join_token"
+
+          protocols="$(curl -fsS -H "Authorization: Bearer $join_token" "${gateway}enrollment/protocols")"
+          ws_url="$(printf '%s' "$protocols" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s).protocols.find(x=>x.type==='websocket'&&x.capable);if(!p?.connection?.url)process.exit(2);process.stdout.write(p.connection.url)})")"
+
+          start_body="$(node -e "process.stdout.write(JSON.stringify({token:process.argv[1],workerId:process.argv[2],environmentId:process.argv[3],transports:[{type:'websocket',mode:'reverse'}]}))" "$join_token" "$WORKER_ID" "$ENVIRONMENT_ID")"
+          start_response="$(curl -fsS -H 'content-type: application/json' -d "$start_body" "${gateway}enrollment/join/start")"
+          transaction_id="$(printf '%s' "$start_response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).transactionId))")"
+          membership_credential="$(printf '%s' "$start_response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).credential))")"
+          echo "::add-mask::$membership_credential"
+
+          connect_body="$(node -e "process.stdout.write(JSON.stringify({gateway:process.argv[1],url:process.argv[2],credential:process.argv[3]}))" "$gateway" "$ws_url" "$membership_credential")"
+          curl -fsS -X POST             -H 'content-type: application/json'             -H "x-queqiao-worker-token: $LOCAL_WORKER_TOKEN"             -d "$connect_body"             http://127.0.0.1:7576/enrollment/reverse-session/connect-websocket
+
+          confirm_body="$(node -e "process.stdout.write(JSON.stringify({transactionId:process.argv[1]}))" "$transaction_id")"
+          confirm_response="$(curl -fsS -H 'content-type: application/json' -H "x-queqiao-worker-token: $membership_credential" -d "$confirm_body" "${gateway}enrollment/join/confirm")"
+          state="$(printf '%s' "$confirm_response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).runtimeLease?.state||''))")"
+          test "$state" = "ready"
+          printf '{"leaseId":"%s","workerId":"%s","environmentId":"%s","state":"%s","runId":"%s"}\n' "$LEASE_ID" "$WORKER_ID" "$ENVIRONMENT_ID" "$state" "$GITHUB_RUN_ID"
+
+      - name: Keep runtime alive
+        shell: bash
+        env:
+          TTL_SECONDS: ${{ inputs.ttl_seconds }}
+        run: |
+          set -euo pipefail
+          sleep "$TTL_SECONDS"
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/queqiao-worker.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/queqiao-worker.pid")" 2>/dev/null || true
+          fi
