@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   actions: write
+  issues: write
 
 jobs:
   connector-acceptance:
@@ -203,6 +204,8 @@ jobs:
             echo "- Expected value: `QUEQIAO-GITHUB-CONNECTOR-OK`"
             echo "- Live hold: `$HOLD_MINUTES minutes`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          gh issue comment 99 --repo "$GITHUB_REPOSITORY" --body "ChatGPT Connector acceptance live endpoint: `$mcp_url` — workspace `runtime`, read `poc-marker.txt`, expect `QUEQIAO-GITHUB-CONNECTOR-OK`. Run: $GITHUB_RUN_ID"
 
       - name: Keep live for interactive ChatGPT test
         shell: bash
