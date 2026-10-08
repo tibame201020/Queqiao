@@ -70,14 +70,33 @@ export function validateBrowserSessionState(input: unknown): BrowserSessionState
 }
 
 export function decodeBrowserSessionCapsule(capsule: string): BrowserSessionState {
+  const normalized = typeof capsule === "string" ? capsule.replace(/\\s/g, "") : "";
+  if (normalized.length < 16 || normalized.length > 65_536 || !/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) {
+    throw new Error("CAPSULE_FORMAT");
+  }
+
+  const compressed = Buffer.from(normalized, "base64");
+  if (compressed.length < 3 || compressed[0] !== 0x1f || compressed[1] !== 0x8b || compressed[2] !== 0x08) {
+    throw new Error("CAPSULE_COMPRESSION");
+  }
+
+  let json: string;
   try {
-    if (typeof capsule !== "string" || capsule.length < 16 || capsule.length > 65_536) {
-      throw new Error("invalid length");
-    }
-    const compressed = Buffer.from(capsule, "base64");
-    const json = gunzipSync(compressed, { maxOutputLength: 1_048_576 }).toString("utf8");
-    return validateBrowserSessionState(JSON.parse(json));
+    json = gunzipSync(compressed, { maxOutputLength: 1_048_576 }).toString("utf8");
   } catch {
-    throw new Error("Invalid browser session capsule");
+    throw new Error("CAPSULE_COMPRESSION");
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch {
+    throw new Error("CAPSULE_JSON");
+  }
+
+  try {
+    return validateBrowserSessionState(value);
+  } catch {
+    throw new Error("CAPSULE_SCHEMA");
   }
 }
