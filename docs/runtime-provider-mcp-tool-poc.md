@@ -27,3 +27,9 @@ The previous GitHub-hosted Chrome portability experiment remained blocked by Cha
 ## Response format correction (2026-10-08)
 
 The first real MCP call in GitHub Actions successfully completed OAuth and returned HTTP 200, but the POC assertion failed because it expected JSON. Queqiao core `read_file` returns a text result with the exact `Workspace`, `Path`, and `Lines` headers followed by the file content. The acceptance helper now validates that format and the worker routing receipt, and rejects a marker from another workspace, path, or environment. The result must still pass a new live manual run before Gate B is considered complete.
+
+## GitHub Actions worker cancellation eventual consistency
+
+On 2026-10-08, controller run `37783245944` completed the real OAuth-authenticated MCP `read_file` request, verified the ephemeral Worker routing receipt and exact marker, and disposed the Runtime Lease. Its final GitHub run-cancellation assertion failed because the POC allowed only 45 seconds, although the worker run `37783321062` eventually reached `completed/cancelled` about 77 seconds after disposal began. This is a GitHub Actions control-plane observation delay, not a failed MCP read.
+
+The acceptance now polls cancellation for at most 120 seconds, retains the strict `disposed` and `cancelled` assertions, and has a CI contract test to prevent shrinking the wait below the observed control-plane delay. Treat the short-task execution as passing only when the full live controller run succeeds.
