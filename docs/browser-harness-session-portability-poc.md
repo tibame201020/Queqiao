@@ -18,11 +18,11 @@ Gate 2 will trigger a harmless test prompt and verify the response. Gate 3 will 
 
 Repository maintainers must create the Actions **repository secret** named `CHATGPT_BROWSER_SESSION_CAPSULE` before queuing a **new** acceptance workflow run. The value is a gzip/base64 Playwright-compatible cookies/localStorage capsule. Never paste it in issues, PRs, commits, workflow logs, artifacts, or chats. Existing workflow runs may have been queued before a secret was added; create a new run rather than relying on rerun behavior.
 
-Run **Browser Harness Session Portability POC** on the `test/101-browser-session-portability` branch via GitHub Actions. Check the `session-portability` job for validated-secret, manual Chrome, and restore steps.
+The `pull_request` event executes **unit-tests only**. It never injects the session Secret into unmerged PR code. After review and merge, manually dispatch **Browser Harness Session Portability POC** against the protected `main` branch. Check the `session-portability` job for validated-secret, manual Chrome, and restore steps.
 
 ## Security
 
-The capsule is a bearer-equivalent **authenticated browser session**, not a harmless configuration blob. Repository admins with access to Actions workflows may be able to execute code that uses it. Therefore the acceptance branch and workflow must be reviewed and tightly scoped before execution. Restrict the secret to trusted execution environments where possible.
+Never expose this Secret to a `pull_request` workflow. The capsule is a bearer-equivalent **authenticated browser session**, not a harmless configuration blob. Repository admins with access to Actions workflows may be able to execute code that uses it. Therefore the acceptance branch and workflow must be reviewed and tightly scoped before execution. Restrict the secret to trusted execution environments where possible.
 
 Treat exported cookies and storage as credentials. The workflow must never print, upload, or store the decoded values. It must not enable unrestricted external navigation or capture HAR traces, screenshots, or browser state containing sensitive user information. Destroy temporary Chrome state after the job.
 
