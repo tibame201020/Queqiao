@@ -93,6 +93,7 @@ try {
     arguments: { workspaceId: "runtime", path: "poc-marker.txt", offset: 0, limit: 1 },
   }, { timeout: 30_000 });
   const checked = assertEphemeralRead(response, {
+    workspaceId: "runtime",
     environmentId,
     path: "poc-marker.txt",
     marker: "QUEQIAO-GITHUB-CONNECTOR-OK",

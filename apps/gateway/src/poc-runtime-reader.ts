@@ -1,8 +1,13 @@
 export type MarkerAcceptance = {
+  workspaceId: string;
   environmentId: string;
   path: string;
   marker: string;
 };
+
+// Matches the documented Queqiao MCP read_file output produced in
+// apps/gateway/src/core-tools.ts; it is intentionally NOT JSON.
+const READ_FILE_TEXT = /^Workspace: ([A-Za-z0-9._-]+)\nPath: ([^\r\n]+)\nLines: (\d+)-(\d+) of (\d+)\n\n([\s\S]*)$/;
 
 export function assertEphemeralRead(
   response: unknown,
@@ -27,19 +32,16 @@ export function assertEphemeralRead(
   const text = data.content?.find((entry) => entry.type === "text")?.text;
   if (typeof text !== "string") throw new Error("MCP result text is missing");
 
-  let read: unknown;
-  try {
-    read = JSON.parse(text);
-  } catch {
-    throw new Error("Invalid MCP read_file result");
-  }
+  const matched = READ_FILE_TEXT.exec(text);
+  if (!matched) throw new Error("Invalid MCP read_file format");
 
-  if (!read || typeof read !== "object") throw new Error("Invalid MCP read_file result");
-  const file = read as { path?: unknown; text?: unknown };
-  if (file.path !== expected.path) throw new Error("Unexpected read_file path");
-  if (typeof file.text !== "string" || file.text.trim() !== expected.marker) {
-    throw new Error("Worker marker mismatch");
+  const [, workspace, path, startLine, endLine, totalLines, contents] = matched;
+  if (workspace !== expected.workspaceId) throw new Error("Unexpected read_file workspace");
+  if (path !== expected.path) throw new Error("Unexpected read_file path");
+  if (Number(startLine) !== 1 || Number(endLine) !== 1 || Number(totalLines) < 1) {
+    throw new Error("Unexpected read_file line range");
   }
+  if (contents?.trim() !== expected.marker) throw new Error("Worker marker mismatch");
 
   return { workerRead: true, environmentId: routed };
 }

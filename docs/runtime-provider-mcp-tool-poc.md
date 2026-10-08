@@ -23,3 +23,7 @@ The assertions are unit-tested in `apps/gateway/src/poc-runtime-reader.test.ts` 
 No ChatGPT credentials, profile directories, cookies, or session capsules are needed or consumed by Gate B. Do **not** forward the Chrome CDP debugging port over a public URL; CDP effectively grants full control of its browser session. Do not store OAuth approval tokens, GitHub tokens, or runtime credentials in git or Actions artifacts. Remote Worker access is bounded by Queqiao workspace policy and the Runtime Lease. Temporary runner state must be cleaned after each run. The quick-tunnel endpoint changes on every invocation and **must not** be used as a production ChatGPT Connector address.
 
 The previous GitHub-hosted Chrome portability experiment remained blocked by ChatGPT's ordinary browser verification page; this hybrid path does not bypass that protection.
+
+## Response format correction (2026-10-08)
+
+The first real MCP call in GitHub Actions successfully completed OAuth and returned HTTP 200, but the POC assertion failed because it expected JSON. Queqiao core `read_file` returns a text result with the exact `Workspace`, `Path`, and `Lines` headers followed by the file content. The acceptance helper now validates that format and the worker routing receipt, and rejects a marker from another workspace, path, or environment. The result must still pass a new live manual run before Gate B is considered complete.
