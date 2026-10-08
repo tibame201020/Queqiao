@@ -5,7 +5,7 @@ import { afterEach, expect, it } from 'vitest';
 import { ProcessRunner } from './index.js';
 import { syncProcessResultSchema } from '../../contracts/src/index.js';
 let cwd: string;
-afterEach(async()=>{if(cwd)await rm(cwd,{recursive:true,force:true})});
+afterEach(async()=>{if(cwd)await rm(cwd,{recursive:true,force:true,maxRetries:20,retryDelay:100})});
 it.skipIf(process.platform==='win32')('bounds inherited pipe draining after native exit and immediately permits another command',async()=>{
   cwd=await mkdtemp(path.join(os.tmpdir(),'queqiao-drain-'));
   const runner=new ProcessRunner(1);const executable=path.basename(process.execPath);
