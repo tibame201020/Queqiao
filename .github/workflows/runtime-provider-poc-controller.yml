@@ -32,6 +32,8 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
+      - run: npm run build
+
       - name: Start temporary public tunnel
         shell: bash
         run: |
