@@ -26,7 +26,11 @@ it.skipIf(process.platform!=='win32')('reproduces PowerShell Start-Process inher
   cwd=await mkdtemp(path.join(os.tmpdir(),'queqiao-powershell-drain-'));
   const child=path.join(cwd,'child.cjs');const completed=path.join(cwd,'child-completed.txt');await writeFile(child,`setTimeout(()=>require('fs').writeFileSync(${JSON.stringify(completed)},'done'),8000)`);
   const quote=(s:string)=>s.replaceAll("'","''");const runner=new ProcessRunner(1);
-  const result=await runner.run({executable:'powershell.exe',cwd,timeoutMs:15000,args:['-NoProfile','-NonInteractive','-Command',`Start-Process -FilePath '${quote(process.execPath)}' -ArgumentList @('${quote(child)}') -NoNewWindow -PassThru | Select-Object -ExpandProperty Id; exit 0`]});
+  const previousPath=process.env.PATH;
+  const systemRoot=process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "C:/Windows";
+  process.env.PATH=[path.join(systemRoot,"System32","WindowsPowerShell","v1.0"),path.dirname(process.execPath),previousPath].join(path.delimiter);
+  let result;
+  try { result=await runner.run({executable:'powershell.exe',cwd,timeoutMs:15000,args:['-NoProfile','-NonInteractive','-Command',`[Console]::Error.WriteLine('ps-command-started'); Start-Process -FilePath '${quote(process.execPath)}' -ArgumentList @('${quote(child)}') -NoNewWindow -PassThru | Select-Object -ExpandProperty Id; exit 0`]}); } finally { if(previousPath===undefined)delete process.env.PATH;else process.env.PATH=previousPath; }
   try {
     expect(result, JSON.stringify({result,environmentKeys:Object.keys(process.env).filter(k=>["systemroot","path","windir","temp"].includes(k.toLowerCase()))})).toMatchObject({exitCode:0,timedOut:false,stdioDrainTimedOut:true});
     expect(syncProcessResultSchema.parse(result)).toEqual(result);

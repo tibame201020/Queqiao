@@ -776,7 +776,7 @@ function environmentValue(name: string): string | undefined {
 
 function minimalEnvironment(): NodeJS.ProcessEnv {
   const names = process.platform === "win32"
-    ? ["PATH", "PATHEXT", "SystemRoot", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"]
+    ? ["PATH", "PATHEXT", "SystemRoot", "WINDIR", "ComSpec", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"]
     : ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR"];
   return Object.fromEntries(names.flatMap((name) => {
     const value = environmentValue(name);
