@@ -49,6 +49,7 @@ export const syncProcessResultSchema = z.object({
   timedOut: z.boolean(),
   aborted: z.boolean(),
   outputLimitExceeded: z.boolean(),
+  stdioDrainTimedOut: z.literal(true).optional(),
 });
 export const asyncProcessResultSchema = z.object({
   handle: z.uuid(),
