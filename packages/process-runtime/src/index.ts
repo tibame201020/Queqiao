@@ -758,7 +758,7 @@ function minimalEnvironment(): NodeJS.ProcessEnv {
 function terminateTree(child: ChildProcess): void {
   if (!child.pid || child.killed) return;
   if (process.platform === "win32") {
-    const taskkill = path.join(process.env["SystemRoot"] || "C:\Windows", "System32", "taskkill.exe");
+    const taskkill = path.join(process.env["SystemRoot"] || "C:/Windows", "System32", "taskkill.exe");
     const fallback = () => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); };
     const killer = spawn(taskkill, ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
     killer.once("error", fallback);

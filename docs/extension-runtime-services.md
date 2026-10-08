@@ -157,3 +157,5 @@ This contract is for downstream transport I/O used by Worker-hosted registered E
 `extend` and `replace` contributions continue to execute inside the Core tool contract they extend or replace. The managed downstream runtime service is bound to registered Extension capability ownership rather than becoming a general Core escape hatch.
 
 Persistent stdio sessions reserve session capacity, not foreground command or background job capacity. The default session limit is the foreground limit, enforced independently. Synchronous run/shell executions expose workspace-scoped opaque recovery handles until native close. A stop request does not release a live reservation. Windows tree termination uses the absolute system taskkill path; errors fall back to terminating the parent process. That fallback does not guarantee descendant cleanup. Extensions that spawn directly through a third-party SDK bypass these managed pools and must implement their own lifecycle or adopt runtime.stdio.
+
+Deploy v0.9.18 Gateway and Worker together: earlier strict process-diagnostic parsers do not recognize the new session capacity class or synchronous resource kind.
