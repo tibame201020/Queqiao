@@ -47,6 +47,9 @@
       "path": "packages/runtime-provider-github-actions"
     },
     {
+      "path": "packages/browser-harness-runtime"
+    },
+    {
       "path": "packages/platform-paths"
     },
     {

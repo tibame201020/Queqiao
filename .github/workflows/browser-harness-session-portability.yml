@@ -1,0 +1,124 @@
+name: Browser Harness Session Portability POC
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/browser-harness-session-portability.yml"
+      - "packages/browser-harness-runtime/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Unit test session capsule decoder
+        run: npx vitest run packages/browser-harness-runtime/src/session-capsule.test.ts
+
+  session-portability:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Validate session capsule secret
+        shell: bash
+        env:
+          CHATGPT_BROWSER_SESSION_CAPSULE: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE }}
+        run: |
+          set -euo pipefail
+          # Repository secrets are captured when a NEW workflow run is queued.
+          if [ -z "$CHATGPT_BROWSER_SESSION_CAPSULE" ]; then
+            echo "::error::CHATGPT_BROWSER_SESSION_CAPSULE is not available to this run"
+            exit 1
+          fi
+          if [ "${#CHATGPT_BROWSER_SESSION_CAPSULE}" -ge 48000 ]; then
+            echo "::error::Session capsule exceeds the workflow size limit"
+            exit 1
+          fi
+
+      - name: Start manual Chrome Browser Harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v Xvfb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          if [ -z "$chrome" ]; then
+            echo "Google Chrome is not installed on this runner."
+            exit 1
+          fi
+
+          Xvfb :99 -screen 0 1280x1024x24 > "$RUNNER_TEMP/xvfb.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/xvfb.pid"
+          export DISPLAY=:99
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+          profile="$RUNNER_TEMP/chatgpt-browser-profile"
+          mkdir -p "$profile"
+          "$chrome"             --user-data-dir="$profile"             --profile-directory=Default             --remote-debugging-port=9555             --remote-allow-origins=*             --no-first-run             --no-default-browser-check             --disable-default-apps             --no-sandbox             --disable-dev-shm-usage             about:blank             > "$RUNNER_TEMP/chrome.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/chrome.pid"
+
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:9555/json/version >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat "$RUNNER_TEMP/chrome.log"
+          exit 1
+
+      - name: Restore ChatGPT session into fresh Browser Harness
+        env:
+          CHATGPT_BROWSER_SESSION_CAPSULE: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE }}
+          BROWSER_CDP_URL: http://127.0.0.1:9555
+        run: npx tsx packages/browser-harness-runtime/src/session-acceptance.ts
+
+      - name: Diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "--- Chrome ---"
+          tail -120 "$RUNNER_TEMP/chrome.log" 2>/dev/null || true
+          echo "--- Xvfb ---"
+          tail -80 "$RUNNER_TEMP/xvfb.log" 2>/dev/null || true
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/chrome.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/chrome.pid")" 2>/dev/null || true
+          fi
+          if [ -f "$RUNNER_TEMP/xvfb.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/xvfb.pid")" 2>/dev/null || true
+          fi
