@@ -17,3 +17,4 @@ instead of silently rewriting the reason a boundary exists.
 - [ADR-0012: Extension Hub owns packages; Workers attach and execute them](0012-extension-hub-and-worker-attachment.md)
 - [ADR-0013: Worker-initiated gRPC transport for cross-machine Workers](0013-worker-initiated-grpc-transport.md)
 - [ADR-0014: Extensible Worker transport routing and dynamic MCP selector](0014-extensible-worker-transport-routing.md)
+- [ADR-0015: Provider-neutral Runtime Lease lifecycle](0015-runtime-lease-provider-boundary.md)

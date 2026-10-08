@@ -41,6 +41,9 @@
       "path": "packages/process-runtime"
     },
     {
+      "path": "packages/runtime-control"
+    },
+    {
       "path": "packages/platform-paths"
     },
     {

@@ -91,6 +91,8 @@ For long agent work, prefer `job_start` over increasing a synchronous timeout. `
 
 Job v1 survives the initiating MCP request/client disconnect, but it is not restart-persistent in v0.9.17. A Worker restart ends running jobs and clears retained job state.
 
+Runtime Lease is a different lifecycle. It represents the disposable execution runtime that may contain a Worker, not a process running inside that Worker. The provider-neutral contract progresses through provisioning, one Worker registration/binding, readiness, execution, terminal outcome, TTL expiry, and explicit disposal. Provider credentials must remain in runtime/platform secret storage and must not be written into Runtime Lease metadata. The current contract does not expose a public MCP provisioning tool or choose a persistence backend.
+
 When two environments expose the same Workspace ID, pass both `environmentId` and `workspaceId`; Workspace-only selection remains supported when the ID is unique.
 
 ## Audit and observability
