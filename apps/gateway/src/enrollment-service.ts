@@ -212,9 +212,11 @@ export class EnrollmentService {
     if (!reference || reference.kind !== "secret-file") throw new EnrollmentError(500, "worker_credential_unavailable", "Worker credential reference is unavailable");
     const credential = (await readFile(reference.path, "utf8")).trim();
     if (Buffer.byteLength(credential) < 32) throw new EnrollmentError(500, "worker_credential_unavailable", "Worker credential is invalid");
-    const changedTransports = transports.filter((transport) => !existing.transports.some((candidate) =>
-      candidate.type === transport.type
-      && (transport.type === "grpc" || (candidate.type === "http" && candidate.endpoint === transport.endpoint))));
+    const changedTransports = transports.filter((transport) => !existing.transports.some((candidate) => {
+      if (transport.type === "http") return candidate.type === "http" && candidate.endpoint === transport.endpoint;
+      if (transport.type === "grpc") return candidate.type === "grpc";
+      return candidate.type === "websocket";
+    }));
     if (changedTransports.length) {
       await this.verifyWorker({ transactionId: "management-update", workerId: existing.workerId, environmentId: existing.environmentId, transports: changedTransports, credential, expiresAt: Date.now() + 30_000 });
     }
