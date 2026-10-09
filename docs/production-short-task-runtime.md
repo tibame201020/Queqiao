@@ -273,6 +273,15 @@ must not share the JSON state directory between multiple Gateway hosts.
 Production multi-instance dispatch still requires a central transactional
 store, fenced leases, and orphan-run reconciliation.
 
+**Actual Gateway OS acceptance (2026-10-09, isolated local test):**
+Gateway A with HTTP port 14110 and Gateway B with HTTP port 14120
+were configured against the same private state directory. A's OAuth
+metadata returned HTTP 200. While A was alive, B exited with
+"Gateway state directory already owned", and A remained healthy.
+After force-killing A, B launched with the same state directory and
+returned HTTP 200. Result: **PASS**. Both instances and their private
+test credentials were stopped/cleared after verification. This remains
+a same-host guard, not a multi-host coordination test.
 TDD and cross-process tests cover competing owners, symlink aliases,
 separate state directories, graceful release and actual process SIGKILL.
 The new cases run in the GitHub Actions Security baseline.
