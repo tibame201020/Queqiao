@@ -149,6 +149,20 @@ export class PostgresTaskLedger {
    * A timed-out cleanup claim may be taken over with a higher fence.
    * The caller MUST verify GitHub disposal before acknowledging cleanup.
    */
+  /**
+   * A dispatch can have reached GitHub even if its response was lost.
+   * Quarantine the task and invalidate its fencing token: do not retry
+   * the dispatch until remote correlation/reconciliation is implemented.
+   */
+  async quarantineUncertainDispatch(id:string,holder:string,fence:string):Promise<boolean>{
+    const r=await this.pool.query(this.sql(`UPDATE @T@ SET
+      state='reconciling',holder=NULL,lease_until=NULL,fence=fence+1,
+      updated_at=clock_timestamp()
+      WHERE id=$1 AND holder=$2 AND fence=$3::bigint
+        AND state='provisioning'
+      RETURNING id`),[uuid(id),uuid(holder),epoch(fence)]);
+    return r.rowCount===1;
+  }
   async claimCleanup(id:string,holder:string,seconds:number):Promise<LedgerTask|null>{
     const ttl=z.number().int().min(1).max(300).parse(seconds);
     const r=await this.pool.query<Row>(this.sql(`UPDATE @T@ SET

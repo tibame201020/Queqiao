@@ -328,3 +328,42 @@ transactionally paired GitHub Actions dispatch, unknown-run discovery,
 fenced cross-host cancellation/reconciliation, tenant authorization and
 live multi-Gateway outage testing. This database slice alone must not be
 exposed as production multi-Gateway task dispatch.
+## Fenced PostgreSQL to GitHub Actions dispatch adapter (Issue #115 follow-on)
+
+The internal PostgresActionsDispatch adapter in
+apps/gateway/src/pg-actions-dispatch.ts connects the PostgreSQL
+transactional Ledger to the existing GitHubActionsRuntimeCoordinator.
+It is **not registered as an MCP tool**; the public/Preview deployment
+still uses the earlier single-Gateway journal path.
+
+- The Ledger first issues an exclusive, fenced claim. The task UUID
+  is passed as the trusted leaseId to RuntimeCoordinator.provision.
+  The Coordinator now accepts an optional pre-allocated UUID. GitHub's
+  workflow_dispatch lease_id, Worker OIDC claim and PostgreSQL task
+  reference the same immutable ID.
+- Only the trusted catalog source revision is sent to the provider.
+  The returned GitHub Run ID, original lease UUID and expected Worker
+  environment are checked before binding the run to the still-valid
+  fencing token in PostgreSQL.
+- Two Gateways racing for the same task result in **one** provider call.
+  Cancellation or expiry before bind invalidates the fence and causes
+  a compensating GitHub cancellation attempt by the originating Gateway.
+- Lost/malformed provider responses or failed bindings quarantine the
+  task as reconciling if its fence remains valid. Tasks cancelled by
+  another Gateway remain cancelling. Automatic redispatch is forbidden.
+  A failed remote cancellation is NOT treated as confirmed disposal.
+
+TDD uses two independent PostgreSQL connection pools and checks
+concurrent dispatch, a real Runtime Coordinator with fake GitHub API,
+OIDC registration and Run ID matching, cancellation racing a provider
+response, provider failure, malformed receipts and failed compensation.
+The GitHub Actions Security Baseline PostgreSQL 16 job runs these tests.
+
+**Remaining blocker:** GitHub workflow dispatch and PostgreSQL commit
+cannot be atomic. If GitHub accepts a run and the response is lost,
+the task is quarantined without a confirmed Run ID. A trusted GitHub
+run-discovery and reconciliation implementation is still needed.
+Distributed Worker transport/affinity, formal end-user/tenant scope,
+cloud hosting, network partition recovery and a real multi-Gateway
+GitHub Actions E2E are NOT complete. Do not enable this adapter as
+production task dispatch before those gates pass.

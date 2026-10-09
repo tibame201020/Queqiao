@@ -332,6 +332,32 @@ describe("GitHub Actions Runtime reconciliation", () => {
 });
 
 describe("GitHub Actions Runtime Coordinator", () => {
+  it("uses a trusted pre-reserved PostgreSQL task UUID as lease ID and denies local duplicate", async () => {
+    const dispatch = vi.fn(async () => ({
+      runId: 12345, runUrl: "https://api.github.test/runs/12345", htmlUrl: "https://github.test/runs/12345",
+    }));
+    const registry = new GitHubActionsRuntimeClaimRegistry("urn:queqiao:runtime", verifier());
+    const provider = new GitHubActionsRuntimeProvider({
+      owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main",
+      gatewayUrl: "https://gateway.example.test/",
+      api: { dispatch, cancel: vi.fn(async () => undefined) },
+      claimRegistry: registry,
+    });
+    const coordinator = new GitHubActionsRuntimeCoordinator(provider, registry);
+    const chosen = "33333333-3333-4333-8333-333333333333";
+    const result = await coordinator.provision({
+      leaseId: chosen, ttlSeconds: 240, metadata: { sourceRevision: "a".repeat(40) },
+    });
+    expect(result.leaseId).toBe(chosen);
+    expect(registry.get(chosen)).toMatchObject({ leaseId: chosen, runId: 12345 });
+    expect(dispatch.mock.calls[0]?.[0].inputs).toMatchObject({
+      lease_id: chosen, source_revision: "a".repeat(40),
+    });
+    await expect(coordinator.provision({ leaseId: chosen, ttlSeconds: 240 })).rejects.toThrow(/already present/i);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    await expect(coordinator.provision({ leaseId: "not-a-uuid", ttlSeconds: 240 })).rejects.toThrow();
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
   it("runs provision -> OIDC claim -> Worker ready -> completion -> disposal", async () => {
     let currentMs = nowMs;
     const cancel = vi.fn(async () => undefined);
