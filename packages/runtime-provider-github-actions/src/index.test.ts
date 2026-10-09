@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   GitHubActionsFetchApi,
+  GitHubActionsGhCliApi,
   GitHubActionsRuntimeClaimRegistry,
   GitHubActionsRuntimeCoordinator,
   GitHubActionsRuntimeProvider,
@@ -405,5 +406,64 @@ describe("GitHub Actions REST adapter", () => {
       ref: "main",
       inputs: { lease_id: leaseId },
     })).resolves.toMatchObject({ runId: 77 });
+  });
+});
+describe("GitHub CLI cancellation with eventually consistent runs", () => {
+  it("retries a transient early cancellation failure while the run is active", async () => {
+    let attempts = 0;
+    const wait = vi.fn(async () => undefined);
+    const invoke = vi.fn(async (args: readonly string[]) => {
+      if (args.some((a) => a.endsWith("/cancel"))) {
+        attempts++;
+        if (attempts === 1) throw new Error("unavailable while queued");
+        return "";
+      }
+      return JSON.stringify({ status: "in_progress", conclusion: null });
+    });
+    const api = new GitHubActionsGhCliApi(invoke, wait);
+    await api.cancel({ owner: "example", repo: "runtime", runId: 12345 });
+    expect(attempts).toBe(2);
+    expect(wait).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a previously cancelled completed run as disposed without retrying", async () => {
+    const wait = vi.fn(async () => undefined);
+    const invoke = vi.fn(async (args: readonly string[]) => {
+      if (args.some((a) => a.endsWith("/cancel"))) throw new Error("HTTP 409");
+      return JSON.stringify({ id: 12345, status: "completed", conclusion: "cancelled" });
+    });
+    await new GitHubActionsGhCliApi(invoke, wait).cancel({ owner: "example", repo: "runtime", runId: 12345 });
+    expect(wait).not.toHaveBeenCalled();
+  });
+
+  it("fails closed after bounded cancellation failures, without misreporting disposal", async () => {
+    const wait = vi.fn(async () => undefined);
+    const invoke = vi.fn(async (args: readonly string[]) => {
+      if (args.some((a) => a.endsWith("/cancel"))) throw new Error("unavailable");
+      return JSON.stringify({ status: "in_progress", conclusion: null });
+    });
+    await expect(new GitHubActionsGhCliApi(invoke, wait).cancel({
+      owner: "example", repo: "runtime", runId: 12345,
+    })).rejects.toThrow(/not verified/i);
+    expect(wait).toHaveBeenCalledTimes(5);
+  });
+});
+describe("GitHub Actions gh-cli adapter", () => {
+  it("dispatches and cancels using bounded gh api arguments without token materialization", async () => {
+    const invoke = vi.fn(async (args: readonly string[], input?: string) => {
+      expect(args[0]).toBe("api");
+      expect(args).not.toContain("--hostname");
+      expect(args.join(" ")).not.toContain("Authorization");
+      if (args.some((arg) => arg.endsWith("/dispatches"))) {
+        expect(JSON.parse(input ?? "")).toEqual({ ref: "main", inputs: { lease_id: leaseId } });
+        return JSON.stringify({ workflow_run_id: 77, run_url: "https://api.github.test/runs/77", html_url: "https://github.test/runs/77" });
+      }
+      expect(args.join(" ")).toContain("/actions/runs/77/cancel");
+      return "";
+    });
+    const api = new GitHubActionsGhCliApi(invoke);
+    await expect(api.dispatch({ owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main", inputs: { lease_id: leaseId } })).resolves.toMatchObject({ runId: 77 });
+    await api.cancel({ owner: "example", repo: "runtime-host", runId: 77 });
+    expect(invoke).toHaveBeenCalledTimes(2);
   });
 });

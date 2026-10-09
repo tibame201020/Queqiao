@@ -18,7 +18,9 @@ const audit = new AuditLogStore(process.env.QUEQIAO_AUDIT_DIR?.trim() || path.jo
 const memberships = new WorkerMembershipStore(config.stateDir);
 const sessions = new WorkerSessionRegistry();
 const enrollment = new EnrollmentService(memberships, config.stateDir, sessions, audit);
-const githubActionsRuntime = config.githubActionsRuntime ? createConfiguredGitHubActionsRuntime(config.githubActionsRuntime, config.publicBaseUrl) : undefined;
+const githubActionsRuntime = config.githubActionsRuntime ? createConfiguredGitHubActionsRuntime(config.githubActionsRuntime, config.publicBaseUrl, config.stateDir) : undefined;
+// Cancel any unfinished Actions Worker from the previous Gateway process before listening.
+await githubActionsRuntime?.recoverPending();
 const stopRuntimeExpiryMonitor = githubActionsRuntime ? startGitHubActionsRuntimeExpiryMonitor(githubActionsRuntime) : undefined;
 const managementSecret = await ensureGatewayManagementSecret(config.stateDir);
 const workerSessionServer = new WorkerGrpcSessionServer({ sessions, authenticate: (hello, credential) => enrollment.authenticateWorkerSession(hello, credential), audit });

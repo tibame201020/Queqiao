@@ -75,11 +75,11 @@ jobs:
               root: process.env.GITHUB_WORKSPACE,
               profile: "coding",
               tools: {
-                allow: ["workspace_info","read_file","list_workspaces","open_workspace","list_directory","search_text","run","shell"],
+                allow: ["workspace_info","read_file","list_workspaces","run"],
                 deny: [],
                 explicit: []
               },
-              commands: { allow: ["git","node","npm"] },
+              commands: { allow: ["node"] },
               stepUp: []
             }]
           };

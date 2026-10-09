@@ -26,8 +26,10 @@ export type GatewayRuntimeConfig = {
     repo: string;
     workflowId: string;
     ref: string;
-    token: string;
+    token?: string;
+    auth?: "gh-cli";
     audience: string;
+    mcpPocEnabled?: boolean;
   };
 };
 
@@ -108,8 +110,10 @@ export function loadGatewayConfigFile(file: string): GatewayRuntimeConfig {
         repo: githubActions.repo,
         workflowId: githubActions.workflowId,
         ref: githubActions.ref,
-        token: readFileSync(path.resolve(githubActions.tokenFile), "utf8").trim(),
+        ...(githubActions.tokenFile ? { token: readFileSync(path.resolve(githubActions.tokenFile), "utf8").trim() } : {}),
+        ...(githubActions.auth ? { auth: githubActions.auth } : {}),
         audience: githubActions.audience ?? new URL("runtime/github-actions/claim", publicBaseUrl).href,
+        mcpPocEnabled: githubActions.mcpPocEnabled,
       }
     : undefined;
   return {

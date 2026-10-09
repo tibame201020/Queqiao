@@ -13,6 +13,7 @@ import { WorkerMembershipStore } from "./worker-membership-store.js";
 import { GatewayLivenessMonitor } from "./liveness-monitor.js";
 import type { WorkerSessionRegistry } from "./worker-session-registry.js";
 import type { GitHubActionsRuntimeCoordinator } from "@queqiao/runtime-provider-github-actions";
+import { ActionsMcpPoc } from "./actions-mcp-poc.js";
 
 function authAuditOutcome(status: number): "success" | "denied" | "failed" {
   if (status < 400) return "success";
@@ -40,6 +41,8 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
   const memberships = enrollment?.memberships ?? new WorkerMembershipStore(config.stateDir);
   const workerSource = new MembershipWorkerRegistry(memberships, sessions, audit);
   await workerSource.initialize();
+  const actionsMcpPoc = githubActionsRuntime && config.githubActionsRuntime?.mcpPocEnabled
+    ? new ActionsMcpPoc(githubActionsRuntime, workerSource) : undefined;
   const allowedOriginHostnames = [...new Set([config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]", ...[...config.allowedRedirectOrigins].map((origin) => new URL(origin).hostname)])];
   const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts: [config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]"], jsonLimit: "6mb" });
   app.set("trust proxy", config.trustProxyHops); app.disable("x-powered-by");
@@ -173,7 +176,7 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
   });
   app.post("/mcp", async (req: Request, res: Response) => {
     const claims = res.locals.oauth as AccessClaims;
-    const adapter = createMcpNodeAdapter(await workerSource.current(), claims.scope.split(" ").filter(Boolean), { principalId: claims.client_id, registry: cancellationRegistry }, config.extensions);
+    const adapter = createMcpNodeAdapter(await workerSource.current(), claims.scope.split(" ").filter(Boolean), { principalId: claims.client_id, registry: cancellationRegistry }, config.extensions, actionsMcpPoc);
     res.on("close", () => { void adapter.close(); });
     try { await adapter.handle(req, res, req.body); }
     catch { if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: "Internal server error" }, id: null }); }

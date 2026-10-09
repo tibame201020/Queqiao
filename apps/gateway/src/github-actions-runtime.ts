@@ -1,17 +1,21 @@
 import {
   GitHubActionsFetchApi,
+  GitHubActionsGhCliApi,
   GitHubActionsRuntimeClaimRegistry,
   GitHubActionsRuntimeCoordinator,
   GitHubActionsRuntimeProvider,
 } from "@queqiao/runtime-provider-github-actions";
 import type { GatewayRuntimeConfig } from "./config.js";
+import path from "node:path";
+import { GitHubActionsRuntimeCheckpointStore } from "./github-actions-runtime-checkpoint.js";
 
 export function createConfiguredGitHubActionsRuntime(
   config: NonNullable<GatewayRuntimeConfig["githubActionsRuntime"]>,
   publicBaseUrl: URL,
+  stateDirectory?: string,
 ): GitHubActionsRuntimeCoordinator {
   const claims = new GitHubActionsRuntimeClaimRegistry(config.audience);
-  const api = new GitHubActionsFetchApi({ token: config.token });
+  const api = config.auth === "gh-cli" ? new GitHubActionsGhCliApi() : new GitHubActionsFetchApi({ token: config.token ?? "" });
   const provider = new GitHubActionsRuntimeProvider({
     owner: config.owner,
     repo: config.repo,
@@ -21,7 +25,8 @@ export function createConfiguredGitHubActionsRuntime(
     api,
     claimRegistry: claims,
   });
-  return new GitHubActionsRuntimeCoordinator(provider, claims);
+  return new GitHubActionsRuntimeCoordinator(provider, claims, undefined,
+    stateDirectory && config.mcpPocEnabled ? new GitHubActionsRuntimeCheckpointStore(path.join(stateDirectory, "github-actions-runtime-checkpoint.json")) : undefined);
 }
 
 export function startGitHubActionsRuntimeExpiryMonitor(
