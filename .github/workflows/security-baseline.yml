@@ -80,6 +80,7 @@ jobs:
           test -n "$QUEQIAO_TEST_PG_URL"
           npm run build
           npm test -- apps/gateway/src/postgres-task-ledger.test.ts --maxWorkers=2
+          npm test -- apps/gateway/src/pg-actions-dispatch.test.ts --maxWorkers=2
   dependency-gate:
     name: Runtime dependency audit
     runs-on: ubuntu-latest

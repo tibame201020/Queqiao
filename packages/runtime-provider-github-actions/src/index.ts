@@ -373,9 +373,10 @@ export class GitHubActionsRuntimeCoordinator {
     return write;
   }
 
-  async provision(input: { ttlSeconds: number; metadata?: RuntimeProviderMetadata }): Promise<RuntimeLease> {
+  async provision(input: { ttlSeconds: number; metadata?: RuntimeProviderMetadata; leaseId?: string }): Promise<RuntimeLease> {
     const createdAt = this.now().toISOString();
-    const leaseId = randomUUID();
+    const leaseId = input.leaseId ? z.string().uuid().parse(input.leaseId) : randomUUID();
+    if (this.leases.has(leaseId)) throw new Error("Runtime Lease ID is already present on this Gateway");
     let lease = createRuntimeLease({
       leaseId,
       providerId: this.provider.id,
