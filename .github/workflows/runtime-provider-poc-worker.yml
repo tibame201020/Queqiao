@@ -79,7 +79,16 @@ jobs:
                 deny: [],
                 explicit: []
               },
-              commands: { allow: ["node"] },
+              commands: {
+                allow: ["node"],
+                exact: [{
+                  executable: "node",
+                  args: ["node_modules/vitest/vitest.mjs", "run", "apps/gateway/src/actions-mcp-poc.test.ts", "--maxWorkers=2"],
+                  cwd: ".",
+                  mode: "sync",
+                  maxTimeoutMs: 45000
+                }]
+              },
               stepUp: []
             }]
           };
