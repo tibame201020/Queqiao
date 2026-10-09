@@ -1,4 +1,4 @@
-﻿# GitHub Actions Worker: Production readiness
+# GitHub Actions Worker: Production readiness
 
 Status: **Not production-ready**. The [Gate C POC](gate-c-isolated-gateway-poc.md)
 proves a real OAuth MCP call to an ephemeral GitHub Actions Worker, a Node/Vitest
@@ -59,6 +59,28 @@ by Core command rules. Production task isolation needs sandbox/container
 restrictions, restricted egress and process environment, immutable source
 revisions, and a signed/audited task catalog.
 
+## GitHub Actions exact-policy live acceptance (2026-10-09)
+
+[GitHub Actions Run 37924307569](https://github.com/tibame201020/Queqiao/actions/runs/37924307569)
+executed the exact-policy branch on a real Ubuntu Actions Runner.
+The private OAuth MCP client dispatched it through the isolated Gateway and
+selected the resulting Worker by its runtime environment ID.
+
+- OIDC enrollment + reverse WebSocket routing: `ready`, route
+  `gha_e0984c5daa46466bbfdd3716` matches the lease.
+- Negative tests: `python --version`, arbitrary `node -e`, and `mode: async`
+  with the otherwise allowed command were all rejected.
+- Exact approved Node/Vitest command: `8 passed`, exit code `0`,
+  stdout collected from `/home/runner/work/Queqiao/Queqiao`, empty stderr.
+- `_meta["dev.queqiao/routing"].selectedTransport` = `websocket`,
+  and the receipt environment ID equals the leased environment.
+- Client requested cancellation, received `Lease: disposed`.
+  GitHub Run ended `completed / cancelled`, OIDC claim succeeded,
+  and the Actions `Cleanup` step completed successfully.
+
+**Verdict: PASS** for one specific, trusted, bounded CLI task and for
+deny-by-policy cases on a real Actions Worker. This is not evidence that
+arbitrary user-supplied scripts are safely sandboxed.
 ## Production acceptance gates
 
 | Gate | Acceptance criteria | Current state |
