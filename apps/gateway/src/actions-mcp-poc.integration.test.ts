@@ -105,6 +105,10 @@ describe("Gate C opt-in MCP endpoint", () => {
     const tools = (await client.listTools()).tools.map((tool) => tool.name);
     expect(tools).not.toContain("actions_worker_start");
     expect(tools).not.toContain("actions_worker_read_marker");
+    // Issue #115 internal ledger must not accidentally expose unreviewed task controls.
+    for (const name of ["short_task_submit", "short_task_status", "short_task_execute", "short_task_cancel"]) {
+      expect(tools).not.toContain(name);
+    }
   });
 
   it("authenticated MCP client can initiate and cancel an ephemeral runtime without management credentials", async () => {
