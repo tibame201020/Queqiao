@@ -1,4 +1,4 @@
-﻿# Queqiao Gateway: persistent-host Linux service templates
+# Queqiao Gateway: persistent-host Linux service templates
 
 **Status: deployment templates, not an active deployment.** The templates
 in this directory are intentionally secret-free. They are a starting point
@@ -65,6 +65,15 @@ not suitable because its hostname changes when restarted.
    code, cancellation and cleanup. Test this with the local workstation
    **powered off**.
 
+### Single-host state safety
+
+The Gateway uses a deterministic loopback OS socket to prevent two local
+Gateway processes from opening the same state directory at once. This
+guard applies **before** orphan Runtime Lease recovery. A forced process
+termination releases the socket automatically. Do not put the JSON
+state directory on shared network storage or deploy another Gateway host
+against that directory; this guard is not a distributed database lock.
+A deterministic port collision with another host process denies startup.
 ## Known blockers
 
 - This config leaves `mcpPocEnabled: false`. **That is intentional.**
