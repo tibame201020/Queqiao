@@ -192,3 +192,29 @@ The default production config advertises no Preview task controls.
 This PR provides a deliberately isolated, explicitly enabled Preview API,
 not a production deployment. No local user credentials or private data
 belong in the repository.
+## Controlled in-flight cancellation acceptance task
+
+Only on isolated, explicitly enabled Preview Gateways, the immutable
+`gateway-cancel-smoke` catalog task runs:
+
+```text
+node scripts/runtime-cancel-smoke.mjs
+```
+
+The checked-in script writes `runtime-cancel-smoke.started` with the
+non-sensitive marker `QUEQIAO_ACTIONS_CLI_STARTED` in the Runner workspace,
+then holds a bounded 85-second process. Its exact argv, cwd, sync mode and
+105-second timeout are allowlisted in the ephemeral Actions POC Worker.
+The task has a 240-second Runtime Lease TTL and accepts no arguments.
+
+**Live acceptance must** obtain an actual GitHub Run ID, poll the Worker
+until ready, call `short_task_execute` while separately polling the
+Worker's marker via `read_file`, and only then send `short_task_cancel`.
+Verify that execute terminates as cancelled, Task Journal stays
+`cancelled`, Lease disposes, GitHub Actions concludes cancelled, and
+Workflow Cleanup succeeds. Mere acceptance of a cancel request before the
+remote script starts does **not** pass the in-flight test.
+
+The marker file is created at runtime on the disposable GitHub-hosted Runner;
+it is not checked into the repository. Never run this task with user data
+or broad credentials. This is not a general-purpose CLI catalog.

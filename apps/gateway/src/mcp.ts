@@ -166,7 +166,7 @@ export function createMcpServer(workers: WorkerRegistry, scopes: readonly string
     server.registerTool("short_task_submit", {
       description: "Preview: submit one SHA-pinned, idempotent catalog task.",
       inputSchema: {
-        taskId: z.literal("gateway-vitest"),
+        taskId: z.enum(["gateway-vitest", "gateway-cancel-smoke"]),
         idempotencyKey: z.string().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

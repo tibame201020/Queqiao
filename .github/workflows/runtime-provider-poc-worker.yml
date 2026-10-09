@@ -104,6 +104,12 @@ jobs:
                   cwd: ".",
                   mode: "sync",
                   maxTimeoutMs: 45000
+                }, {
+                  executable: "node",
+                  args: ["scripts/runtime-cancel-smoke.mjs"],
+                  cwd: ".",
+                  mode: "sync",
+                  maxTimeoutMs: 105000
                 }]
               },
               stepUp: []
