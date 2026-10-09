@@ -5,7 +5,7 @@ import { afterEach, expect, it } from 'vitest';
 import { ProcessRunner } from './index.js';
 let cwd: string;
 let runner: ProcessRunner;
-afterEach(async () => { runner?.shutdown(); if (cwd) await rm(cwd, {recursive:true, force:true}); });
+afterEach(async () => { runner?.shutdown(); if (cwd) await rm(cwd, {recursive:true, force:true, maxRetries:10, retryDelay:150}); });
 const request = () => ({ executable:path.basename(process.execPath), args:['-e','setInterval(()=>{},1000)'], cwd, workspaceId:'owner', timeoutMs:2000 });
 async function waitTracked() {
   for(let i=0;i<100;i++) { const resource=runner.listTracked().find(x=>x.kind==='sync'); if(resource) return resource; await new Promise(r=>setTimeout(r,10)); }
@@ -21,6 +21,15 @@ it('isolates bounded persistent sessions from foreground commands and background
   const job=await runner.startJob({...request(),args:['-e','0']});
   expect(job.state).toBe('running');
   await session.close(); expect(runner.capacity().sessions?.active).toBe(0);
+  // Wait for the background process to release its Windows working directory
+  // before the fixture teardown removes it.
+  if (runner.jobStatus(job.jobId).state === 'running') {
+    expect(runner.cancelJob(job.jobId)).toBe(true);
+  }
+  for (let i = 0; i < 100 && ['queued', 'running'].includes(runner.jobStatus(job.jobId).state); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  expect(['completed', 'cancelled']).toContain(runner.jobStatus(job.jobId).state);
 });
 it('lists and stops synchronous owners without exposing argv or crossing workspace authority', async () => {
   cwd=await mkdtemp(path.join(os.tmpdir(),'queqiao-ownership-')); runner=new ProcessRunner(1);
