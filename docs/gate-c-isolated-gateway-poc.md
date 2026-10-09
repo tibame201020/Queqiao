@@ -271,10 +271,49 @@ A direct invocation of its built ChatGPT adapter against an authenticated
 local Chrome CDP session submitted a harmless ChatGPT prompt and collected
 `QUEQIAO-BROWSER-HARNESS-OK` from the resulting conversation. Its local
 `npm run check` passed 55 tests, typecheck, build and package import.
+## Gate C+++ Browser Harness -> ChatGPT -> MCP -> GitHub Actions PASS (2026-10-09)
 
-**Remaining end-to-end boundary:** The UI smoke currently collects a fixed
-harmless marker, **not** a new GitHub Worker marker. Browser Harness PR #8
-has not yet been installed into the Worker extension runtime. Repeating the
-entire Browser Harness → ChatGPT → MCP → GitHub Actions chain requires the
-new adapter installed and an authorized ChatGPT connector pointing to the
-same live HTTPS origin. A Quick Tunnel hostname is not persistent hosting.
+This acceptance resolves the previously outstanding Browser Harness integration.
+The isolated Gateway used an ephemeral public HTTPS tunnel with a private
+GitHub CLI-backed Actions provider and the disabled-by-default POC tools.
+
+Execution evidence:
+
+1. Install the locally staged Browser Harness v0.4.0 from
+   [Harness PR #8](https://github.com/tibame201020/queqiao-harness-browser/pull/8)
+   on the isolated `tunnel-worker` Extension Hub. The trigger can select an
+   already-installed ChatGPT plugin and its collector waits for a configurable
+   stable, non-generating answer.
+2. ChatGPT's new custom OAuth MCP plugin performs metadata discovery, DCR and
+   user-approved OAuth authorization. Gateway log records successful
+   `/oauth/authorize` (303), `/oauth/token` (200), MCP `server/discover`
+   and `tools/list` calls (200).
+3. Call the **installed** Browser Harness `harness_run(trigger)` with a bounded
+   POC prompt. It navigates to the selected plugin and submits a new chat.
+   ChatGPT invokes the actual MCP `actions_worker_start`, repeatedly
+   `actions_worker_status`, then `actions_worker_read_marker`. Each
+   call appears in the isolated Gateway's MCP request log.
+4. `harness_run(collect)` returns `status: completed` with the actual
+   GitHub Actions run ID `37915098339`, `ready: true`, fixed marker
+   `QUEQIAO-GITHUB-CONNECTOR-OK`, transport `websocket`, and lease
+   `disposed`. This result is cross-checked against backend records, not
+   accepted solely from the ChatGPT response.
+5. [GitHub Actions run 37915098339](https://github.com/tibame201020/Queqiao/actions/runs/37915098339)
+   reaches `completed / cancelled`. Its OIDC lease claim succeeds,
+   `Keep runtime alive` is cancelled, and `Cleanup` finishes successfully.
+
+**Verdict: PASS** for the combined native Browser Harness -> authenticated
+ChatGPT UI -> OAuth MCP -> Gateway -> ephemeral Actions Worker -> reverse
+WebSocket marker -> disposal/cleanup chain.
+
+One earlier automated chat attempted the same connector before OAuth consent
+and correctly failed with internal tool errors, with no new Worker run. That
+attempt is excluded from acceptance. The remedial human OAuth authorization
+succeeded before the passing run.
+
+The actual browser session, plugin identifier, OAuth credentials, cookies and
+human conversation identifiers stay in the local private harness/Gateway state
+and are **not committed**. This does not prove persistent HTTPS availability,
+unattended login renewal, restart recovery of the ChatGPT OAuth session or
+production multi-tenant orchestration. No production deployment is approved
+by this POC.
