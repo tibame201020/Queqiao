@@ -55,6 +55,26 @@ describe("extension config schema", () => {
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, listen: { host: "0.0.0.0", port: 7575 } } })).toThrow();
   });
 
+  it("validates exact process invocations and rejects malformed task policies", () => {
+    const exact = { executable: "node", args: ["--version"], cwd: ".", mode: "sync", maxTimeoutMs: 9000 };
+    const commands = { allow: ["node"], exact: [exact] };
+    const parsed = runtimeConfigSchema.parse({ ...base, workspaces: [{ ...base.workspaces[0], commands }] });
+    expect(parsed.workspaces[0]?.commands.exact).toEqual([exact]);
+    for (const invalid of [
+      { ...exact, args: ["--version", 123] },
+      { ...exact, executable: "/usr/bin/node" },
+      { ...exact, mode: "shell" },
+      { ...exact, maxTimeoutMs: 0 },
+      { ...exact, cwd: "../" },
+    ]) {
+      expect(() => runtimeConfigSchema.parse({
+        ...base, workspaces: [{ ...base.workspaces[0], commands: { allow: ["node"], exact: [invalid] } }],
+      })).toThrow();
+    }
+    expect(() => runtimeConfigSchema.parse({
+      ...base, workspaces: [{ ...base.workspaces[0], commands: { allow: ["git"], exact: [exact] } }],
+    })).toThrow();
+  });
   it("accepts an optional GitHub Actions runtime provider without embedding its token", () => {
     const gateway = {
       publicBaseUrl: "https://queqiao.example/",

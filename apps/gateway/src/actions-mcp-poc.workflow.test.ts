@@ -1,4 +1,4 @@
-﻿import { readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { parse } from "yaml";
@@ -14,7 +14,13 @@ describe("Actions Gate C short-task Worker least-privilege contract", () => {
     expect(bootstrap).toContain('root: process.env.GITHUB_WORKSPACE');
     expect(bootstrap).toContain('profile: "coding"');
     expect(bootstrap).toContain('allow: ["workspace_info","read_file","list_workspaces","run"]');
-    expect(bootstrap).toContain('commands: { allow: ["node"] }');
+    expect(bootstrap).toContain('allow: ["node"]');
+    expect(bootstrap).toContain('exact: [{');
+    expect(bootstrap).toContain('executable: "node"');
+    expect(bootstrap).toContain('args: ["node_modules/vitest/vitest.mjs", "run", "apps/gateway/src/actions-mcp-poc.test.ts", "--maxWorkers=2"]');
+    expect(bootstrap).toContain('cwd: "."');
+    expect(bootstrap).toContain('mode: "sync"');
+    expect(bootstrap).toContain('maxTimeoutMs: 45000');
     expect(bootstrap).not.toMatch(/allow: \[[^\]]*"shell"[^\]]*\]/);
     expect(bootstrap).not.toContain('command:');
   });

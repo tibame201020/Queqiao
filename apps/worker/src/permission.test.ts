@@ -2,7 +2,7 @@ import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import request from "supertest";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkerApp } from "./app.js";
 
 let temporary: string | undefined;
@@ -92,6 +92,96 @@ describe("Worker authoritative permission enforcement", () => {
     await request(app).post("/v1/tools/run").set("x-queqiao-worker-token", "worker-secret").send({ workspaceId: "coding", executable, args: ["--version"], cwd: ".." }).expect(400);
   });
 
+  it("enforces an exact executable, argv, cwd, mode and timeout contract before creating a process", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-exact-command-"));
+    const executable = path.basename(process.execPath).toLowerCase();
+    const callArgs = ["--version"];
+    const processes = {
+      run: vi.fn(async () => ({ exitCode: 0, stdout: "exact-ok", stderr: "", durationMs: 1, timedOut: false, aborted: false, outputLimitExceeded: false })),
+      start: vi.fn(async () => ({ pid: 42, stdout: "discarded", stderr: "discarded" })),
+      startJob: vi.fn(async () => ({ jobId: "nope" })),
+    };
+    const app = await createWorkerApp({
+      environmentId: "linux",
+      workerToken: "worker-secret",
+      processes,
+      workspaces: [{
+        id: "exact", displayName: "Exact", root: temporary, profile: "coding",
+        tools: { allow: ["run"], deny: [], explicit: [] },
+        commands: { allow: [executable], exact: [{
+          executable, args: callArgs, cwd: ".", mode: "sync", maxTimeoutMs: 9000,
+        }] },
+      }],
+    });
+    const endpoint = "/v1/tools/run";
+    const post = (body: object) => request(app).post(endpoint).set("x-queqiao-worker-token", "worker-secret").send({
+      workspaceId: "exact", executable, args: callArgs, cwd: ".", timeoutMs: 8000, ...body,
+    });
+    await post({}).expect(200);
+    expect(processes.run).toHaveBeenCalledTimes(1);
+    for (const payload of [
+      { args: ["-e", "process.exit(0)"] },
+      { args: ["--version", "--inspect"] },
+      { args: [] },
+      { cwd: "./" },
+      { timeoutMs: 9001 },
+      { mode: "async" },
+    ]) {
+      const response = await post(payload).expect(403);
+      expect(response.body.error).toBe("command_denied");
+    }
+    await request(app).post("/v1/tools/job_start")
+      .set("x-queqiao-worker-token", "worker-secret")
+      .send({ workspaceId: "exact", executable, args: callArgs, cwd: ".", timeoutMs: 8000 })
+      .expect(403);
+    expect(processes.run).toHaveBeenCalledTimes(1);
+    expect(processes.start).not.toHaveBeenCalled();
+    expect(processes.startJob).not.toHaveBeenCalled();
+  });
+  it("denies all Core process starts with an intentionally empty exact policy", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-exact-empty-"));
+    const executable = path.basename(process.execPath).toLowerCase();
+    const processes = {
+      run: vi.fn(), start: vi.fn(), startJob: vi.fn(),
+    };
+    const app = await createWorkerApp({
+      environmentId: "linux", workerToken: "worker-secret", processes,
+      workspaces: [{
+        id: "exact", displayName: "Exact", root: temporary, profile: "coding",
+        commands: { allow: [executable], exact: [] },
+      }],
+    });
+    const args = { workspaceId: "exact", executable, args: ["--version"], cwd: ".", timeoutMs: 5000 };
+    const auth = (endpoint: string) => request(app).post(endpoint).set("x-queqiao-worker-token", "worker-secret").send(args);
+    await auth("/v1/tools/run").expect(403);
+    await auth("/v1/tools/job_start").expect(403);
+    expect(processes.run).not.toHaveBeenCalled();
+    expect(processes.start).not.toHaveBeenCalled();
+    expect(processes.startJob).not.toHaveBeenCalled();
+  });
+
+  it("allows an exact durable job only when its mode and arguments are explicitly authorized", async () => {
+    temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-exact-job-"));
+    const executable = path.basename(process.execPath).toLowerCase();
+    const processes = {
+      run: vi.fn(), start: vi.fn(),
+      startJob: vi.fn(async () => ({ jobId: "job-allowed", state: "queued" })),
+    };
+    const app = await createWorkerApp({
+      environmentId: "linux", workerToken: "worker-secret", processes,
+      workspaces: [{
+        id: "exact", displayName: "Exact", root: temporary, profile: "coding",
+        commands: { allow: [executable], exact: [{
+          executable, args: ["--version"], cwd: ".", mode: "job", maxTimeoutMs: 5000,
+        }] },
+      }],
+    });
+    const params = { workspaceId: "exact", executable, args: ["--version"], cwd: ".", timeoutMs: 5000 };
+    await request(app).post("/v1/tools/job_start").set("x-queqiao-worker-token", "worker-secret").send(params).expect(200);
+    expect(processes.startJob).toHaveBeenCalledTimes(1);
+    await request(app).post("/v1/tools/run").set("x-queqiao-worker-token", "worker-secret").send(params).expect(403);
+    expect(processes.run).not.toHaveBeenCalled();
+  });
   it("routes omitted mode to sync and explicit async to start through the same Worker authority path", async () => {
     temporary = await mkdtemp(path.join(os.tmpdir(), "queqiao-mode-routing-"));
     const calls: Array<{ method: "run" | "start"; executable: string }> = [];

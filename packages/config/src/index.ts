@@ -25,8 +25,30 @@ const toolRulesSchema = z.object({
   explicit: z.array(toolNameSchema).default([]),
 });
 
+const commandExecutableSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/);
+const commandCwdSchema = z.string().min(1).max(256)
+  .refine((value) => value === "." || (
+    !value.startsWith("/") && !value.includes("\\") &&
+    value.split("/").every((segment) => segment !== "." && segment !== ".." && /^[A-Za-z0-9._-]+$/.test(segment))
+  ), "Exact process cwd must be a workspace-relative literal without traversal");
+const exactCommandSchema = z.object({
+  executable: commandExecutableSchema,
+  args: z.array(z.string().max(4096)).max(32),
+  cwd: commandCwdSchema,
+  mode: z.enum(["sync", "async", "job"]),
+  maxTimeoutMs: z.number().int().min(1000).max(600_000),
+});
 const commandRulesSchema = z.object({
   allow: z.array(z.string().min(1).max(128)).default([]),
+  // Omitted = legacy behavior. Present, including [] = require exact matching.
+  exact: z.array(exactCommandSchema).max(32).optional(),
+}).superRefine((policy, context) => {
+  for (const [index, invocation] of (policy.exact ?? []).entries()) {
+    if (!policy.allow.some((allowed) => allowed.toLowerCase() === invocation.executable.toLowerCase())) {
+      context.addIssue({ code: "custom", path: ["exact", index, "executable"],
+        message: "Exact executable must appear in the workspace command allowlist" });
+    }
+  }
 });
 
 export const stepUpRuleSchema = z.object({
