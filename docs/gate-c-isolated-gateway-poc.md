@@ -339,3 +339,56 @@ Do **not** consider the existing static marker test as evidence of CLI
 execution. The GitHub Actions Run ID, actual remote process output, exit
 code, routing receipt, final Actions Run conclusion, and Cleanup step must
 be recorded separately after the live test.
+## Gate C++++ GitHub Actions real CLI short task — PASS (2026-10-09)
+
+This is the concrete execution proof beyond the earlier static marker.
+A separate, private non-mock OAuth MCP test client connected to the
+isolated Queqiao Gateway, which used a temporary public Cloudflare HTTPS
+endpoint solely for the ephemeral GitHub Actions Worker enrollment.
+The OAuth client exercised the **existing generic MCP `run` tool**, with
+no local Worker fallback.
+
+**GitHub Actions Run:**
+[37917364664](https://github.com/tibame201020/Queqiao/actions/runs/37917364664)
+
+- Worker routing environment: `gha_feeee8075e52400ca45348ac`.
+- GitHub Actions OIDC enrollment and reverse WebSocket readiness: PASS.
+- Cross-environment routing was explicitly pinned to `runtime` and this
+  leased environment ID; the MCP response `_meta["dev.queqiao/routing"]`
+  returned that exact environment and `selectedTransport: "websocket"`.
+- Negative authorization test: `run` with `python --version` was rejected
+  by the Runner's workspace command allowlist.
+- Positive short task, executed on the remote GitHub Actions Runner
+  (working directory `/home/runner/work/Queqiao/Queqiao`):
+
+  ```text
+  node node_modules/vitest/vitest.mjs run apps/gateway/src/actions-mcp-poc.test.ts --maxWorkers=2
+  ```
+
+- Returned real process result: `exitCode: 0`, `8 passed`,
+  `timedOut: false`, `aborted: false`, `stderr: ""`.
+- The authenticated client called `actions_worker_cancel` after receiving
+  and verifying the process result: runtime lease state `disposed`.
+
+**Result:** Queqiao Gateway successfully dispatched an ephemeral GitHub Actions
+Worker, routed an actual Node CLI test command through its existing generic
+MCP process execution tool, received the command output and status, and
+disposed of the lease.
+
+**First-run test harness correction:** The immediately preceding
+[run 37917205931](https://github.com/tibame201020/Queqiao/actions/runs/37917205931)
+also executed Vitest successfully (8 passed, exit 0), but the client
+incorrectly looked for `routing` inside the process JSON. The MCP routing
+receipt is, by contract, in `_meta["dev.queqiao/routing"]`. That test
+was not counted as a full PASS; its lease was cancelled after the client
+detected the assertion error. The corrected second run above verified both.
+
+**Boundary:** This test ran from a separately authenticated non-mock MCP
+client, not a new ChatGPT Browser Harness conversation. The preceding Gate
+C+++ test proved the ChatGPT Harness native invocation path separately.
+This does not prove arbitrary CLI execution is safe or that the Gateway
+operates without an always-online host. Node-only executable allowlisting
+does not constrain script arguments or module imports; restrict this
+permission to disposable isolated POC Workers until a production command
+policy and workload trust boundary are implemented. No secret, private
+browser profile, OAuth token or personal data is committed.
