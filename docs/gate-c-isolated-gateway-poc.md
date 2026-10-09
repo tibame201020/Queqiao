@@ -317,3 +317,25 @@ and are **not committed**. This does not prove persistent HTTPS availability,
 unattended login renewal, restart recovery of the ChatGPT OAuth session or
 production multi-tenant orchestration. No production deployment is approved
 by this POC.
+
+## Gate C short-task CLI acceptance (2026-10-09)
+
+The dedicated GitHub Actions POC Worker has an opt-in `runtime` workspace
+with the `run` tool enabled and **only the `node` binary allowlisted**;
+no `shell` tool is granted. This is not a production-grade command/argument
+sandbox: a Node process can run arbitrary JavaScript. Use this ephemeral,
+single-tenant POC Worker **only** for an explicitly approved short task,
+with no user secrets, private data, or write credentials in the runner.
+
+The intended acceptance call is the Queqiao MCP connector's existing
+`run` tool, pinned to the leased Actions `environmentId` and workspace
+`runtime`. Execute a bounded checked-in Vitest suite using
+`node node_modules/vitest/vitest.mjs run apps/gateway/src/actions-mcp-poc.test.ts --maxWorkers=2`
+from `cwd: "."`. The contract checks nonzero exit, records bounded stdout
+and stderr, verifies the response routing environment matches the leased
+runtime, and cancels/disposes the ephemeral Worker after the result.
+
+Do **not** consider the existing static marker test as evidence of CLI
+execution. The GitHub Actions Run ID, actual remote process output, exit
+code, routing receipt, final Actions Run conclusion, and Cleanup step must
+be recorded separately after the live test.
