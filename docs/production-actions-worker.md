@@ -81,6 +81,13 @@ selected the resulting Worker by its runtime environment ID.
 **Verdict: PASS** for one specific, trusted, bounded CLI task and for
 deny-by-policy cases on a real Actions Worker. This is not evidence that
 arbitrary user-supplied scripts are safely sandboxed.
+## Persistent-host starter templates
+A provider-neutral Linux Gateway + named HTTPS Tunnel host starter lives in
+[`deploy/systemd/`](../deploy/systemd/README.md). It includes systemd units,
+external secret-file paths and a stable-origin configuration template, with
+contract tests in the CI security gate. It is **not deployed** and leaves the
+test-only Actions MCP controls disabled.
+
 ## Production acceptance gates
 
 | Gate | Acceptance criteria | Current state |

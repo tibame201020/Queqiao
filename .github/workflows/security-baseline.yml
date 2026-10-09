@@ -30,6 +30,19 @@ jobs:
       - run: npm ci --ignore-scripts
       - if: runner.os != 'Windows'
         run: npm run typecheck && npm run test:security
+      - name: Verify persistent Gateway systemd units
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Runner image does not include our production /usr/bin/node and
+          # /usr/local/bin/cloudflared paths. Contract tests pin the real
+          # ExecStart lines; this validates unit syntax independent of host packages.
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          sed -E 's#^ExecStart=.*#ExecStart=/usr/bin/true#' deploy/systemd/queqiao-gateway.service > "$scratch/queqiao-gateway.service"
+          sed -E 's#^ExecStart=.*#ExecStart=/usr/bin/true#' deploy/systemd/queqiao-cloudflared.service > "$scratch/queqiao-cloudflared.service"
+          systemd-analyze verify "$scratch/queqiao-gateway.service" "$scratch/queqiao-cloudflared.service"
       - if: runner.os == 'Windows'
         run: npm run typecheck && npm run test:security -- --maxWorkers=2
 
