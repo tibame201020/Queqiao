@@ -97,6 +97,29 @@ describe("GitHub Actions Runtime Provider", () => {
     });
   });
 
+  it("propagates a validated trusted source SHA to the dispatched ephemeral Worker", async () => {
+    const dispatch = vi.fn(async () => ({ runId: 12345, runUrl: "url", htmlUrl: "url" }));
+    const provider = new GitHubActionsRuntimeProvider({
+      owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main",
+      gatewayUrl: "https://gateway.example.test/", api: { dispatch, cancel: vi.fn() },
+    });
+    const sha = "a".repeat(40);
+    await provider.provision({ leaseId, ttlSeconds: 180, metadata: { sourceRevision: sha } });
+    expect(dispatch.mock.calls[0]?.[0].inputs).toMatchObject({ source_revision: sha });
+    expect(JSON.stringify(dispatch.mock.calls[0])).not.toContain("authorization");
+  });
+
+  it("fails before dispatch for non-SHA source revisions", async () => {
+    const dispatch = vi.fn();
+    const provider = new GitHubActionsRuntimeProvider({
+      owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main",
+      gatewayUrl: "https://gateway.example.test/", api: { dispatch, cancel: vi.fn() },
+    });
+    for (const bad of ["main", "../main", "b".repeat(39), "b".repeat(40) + "\n"]) {
+      await expect(provider.provision({ leaseId, ttlSeconds: 180, metadata: { sourceRevision: bad } })).rejects.toThrow();
+    }
+    expect(dispatch).not.toHaveBeenCalled();
+  });
   it("registers the dispatched run for OIDC claim correlation", async () => {
     const registry = new GitHubActionsRuntimeClaimRegistry("urn:queqiao:runtime", verifier());
     const provider = new GitHubActionsRuntimeProvider({

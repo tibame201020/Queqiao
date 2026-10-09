@@ -81,6 +81,15 @@ selected the resulting Worker by its runtime environment ID.
 **Verdict: PASS** for one specific, trusted, bounded CLI task and for
 deny-by-policy cases on a real Actions Worker. This is not evidence that
 arbitrary user-supplied scripts are safely sandboxed.
+### Internal short-task Preview API
+
+Issue #115 now has a private task journal and an explicit opt-in OAuth
+MCP Preview interface. It requires a trusted source SHA and a keyed-HMAC
+principal binding. See [Production short-task runtime](production-short-task-runtime.md).
+The default Gateway config still does **not** expose task dispatch.
+A controlled real Preview OAuth MCP run also passed with source-SHA verification,
+8 Vitest tests, durable task completion and GitHub Cleanup (Run 37929140957).
+This Preview is not an approved multi-tenant production API.
 ## Persistent-host starter templates
 A provider-neutral Linux Gateway + named HTTPS Tunnel host starter lives in
 [`deploy/systemd/`](../deploy/systemd/README.md). It includes systemd units,
@@ -88,6 +97,15 @@ external secret-file paths and a stable-origin configuration template, with
 contract tests in the CI security gate. It is **not deployed** and leaves the
 test-only Actions MCP controls disabled.
 
+### Source SHA pin for the task-catalog path
+
+The runtime provider accepts an optional, **validated lowercase 40-hex
+`sourceRevision`** in trusted metadata and maps it to the Actions
+`source_revision` dispatch input. The Workflow checks out this SHA and
+verifies the checkout HEAD before running npm or starting the Worker. A
+missing input preserves existing POC behavior. This is not yet a
+multi-principal production workload API or a full OIDC workflow-revision
+attestation.
 ## Production acceptance gates
 
 | Gate | Acceptance criteria | Current state |

@@ -30,6 +30,7 @@ export type GatewayRuntimeConfig = {
     auth?: "gh-cli";
     audience: string;
     mcpPocEnabled?: boolean;
+    shortTasksPreview?: { enabled: true; sourceRevision: string };
   };
 };
 
@@ -114,6 +115,7 @@ export function loadGatewayConfigFile(file: string): GatewayRuntimeConfig {
         ...(githubActions.auth ? { auth: githubActions.auth } : {}),
         audience: githubActions.audience ?? new URL("runtime/github-actions/claim", publicBaseUrl).href,
         mcpPocEnabled: githubActions.mcpPocEnabled,
+        ...(githubActions.shortTasksPreview ? { shortTasksPreview: githubActions.shortTasksPreview } : {}),
       }
     : undefined;
   return {

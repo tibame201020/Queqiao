@@ -46,7 +46,7 @@ describe("Gate C opt-in MCP endpoint", () => {
   const cleanup: Array<() => Promise<void>> = [];
   afterEach(async () => { while (cleanup.length) await cleanup.pop()!(); });
 
-  async function gateway(enabled: boolean) {
+  async function gateway(enabled: boolean, preview = false) {
     const root = await mkdtemp(path.join(os.tmpdir(), "queqiao-actions-gate-c-"));
     cleanup.push(() => rm(root, { recursive: true, force: true }));
     const lease = {
@@ -74,7 +74,7 @@ describe("Gate C opt-in MCP endpoint", () => {
       allowedRedirectOrigins: new Set(["https://chatgpt.com"]),
       extensions: [],
       configDirectory: root,
-      githubActionsRuntime: { owner: "example", repo: "runtime-host", workflowId: "runtime-provider-poc-worker.yml", ref: "main", token: "never-live", audience: "urn:test", mcpPocEnabled: enabled },
+      githubActionsRuntime: { owner: "example", repo: "runtime-host", workflowId: "runtime-provider-poc-worker.yml", ref: "main", token: "never-live", audience: "urn:test", mcpPocEnabled: enabled, ...(preview ? { shortTasksPreview: { enabled: true, sourceRevision: "a".repeat(40) } } : {}) },
     };
     const app = await createGatewayApp(config, undefined, undefined, undefined, fake as unknown as GitHubActionsRuntimeCoordinator);
     const server = await new Promise<Server>((resolve) => {
@@ -105,8 +105,43 @@ describe("Gate C opt-in MCP endpoint", () => {
     const tools = (await client.listTools()).tools.map((tool) => tool.name);
     expect(tools).not.toContain("actions_worker_start");
     expect(tools).not.toContain("actions_worker_read_marker");
+    // Issue #115 internal ledger must not accidentally expose unreviewed task controls.
+    for (const name of ["short_task_submit", "short_task_status", "short_task_execute", "short_task_cancel"]) {
+      expect(tools).not.toContain(name);
+    }
   });
 
+  it("exposes separately opted-in short tasks only to authenticated OAuth clients with ownership isolation", async () => {
+    const { app, endpoint, fake } = await gateway(false, true);
+    const owner = await connect(app, endpoint);
+    const stranger = await connect(app, endpoint);
+    const tools = (await owner.listTools()).tools.map((tool) => tool.name);
+    for (const name of ["short_task_submit", "short_task_status", "short_task_execute", "short_task_cancel"]) {
+      expect(tools).toContain(name);
+    }
+    expect(tools).not.toContain("actions_worker_start");
+    const submitted = await owner.callTool({ name: "short_task_submit", arguments: {
+      taskId: "gateway-vitest", idempotencyKey: "owner-job-1",
+    } });
+    expect(submitted.isError).not.toBe(true);
+    const value = JSON.parse(submitted.content.filter((item) => item.type === "text").map((item) => item.text).join(""));
+    expect(value).toMatchObject({ taskId: "gateway-vitest", runId: "54321" });
+    expect(JSON.stringify(value)).not.toMatch(/ownerDigest|idempotencyDigest|test-jwt-signing-secret/);
+    const repeat = await owner.callTool({ name: "short_task_submit", arguments: {
+      taskId: "gateway-vitest", idempotencyKey: "owner-job-1",
+    } });
+    expect(JSON.stringify(repeat)).toContain(value.id);
+    expect(fake.provision).toHaveBeenCalledTimes(1);
+    const lookup = await stranger.callTool({ name: "short_task_status", arguments: { id: value.id } });
+    expect(lookup.isError).toBe(true);
+    expect(JSON.stringify(lookup)).not.toContain("54321");
+    const cancel = await stranger.callTool({ name: "short_task_cancel", arguments: { id: value.id } });
+    expect(cancel.isError).toBe(true);
+    expect(fake.fail).not.toHaveBeenCalled();
+    const ownerCancel = await owner.callTool({ name: "short_task_cancel", arguments: { id: value.id } });
+    expect(ownerCancel.isError).not.toBe(true);
+    expect(JSON.stringify(ownerCancel)).toContain("cancelled");
+  });
   it("authenticated MCP client can initiate and cancel an ephemeral runtime without management credentials", async () => {
     const { app, endpoint, fake } = await gateway(true);
     const client = await connect(app, endpoint);

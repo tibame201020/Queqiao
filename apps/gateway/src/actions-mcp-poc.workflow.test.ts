@@ -5,6 +5,21 @@ import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 
 describe("Actions Gate C short-task Worker least-privilege contract", () => {
+  it("supports an explicit immutable source SHA and verifies it before running npm", () => {
+    const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/runtime-provider-poc-worker.yml");
+    const workflow = parse(readFileSync(file, "utf8")) as {
+      on: { workflow_dispatch: { inputs: Record<string, { required?: boolean }> } };
+      jobs: Record<string, { steps: Array<{ uses?: string; with?: Record<string, unknown>; name?: string; run?: string }> }>;
+    };
+    expect(workflow.on.workflow_dispatch.inputs.source_revision).toMatchObject({ required: false });
+    const steps = workflow.jobs["runtime-worker"]!.steps;
+    const checkout = steps.find((step) => step.uses?.startsWith("actions/checkout@"));
+    expect(checkout?.with?.ref).toContain("inputs.source_revision");
+    const verify = steps.find((step) => step.name === "Verify source revision");
+    expect(verify?.run).toContain("git rev-parse HEAD");
+    expect(verify?.run).toContain("SOURCE_REVISION");
+    expect(steps.indexOf(verify!)).toBeLessThan(steps.findIndex((step) => step.run?.includes("npm ci")));
+  });
   it("permits Node CLI via run only in the ephemeral runtime workspace", () => {
     const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/runtime-provider-poc-worker.yml");
     const workflow = parse(readFileSync(file, "utf8")) as {

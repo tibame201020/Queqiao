@@ -257,6 +257,15 @@ const runtimeConfigBaseSchema = z.object({
         audience: z.string().min(1).max(2048).optional(),
         // Gate C test-only MCP controls; disabled by default on every Gateway.
         mcpPocEnabled: z.boolean().optional(),
+        // Task API preview: explicit SHA is mandatory, cannot coexist with POC tools.
+        shortTasksPreview: z.object({
+          enabled: z.literal(true),
+          sourceRevision: z.string().regex(/^[0-9a-f]{40}$/),
+        }).optional(),
+      }).superRefine((provider, ctx) => {
+        if (provider.mcpPocEnabled && provider.shortTasksPreview?.enabled) {
+          ctx.addIssue({ code: "custom", message: "POC and short-task Preview MCP controls are mutually exclusive" });
+        }
       }).optional(),
     }).default({}),
   }).optional(),
@@ -300,8 +309,8 @@ export const runtimeConfigRepairSchema = runtimeConfigBaseSchema.superRefine((co
   if (githubActions && !githubActions.tokenFile && githubActions.auth !== "gh-cli") {
     ctx.addIssue({ code: "custom", path: ["gateway", "runtimeProviders", "githubActions", "tokenFile"], message: "tokenFile is required unless auth is gh-cli" });
   }
-  if (githubActions?.auth === "gh-cli" && !githubActions.mcpPocEnabled) {
-    ctx.addIssue({ code: "custom", path: ["gateway", "runtimeProviders", "githubActions", "auth"], message: "gh-cli authentication requires mcpPocEnabled" });
+  if (githubActions?.auth === "gh-cli" && !githubActions.mcpPocEnabled && !githubActions.shortTasksPreview?.enabled) {
+    ctx.addIssue({ code: "custom", path: ["gateway", "runtimeProviders", "githubActions", "auth"], message: "gh-cli authentication requires isolated POC or short-task Preview" });
   }
   if (config.gateway?.workerSessionListen?.host === "0.0.0.0") {
     if (!config.gateway.workerSessionAdvertiseHost) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionAdvertiseHost"], message: "Remote Worker session listener requires an advertised host" });

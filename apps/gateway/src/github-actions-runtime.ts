@@ -26,7 +26,7 @@ export function createConfiguredGitHubActionsRuntime(
     claimRegistry: claims,
   });
   return new GitHubActionsRuntimeCoordinator(provider, claims, undefined,
-    stateDirectory && config.mcpPocEnabled ? new GitHubActionsRuntimeCheckpointStore(path.join(stateDirectory, "github-actions-runtime-checkpoint.json")) : undefined);
+    stateDirectory && (config.mcpPocEnabled || config.shortTasksPreview?.enabled) ? new GitHubActionsRuntimeCheckpointStore(path.join(stateDirectory, "github-actions-runtime-checkpoint.json")) : undefined);
 }
 
 export function startGitHubActionsRuntimeExpiryMonitor(
