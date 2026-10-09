@@ -234,3 +234,47 @@ using a private local checkpoint, **not** a full OS Gateway process restart):
 **Result:** Gateway-restart cancellation logic and real GitHub cancellation
 are verified separately. A real OS-level crash-and-restart test and stable
 HTTPS host remain outside this acceptance slice.
+## Gate C++ OS restart and browser UI smoke (2026-10-09)
+
+Two tests now distinguish the previous Coordinator-only restart simulation from
+a real Gateway process lifecycle.
+
+**Real OS Gateway restart acceptance — PASS:**
+
+1. Start an isolated Gateway with a private state directory and an active
+   temporary Cloudflare HTTPS tunnel (local MCP and management ports remain
+   loopback-only).
+2. Dispatch [Actions run 37911245452](https://github.com/tibame201020/Queqiao/actions/runs/37911245452)
+   via the loopback management API. Confirm the Worker registers by OIDC and
+   reaches `ready`, with its lease durably recorded.
+3. Forcefully terminate the Gateway process (without stopping the tunnel).
+   Confirm the Gateway listener closes while the checkpoint survives.
+4. Start a **new Gateway OS process** with the same private configuration and
+   checkpoint. Confirm it opens its listeners and the prior run is removed
+   from the checkpoint after cancellation is accepted.
+5. GitHub Actions run reaches `completed/cancelled`. Worker claim succeeded;
+   `Cleanup` finished successfully.
+
+The first OS restart attempt used an offline, expired Quick Tunnel hostname,
+so the Actions job failed its join step before a meaningful cancellation
+could be observed; see
+[run 37911026800](https://github.com/tibame201020/Queqiao/actions/runs/37911026800).
+This attempt is **not** counted as a recovery PASS.
+
+**Browser Harness adapter UI smoke — PASS (separate)**:
+
+The original installed Harness v0.3.0 expects legacy
+`#prompt-textarea`; current ChatGPT uses a visible contenteditable textbox
+and a composer form submit button. A dedicated test-first fix is on
+[Browser Harness PR #8](https://github.com/tibame201020/queqiao-harness-browser/pull/8).
+A direct invocation of its built ChatGPT adapter against an authenticated
+local Chrome CDP session submitted a harmless ChatGPT prompt and collected
+`QUEQIAO-BROWSER-HARNESS-OK` from the resulting conversation. Its local
+`npm run check` passed 55 tests, typecheck, build and package import.
+
+**Remaining end-to-end boundary:** The UI smoke currently collects a fixed
+harmless marker, **not** a new GitHub Worker marker. Browser Harness PR #8
+has not yet been installed into the Worker extension runtime. Repeating the
+entire Browser Harness → ChatGPT → MCP → GitHub Actions chain requires the
+new adapter installed and an authorized ChatGPT connector pointing to the
+same live HTTPS origin. A Quick Tunnel hostname is not persistent hosting.
