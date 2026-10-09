@@ -89,6 +89,11 @@ principal binding. See [Production short-task runtime](production-short-task-run
 The default Gateway config still does **not** expose task dispatch.
 A controlled real Preview OAuth MCP run also passed with source-SHA verification,
 8 Vitest tests, durable task completion and GitHub Cleanup (Run 37929140957).
+The Preview owner-HMAC key is now loaded from an independent private
+`ownerKeyFile`, never reused from the JWT signing key. Task execution
+no longer serializes unrelated journal operations for its full duration;
+cancellation is a persisted, retryable and deduplicated transition with
+bounded Worker abort. Remote multi-instance ownership remains open.
 This Preview is not an approved multi-tenant production API.
 ## Persistent-host starter templates
 A provider-neutral Linux Gateway + named HTTPS Tunnel host starter lives in
