@@ -1,6 +1,6 @@
 # Gate C: isolated ChatGPT → Actions Worker acceptance
 
-Status: **not yet accepted end to end**. This is an opt-in POC, not a production deployment.
+Status: **Gate C end-to-end POC PASS (2026-10-09)** on an isolated temporary HTTPS ingress. This is not a production deployment or a persistent-host acceptance.
 
 ## Why a separate Gateway is required
 
@@ -157,3 +157,40 @@ Once the owner authorizes the ChatGPT connector, the final acceptance must
 capture the **ChatGPT conversation's own** tool invocation, actual marker,
 routing receipt and correlated cancelled Actions run. Do not claim full Gate C
 acceptance based solely on the local OAuth MCP client.
+
+## Gate C native ChatGPT connector acceptance — PASS (2026-10-09)
+
+This section supersedes the historical "pending ChatGPT OAuth" notes above.
+The owner completed the isolated ChatGPT connector's OAuth authorization.
+The subsequent calls were made **from the ChatGPT conversation itself**
+through the installed `Queqiao Gate C E2E POC` connector, not via a test
+client, a mock Coordinator, or a local CLI.
+
+| Evidence | Observed result |
+| --- | --- |
+| MCP `actions_worker_start` | `state: provisioning`, GitHub Actions run `37880094019` |
+| MCP `actions_worker_status` | `state: ready`, `ready: true` |
+| MCP `actions_worker_read_marker` | `QUEQIAO-GITHUB-CONNECTOR-OK` |
+| Runtime Lease disposal | `state: disposed` |
+| Worker route receipt | `routing.environmentId: gha_65d4fd92e52949049acb7ab0`, `selectedTransport: websocket` |
+| Dispatch environment | `gha_65d4fd92e52949049acb7ab0` (exact route match) |
+| GitHub run terminal state | `completed / cancelled` |
+| GitHub workflow `Cleanup` step | `completed / success` |
+
+GitHub Actions run:
+https://github.com/tibame201020/Queqiao/actions/runs/37880094019
+
+**Verdict:** The Gate C native ChatGPT → OAuth MCP → isolated Gateway →
+GitHub Actions Worker → reverse WebSocket → marker → disposal/cancellation
+**end-to-end proof is PASS**.
+
+**Scope limitation:** The endpoint is a Cloudflare Quick Tunnel on a local
+machine, not a reserved hostname or continuously available hosting service.
+This proves a live end-to-end session, **not** production availability.
+The experimental MCP tools, per-process dispatch budget, process-local
+lease ownership, and 180-second TTL are POC-only. Promote separately with
+stable ingress, restart-safe ownership, operational monitoring, and
+credential lifecycle controls.
+
+No OAuth tokens, approval secrets, browser cookies or user-specific browser
+state belong in this repository.
