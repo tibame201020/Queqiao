@@ -94,6 +94,11 @@ The Preview owner-HMAC key is now loaded from an independent private
 no longer serializes unrelated journal operations for its full duration;
 cancellation is a persisted, retryable and deduplicated transition with
 bounded Worker abort. Remote multi-instance ownership remains open.
+Isolated real-Runner in-flight cancel, Gateway OS restart, and OAuth MCP
+Client disconnect recovery are additionally verified in
+[`production-short-task-runtime.md`](production-short-task-runtime.md) with
+GitHub Actions Run IDs 37936357139, 37936682417, and 37937027779.
+This remains a single-Gateway Preview validation.
 This Preview is not an approved multi-tenant production API.
 ## Persistent-host starter templates
 A provider-neutral Linux Gateway + named HTTPS Tunnel host starter lives in

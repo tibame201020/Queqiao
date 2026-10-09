@@ -6,7 +6,7 @@ import { secureRuntimeDirectory, secureRuntimeFile } from "@queqiao/platform-pat
 import type { GitHubActionsRuntimeCoordinator } from "@queqiao/runtime-provider-github-actions";
 import type { MembershipWorkerRegistry } from "./worker-membership-registry.js";
 
-const taskIdSchema = z.literal("gateway-vitest");
+const taskIdSchema = z.enum(["gateway-vitest", "gateway-cancel-smoke"]);
 const sourceRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
 const idempotencySchema = z.string().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/);
 const digestSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -38,11 +38,18 @@ export type ShortTaskRecord = z.infer<typeof recordSchema>;
 export type PublicShortTaskRecord = Omit<ShortTaskRecord, "ownerDigest" | "idempotencyDigest">;
 type ShortTaskState = z.infer<typeof taskStateSchema>;
 
-const TASK = Object.freeze({
-  id: "gateway-vitest" as const, workspaceId: "runtime",
-  executable: "node",
-  args: Object.freeze(["node_modules/vitest/vitest.mjs", "run", "apps/gateway/src/actions-mcp-poc.test.ts", "--maxWorkers=2"]),
-  cwd: ".", mode: "sync" as const, timeoutMs: 45000, ttlSeconds: 180,
+const TASK_CATALOG = Object.freeze({
+  "gateway-vitest": {
+    workspaceId: "runtime", executable: "node",
+    args: ["node_modules/vitest/vitest.mjs", "run", "apps/gateway/src/actions-mcp-poc.test.ts", "--maxWorkers=2"],
+    cwd: ".", mode: "sync" as const, timeoutMs: 45000, ttlSeconds: 180,
+  },
+  // Isolation-only deterministic long-running command; never takes user args.
+  "gateway-cancel-smoke": {
+    workspaceId: "runtime", executable: "node",
+    args: ["scripts/runtime-cancel-smoke.mjs"],
+    cwd: ".", mode: "sync" as const, timeoutMs: 105000, ttlSeconds: 240,
+  },
 });
 const ACTIVE = new Set<ShortTaskState>(["queued", "provisioning", "ready", "running", "cancelling"]);
 
@@ -192,13 +199,13 @@ export class ShortTaskService {
       if ([...this.tasks.values()].filter((task) => ACTIVE.has(task.state)).length >= 16) throw new Error("Global active task quota exceeded");
       if (this.tasks.size >= 256) throw new Error("Persistent task history capacity exceeded");
       const now = new Date().toISOString();
-      const task: ShortTaskRecord = { id: randomUUID(), taskId: TASK.id, ownerDigest, idempotencyDigest,
+      const task: ShortTaskRecord = { id: randomUUID(), taskId: taskIdSchema.parse(input.taskId), ownerDigest, idempotencyDigest,
         sourceRevision: this.revision, state: "queued", createdAt: now, updatedAt: now };
       this.tasks.set(task.id, task);
       // Write-ahead reservation ensures replay and quota survive a crashed dispatch.
       try { await this.save(); } catch (error) { this.tasks.delete(task.id); throw error; }
       try {
-        const lease = await this.coordinator.provision({ ttlSeconds: TASK.ttlSeconds,
+        const lease = await this.coordinator.provision({ ttlSeconds: TASK_CATALOG[task.taskId].ttlSeconds,
           metadata: { purpose: "short-task", taskId: task.id, sourceRevision: this.revision } });
         const environmentId = lease.providerMetadata?.["environmentId"];
         const runId = lease.providerMetadata?.["runId"];
@@ -238,6 +245,7 @@ export class ShortTaskService {
       return { task: running, controller };
     });
 
+    const TASK = TASK_CATALOG[task.taskId];
     // A Worker that ignores the signal must not hold the local execute()
     // promise forever after cancellation. The provider also cancels the run.
     let onAbort: (() => void) | undefined;

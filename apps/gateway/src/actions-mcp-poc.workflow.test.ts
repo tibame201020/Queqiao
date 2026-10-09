@@ -36,6 +36,8 @@ describe("Actions Gate C short-task Worker least-privilege contract", () => {
     expect(bootstrap).toContain('cwd: "."');
     expect(bootstrap).toContain('mode: "sync"');
     expect(bootstrap).toContain('maxTimeoutMs: 45000');
+    expect(bootstrap).toContain('args: ["scripts/runtime-cancel-smoke.mjs"]');
+    expect(bootstrap).toContain('maxTimeoutMs: 105000');
     expect(bootstrap).not.toMatch(/allow: \[[^\]]*"shell"[^\]]*\]/);
     expect(bootstrap).not.toContain('command:');
   });

@@ -153,6 +153,20 @@ describe("durable scoped Actions short-task engine (not exposed over production 
     expect((await service.status("owner", task.id)).state).toBe("failed");
   });
 
+  it("offers only an explicit, bounded cancellation smoke task in the Preview catalog", async () => {
+    const { service, workers } = await fixture();
+    const pending = await service.submit("owner", { taskId: "gateway-cancel-smoke", idempotencyKey: "fixed-smoke" });
+    expect(pending.taskId).toBe("gateway-cancel-smoke");
+    const done = await service.execute("owner", pending.id);
+    expect(done.state).toBe("completed");
+    const worker = await workers.current();
+    expect(worker.run).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId: "runtime", executable: "node",
+      args: ["scripts/runtime-cancel-smoke.mjs"], cwd: ".", mode: "sync",
+      timeoutMs: 105000,
+    }), expect.any(AbortSignal));
+    await expect(service.submit("owner", { taskId: "arbitrary-shell", idempotencyKey: "bad" })).rejects.toThrow(/catalog/i);
+  });
   it("keeps status responsive and cancels an in-flight Worker without waiting for run completion", async () => {
     const { service, workers, coordinator } = await fixture();
     const worker = await workers.current();

@@ -160,7 +160,8 @@ The security CI includes the short-task unit tests.
 **Boundary:** this is a controlled Preview E2E by an independently
 authenticated OAuth MCP client. It is **not** a ChatGPT Browser Harness
 execution of the new Preview API, not a live managed cloud deployment,
-and not a multi-instance or disconnect/restart recovery acceptance.
+and not a multi-instance recovery acceptance. See the separate isolated
+real-Runner cancellation, restart, and client-disconnect tests below.
 ## Blocking work before activation
 
 1. **Production identity and authorization**: the Preview uses existing
@@ -192,3 +193,60 @@ The default production config advertises no Preview task controls.
 This PR provides a deliberately isolated, explicitly enabled Preview API,
 not a production deployment. No local user credentials or private data
 belong in the repository.
+## Controlled in-flight cancellation acceptance task
+
+Only on isolated, explicitly enabled Preview Gateways, the immutable
+`gateway-cancel-smoke` catalog task runs:
+
+```text
+node scripts/runtime-cancel-smoke.mjs
+```
+
+The checked-in script writes `runtime-cancel-smoke.started` with the
+non-sensitive marker `QUEQIAO_ACTIONS_CLI_STARTED` in the Runner workspace,
+then holds a bounded 85-second process. Its exact argv, cwd, sync mode and
+105-second timeout are allowlisted in the ephemeral Actions POC Worker.
+The task has a 240-second Runtime Lease TTL and accepts no arguments.
+
+**Live acceptance must** obtain an actual GitHub Run ID, poll the Worker
+until ready, call `short_task_execute` while separately polling the
+Worker's marker via `read_file`, and only then send `short_task_cancel`.
+Verify that execute terminates as cancelled, Task Journal stays
+`cancelled`, Lease disposes, GitHub Actions concludes cancelled, and
+Workflow Cleanup succeeds. Mere acceptance of a cancel request before the
+remote script starts does **not** pass the in-flight test.
+
+The marker file is created at runtime on the disposable GitHub-hosted Runner;
+it is not checked into the repository. Never run this task with user data
+or broad credentials. This is not a general-purpose CLI catalog.
+## Isolated real Runner lifecycle acceptance (2026-10-09)
+
+The following acceptance tests used a real authenticated OAuth MCP Preview
+client, an isolated Gateway, a temporary public HTTPS ingress, a fixed
+Actions Worker checkout at reviewed SHA `56dac780f8127ad809e55d55e485b22810135a62`,
+and the bounded `gateway-cancel-smoke` task. All run receipts were checked
+against the Gateway's private Task Journal and the GitHub Actions job steps.
+No user/browser credentials or local session data were committed.
+
+| Acceptance | Actions run | Durable task outcome | GitHub outcome |
+| --- | --- | --- | --- |
+| Cancel **after remote CLI started** | [37936357139](https://github.com/tibame201020/Queqiao/actions/runs/37936357139) | `cancelled`; original execute returned an error | `completed / cancelled`; Cleanup success |
+| Force-stop **Gateway OS process while remote CLI is running** | [37936682417](https://github.com/tibame201020/Queqiao/actions/runs/37936682417) | `failed`, reason `gateway_restart`; Run ID retained; checkpoint lease cleared on new Gateway process | `completed / cancelled`; Cleanup success |
+| Kill **OAuth MCP Client** while remote CLI runs; reconnect as same client | [37937027779](https://github.com/tibame201020/Queqiao/actions/runs/37937027779) | `completed`, exit code 0; reconnected client retrieved completed marker and matched routing | `completed / cancelled`; Cleanup success |
+
+For cancellation and restart, the testing client read
+`runtime-cancel-smoke.started` from the **actual GitHub-hosted Worker**
+with the leased environment ID, then verified Task Journal state `running`
+**before** terminating either the Client/Task or the Gateway. The restart
+test also confirmed the lease was present in the durable runtime checkpoint
+before terminating the old Gateway process, then recovered it with the new
+OS process. For disconnection, the original client process was force-killed,
+while Gateway remained healthy; a fresh MCP connection using the same
+authorized client identity observed `running` and later `completed`.
+
+**Verdict: PASS** for these three controlled single-Gateway real-Runner
+failure scenarios. This does **not** test distributed Gateway instances,
+simultaneous lease owners, revocation/key rotation mid-flight, hosted Gateway
+availability when the local PC is off, or arbitrary user-supplied code.
+The exact command policy is a test-only fixed-script allowlist and not a
+general-purpose code execution sandbox.
