@@ -81,6 +81,13 @@ selected the resulting Worker by its runtime environment ID.
 **Verdict: PASS** for one specific, trusted, bounded CLI task and for
 deny-by-policy cases on a real Actions Worker. This is not evidence that
 arbitrary user-supplied scripts are safely sandboxed.
+### Internal short-task Preview API
+
+Issue #115 now has a private task journal and an explicit opt-in OAuth
+MCP Preview interface. It requires a trusted source SHA and a keyed-HMAC
+principal binding. See [Production short-task runtime](production-short-task-runtime.md).
+The default Gateway config still does **not** expose task dispatch.
+This Preview is not an approved multi-tenant production API.
 ## Persistent-host starter templates
 A provider-neutral Linux Gateway + named HTTPS Tunnel host starter lives in
 [`deploy/systemd/`](../deploy/systemd/README.md). It includes systemd units,

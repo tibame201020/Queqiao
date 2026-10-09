@@ -257,6 +257,15 @@ const runtimeConfigBaseSchema = z.object({
         audience: z.string().min(1).max(2048).optional(),
         // Gate C test-only MCP controls; disabled by default on every Gateway.
         mcpPocEnabled: z.boolean().optional(),
+        // Task API preview: explicit SHA is mandatory, cannot coexist with POC tools.
+        shortTasksPreview: z.object({
+          enabled: z.literal(true),
+          sourceRevision: z.string().regex(/^[0-9a-f]{40}$/),
+        }).optional(),
+      }).superRefine((provider, ctx) => {
+        if (provider.mcpPocEnabled && provider.shortTasksPreview?.enabled) {
+          ctx.addIssue({ code: "custom", message: "POC and short-task Preview MCP controls are mutually exclusive" });
+        }
       }).optional(),
     }).default({}),
   }).optional(),

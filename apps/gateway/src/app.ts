@@ -14,6 +14,8 @@ import { GatewayLivenessMonitor } from "./liveness-monitor.js";
 import type { WorkerSessionRegistry } from "./worker-session-registry.js";
 import type { GitHubActionsRuntimeCoordinator } from "@queqiao/runtime-provider-github-actions";
 import { ActionsMcpPoc } from "./actions-mcp-poc.js";
+import path from "node:path";
+import { ShortTaskJournal, ShortTaskService } from "./short-task-runtime.js";
 
 function authAuditOutcome(status: number): "success" | "denied" | "failed" {
   if (status < 400) return "success";
@@ -43,7 +45,18 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
   await workerSource.initialize();
   const actionsMcpPoc = githubActionsRuntime && config.githubActionsRuntime?.mcpPocEnabled
     ? new ActionsMcpPoc(githubActionsRuntime, workerSource) : undefined;
-  const allowedOriginHostnames = [...new Set([config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]", ...[...config.allowedRedirectOrigins].map((origin) => new URL(origin).hostname)])];
+  const preview = config.githubActionsRuntime?.shortTasksPreview;
+  if (preview?.enabled && !githubActionsRuntime) throw new Error("Short-task Preview requires a GitHub Actions Runtime");
+  const shortTasks = preview?.enabled && githubActionsRuntime ? new ShortTaskService({
+    journal: new ShortTaskJournal(path.join(config.stateDir, "short-tasks.json")),
+    coordinator: githubActionsRuntime, workers: workerSource,
+    ownerSecret: Buffer.from(config.jwtSecret).toString("utf8"), sourceRevision: preview.sourceRevision,
+  }) : undefined;
+  if (shortTasks) {
+    await shortTasks.restore();
+    // Gateway runtime index.ts first cancels orphans via recoverPending().
+    await shortTasks.reconcileAfterRuntimeRecovery();
+  }  const allowedOriginHostnames = [...new Set([config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]", ...[...config.allowedRedirectOrigins].map((origin) => new URL(origin).hostname)])];
   const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts: [config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]"], jsonLimit: "6mb" });
   app.set("trust proxy", config.trustProxyHops); app.disable("x-powered-by");
   app.use((req, res, next) => {
@@ -176,7 +189,7 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
   });
   app.post("/mcp", async (req: Request, res: Response) => {
     const claims = res.locals.oauth as AccessClaims;
-    const adapter = createMcpNodeAdapter(await workerSource.current(), claims.scope.split(" ").filter(Boolean), { principalId: claims.client_id, registry: cancellationRegistry }, config.extensions, actionsMcpPoc);
+    const adapter = createMcpNodeAdapter(await workerSource.current(), claims.scope.split(" ").filter(Boolean), { principalId: claims.client_id, registry: cancellationRegistry }, config.extensions, actionsMcpPoc, shortTasks);
     res.on("close", () => { void adapter.close(); });
     try { await adapter.handle(req, res, req.body); }
     catch { if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: "Internal server error" }, id: null }); }

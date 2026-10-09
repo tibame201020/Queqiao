@@ -1,6 +1,6 @@
 # Production short tasks — Issue #115, internal runtime slice
 
-**State: internal engine implemented, NOT exposed as a production MCP API.**
+**State: internal engine + authenticated opt-in Preview API; NOT production enabled.**
 The authenticated Gate C marker and fixed Vitest short-task POCs established
 that GitHub Actions Worker execution works. They were intentionally opt-in
 test integrations. Do not enable those `actions_worker_*` endpoints in
@@ -15,8 +15,9 @@ apps/gateway/src/actions-mcp-poc.test.ts --maxWorkers=2`, `cwd: "."`,
 `mode: sync`, `timeoutMs: 45000`. Clients cannot choose a command,
 additional argv, cwd, mode, environment ID, or source revision.
 
-The constructor takes an authenticated principal ID supplied by a future
-verified OAuth server entrypoint, a host-held keyed-HMAC secret, and a
+The Preview MCP adapter binds the principal to the validated OAuth Client ID from
+the existing Gateway token middleware (never to an input argument). The service
+receives a host-held keyed-HMAC secret and a
 40-digit revision identifier. It never accepts a caller-supplied principal
 from an MCP tool argument. The trusted source revision is propagated as a validated 40-digit SHA via
 the Runtime Provider's `source_revision` workflow input. The GitHub
@@ -48,6 +49,38 @@ and idempotency identities are keyed HMAC digests. Raw OAuth client IDs,
 idempotency keys, browser sessions, bearer tokens, and GitHub credentials
 are never serialized; public return values omit internal owner digests.
 
+## Authenticated MCP Preview (explicitly disabled by default)
+
+The runtime config accepts an optional provider setting:
+
+```yaml
+runtimeProviders:
+  githubActions:
+    # ... trusted repository, workflow, tokenFile and ref
+    mcpPocEnabled: false
+    shortTasksPreview:
+      enabled: true
+      sourceRevision: 0123456789abcdef0123456789abcdef01234567
+```
+
+The Preview setting requires a lowercase 40-hex revision and cannot
+coexist with `mcpPocEnabled: true`. **Do not enable it on an actual public
+Production Gateway yet.** When explicitly configured on an isolated
+acceptance Gateway, the four authenticated OAuth MCP tools are:
+
+- `short_task_submit({taskId:"gateway-vitest", idempotencyKey})`
+- `short_task_status({id})`
+- `short_task_execute({id})`
+- `short_task_cancel({id})`
+
+The Gateway restores the private task journal and records interrupted
+tasks as failed *after* the Runtime Coordinator has disposed orphan leases.
+The coordinator uses its private checkpoint in Preview mode. This is
+still a **single-process file journal**, not a multi-host transactional
+task DB. The Gateway OAuth client ID is a client/application principal,
+not a verified human end-user identity. For multi-tenant access, end-user
+identity and fine-grained task authorization remain outstanding.
+
 ## Verified test coverage
 
 `apps/gateway/src/short-task-runtime.test.ts` covers:
@@ -55,16 +88,20 @@ deduplicated dispatch including concurrent submits, per-owner quota and
 cross-owner denial, exact argv and routing, exit code success and failure,
 idempotency conflict, recovery after restart, corrupt snapshot fail-closed,
 failed cancellation retaining correlation, and no stored raw OAuth ID.
-`actions-mcp-poc.integration.test.ts` asserts that the new tools **are not
-advertised** by the existing public MCP API.
+`actions-mcp-poc.integration.test.ts` asserts that no task controls are
+advertised without the Preview flag, while a real OAuth token can use the
+Preview API with distinct-client ownership isolation, and Preview cannot
+enable legacy `actions_worker_*` POC tools at the same time.
 
 The security CI includes the short-task unit tests.
 
 ## Blocking work before activation
 
-1. **Separate production MCP API and authorization**: explicit OAuth scopes,
-   per-principal ownership, task catalog authorization, rate/quota budgets,
-   and anti-CSRF/approval rules. Do not reuse the test-only POC toggle.
+1. **Production identity and authorization**: the Preview uses existing
+   OAuth client identity with `queqiao:access` and bounded quotas.
+   Production requires a dedicated task scope, authenticated end-user /
+   tenant mapping, per-catalog authorization, rate/budget controls, and
+   an approval boundary. Preview and POC switches remain independent.
 2. **Workflow provenance**: checkout SHA pinning and Runner-side HEAD
    verification are now implemented for the trusted task metadata.
    Remaining: verify the dispatched workflow's immutable revision with OIDC
@@ -84,5 +121,7 @@ The security CI includes the short-task unit tests.
    process; kill/restart the Gateway mid-task, test disconnected clients,
    cross-principal access and lost-run reconciliation.
 
-No new public task dispatch is enabled by this PR. No local user
-credentials or private data belong in the repository.
+The default production config advertises no Preview task controls.
+This PR provides a deliberately isolated, explicitly enabled Preview API,
+not a production deployment. No local user credentials or private data
+belong in the repository.
