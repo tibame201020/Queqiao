@@ -250,3 +250,38 @@ simultaneous lease owners, revocation/key rotation mid-flight, hosted Gateway
 availability when the local PC is off, or arbitrary user-supplied code.
 The exact command policy is a test-only fixed-script allowlist and not a
 general-purpose code execution sandbox.
+## Single-host Gateway state ownership - Issue #115 safety gate
+
+The JSON Task Journal and GitHub Actions checkpoint are **single-process**
+stores. The Gateway CLI now acquires an exclusive local OS socket before
+calling recoverPending() or accepting clients. The socket binds to a
+deterministic loopback port **30000-45999** derived from the canonical
+real filesystem path of the Gateway state directory. A competing process
+with the same state directory (including symlink aliases) fails closed,
+even when the HTTP management/worker listener ports are different.
+
+The OS releases the socket after SIGKILL; a new Gateway can reconcile
+orphaned leases using the private checkpoint. Graceful shutdown releases
+ownership only after Gateway network servers close. No stale PID file
+needs manual deletion or ambiguous stale-file races.
+
+**Scope:** this is a single-host safety guard, **not** a distributed lock,
+election, or transactional scheduler. Another host or network namespace
+can still access the same shared state. Unrelated local programs using
+the deterministic port can also block startup (fail closed). Operators
+must not share the JSON state directory between multiple Gateway hosts.
+Production multi-instance dispatch still requires a central transactional
+store, fenced leases, and orphan-run reconciliation.
+
+**Actual Gateway OS acceptance (2026-10-09, isolated local test):**
+Gateway A with HTTP port 14110 and Gateway B with HTTP port 14120
+were configured against the same private state directory. A's OAuth
+metadata returned HTTP 200. While A was alive, B exited with
+"Gateway state directory already owned", and A remained healthy.
+After force-killing A, B launched with the same state directory and
+returned HTTP 200. Result: **PASS**. Both instances and their private
+test credentials were stopped/cleared after verification. This remains
+a same-host guard, not a multi-host coordination test.
+TDD and cross-process tests cover competing owners, symlink aliases,
+separate state directories, graceful release and actual process SIGKILL.
+The new cases run in the GitHub Actions Security baseline.
