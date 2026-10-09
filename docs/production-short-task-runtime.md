@@ -1,4 +1,4 @@
-﻿# Production short tasks — Issue #115, internal runtime slice
+# Production short tasks — Issue #115, internal runtime slice
 
 **State: internal engine implemented, NOT exposed as a production MCP API.**
 The authenticated Gate C marker and fixed Vitest short-task POCs established
@@ -18,9 +18,12 @@ additional argv, cwd, mode, environment ID, or source revision.
 The constructor takes an authenticated principal ID supplied by a future
 verified OAuth server entrypoint, a host-held keyed-HMAC secret, and a
 40-digit revision identifier. It never accepts a caller-supplied principal
-from an MCP tool argument. The source revision is an **audit field only** in
-this slice: GitHub Actions checkout is not yet guaranteed to use that
-revision. This MUST be fixed before production dispatch.
+from an MCP tool argument. The trusted source revision is propagated as a validated 40-digit SHA via
+the Runtime Provider's `source_revision` workflow input. The GitHub
+Actions Worker checks out that SHA and verifies `git rev-parse HEAD`
+matches **before** npm install/build. Older POC dispatches that omit the
+optional SHA input retain their existing checkout behavior. This is a
+verified code contract, not yet a production live task acceptance.
 
 The service provides an internal lifecycle:
 
@@ -62,9 +65,11 @@ The security CI includes the short-task unit tests.
 1. **Separate production MCP API and authorization**: explicit OAuth scopes,
    per-principal ownership, task catalog authorization, rate/quota budgets,
    and anti-CSRF/approval rules. Do not reuse the test-only POC toggle.
-2. **Immutable source**: pin the actual GitHub Actions checkout SHA and
-   verify OIDC workflow revision before accepting a task; merely storing
-   the requested revision is insufficient.
+2. **Workflow provenance**: checkout SHA pinning and Runner-side HEAD
+   verification are now implemented for the trusted task metadata.
+   Remaining: verify the dispatched workflow's immutable revision with OIDC
+   and ensure only approved workflow/configuration refs can handle an
+   authorized task. Record and test an end-to-end SHA-pinned run.
 3. **Durable multi-host lifecycle**: move from single-process file snapshot
    and coarse serialization to a transactional database with an ownership
    lease/lock; handle remote cancellations while a task is running,

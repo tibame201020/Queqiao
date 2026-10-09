@@ -249,6 +249,8 @@ export class GitHubActionsRuntimeProvider implements RuntimeProvider {
 
   async provision(request: RuntimeProvisionRequest): Promise<RuntimeProvisionResult> {
     const environmentId = githubActionsRuntimeEnvironmentId(request.leaseId);
+    const sourceRevision = request.metadata?.["sourceRevision"] === undefined ? undefined
+      : z.string().regex(/^[0-9a-f]{40}$/).parse(request.metadata["sourceRevision"]);
     const result = await this.api.dispatch({
       owner: this.owner,
       repo: this.repo,
@@ -259,6 +261,7 @@ export class GitHubActionsRuntimeProvider implements RuntimeProvider {
         environment_id: environmentId,
         ttl_seconds: String(request.ttlSeconds),
         gateway_url: this.gatewayUrl,
+        ...(sourceRevision ? { source_revision: sourceRevision } : {}),
       },
     });
 

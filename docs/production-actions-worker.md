@@ -88,6 +88,15 @@ external secret-file paths and a stable-origin configuration template, with
 contract tests in the CI security gate. It is **not deployed** and leaves the
 test-only Actions MCP controls disabled.
 
+### Source SHA pin for the task-catalog path
+
+The runtime provider accepts an optional, **validated lowercase 40-hex
+`sourceRevision`** in trusted metadata and maps it to the Actions
+`source_revision` dispatch input. The Workflow checks out this SHA and
+verifies the checkout HEAD before running npm or starting the Worker. A
+missing input preserves existing POC behavior. This is not yet a
+multi-principal production workload API or a full OIDC workflow-revision
+attestation.
 ## Production acceptance gates
 
 | Gate | Acceptance criteria | Current state |
