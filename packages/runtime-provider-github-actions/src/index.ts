@@ -330,15 +330,45 @@ export class GitHubActionsRuntimeReconciler {
   }
 }
 
+export interface GitHubActionsRuntimeJournal {
+  load(): Promise<RuntimeLease[]>;
+  save(leases: readonly RuntimeLease[]): Promise<void>;
+}
+
 export class GitHubActionsRuntimeCoordinator {
   private readonly leases = new Map<string, RuntimeLease>();
   private readonly reconciler = new GitHubActionsRuntimeReconciler();
+  private journalWrites: Promise<void> = Promise.resolve();
 
   constructor(
     readonly provider: GitHubActionsRuntimeProvider,
     readonly claims: GitHubActionsRuntimeClaimRegistry,
     private readonly now: () => Date = () => new Date(),
+    private readonly journal?: GitHubActionsRuntimeJournal,
   ) {}
+
+  /** Cancel unfinished Workers before the Gateway accepts new requests. */
+  async recoverPending(): Promise<void> {
+    if (!this.journal) return;
+    const leases = await this.journal.load();
+    for (const lease of leases) {
+      if (lease.providerId !== this.provider.id || !lease.providerRef) {
+        throw new Error("Invalid GitHub Actions checkpoint: missing provider runtime");
+      }
+      if (lease.state !== "disposed") {
+        await this.provider.dispose({ leaseId: lease.leaseId, providerRef: lease.providerRef, reason: "failed" });
+      }
+    }
+    await this.journal.save([]);
+  }
+
+  private persist(): Promise<void> {
+    if (!this.journal) return Promise.resolve();
+    const snapshot = [...this.leases.values()].filter((lease) => lease.state !== "disposed");
+    const write = this.journalWrites.then(() => this.journal!.save(snapshot));
+    this.journalWrites = write.catch(() => undefined);
+    return write;
+  }
 
   async provision(input: { ttlSeconds: number; metadata?: RuntimeProviderMetadata }): Promise<RuntimeLease> {
     const createdAt = this.now().toISOString();
@@ -358,6 +388,15 @@ export class GitHubActionsRuntimeCoordinator {
         metadata: input.metadata ?? {},
       }));
       this.leases.set(leaseId, lease);
+      try {
+        await this.persist();
+      } catch (error) {
+        // A dispatched Worker with no durable correlation must be cancelled.
+        await this.provider.dispose({ leaseId, providerRef: lease.providerRef!, reason: "failed" })
+          .catch((failure) => console.error("Runtime checkpoint compensation failed", failure instanceof Error ? failure.message : "unknown"));
+        this.leases.delete(leaseId);
+        throw error;
+      }
       return lease;
     } catch (error) {
       lease = transitionRuntimeLease(lease, {
@@ -410,6 +449,7 @@ export class GitHubActionsRuntimeCoordinator {
     });
     lease = transitionRuntimeLease(lease, { type: "disposed" }, this.now().toISOString());
     this.leases.set(lease.leaseId, lease);
+    await this.persist();
     return lease;
   }
 
@@ -428,6 +468,7 @@ export class GitHubActionsRuntimeCoordinator {
     });
     lease = transitionRuntimeLease(lease, { type: "disposed" }, this.now().toISOString());
     this.leases.set(lease.leaseId, lease);
+    await this.persist();
     return lease;
   }
 
@@ -443,9 +484,9 @@ export class GitHubActionsRuntimeCoordinator {
     });
     lease = transitionRuntimeLease(lease, { type: "disposed" }, this.now().toISOString());
     this.leases.set(lease.leaseId, lease);
+    await this.persist();
     return lease;
   }
-
   async expireDue(): Promise<RuntimeLease[]> {
     const nowMs = this.now().getTime();
     const due = [...this.leases.values()].filter((lease) =>
@@ -560,7 +601,8 @@ export const invokeGitHubCli: GitHubCliInvoker = (args, input) => new Promise((r
 });
 
 export class GitHubActionsGhCliApi implements GitHubActionsApi {
-  constructor(private readonly invoke: GitHubCliInvoker = invokeGitHubCli) {}
+  constructor(private readonly invoke: GitHubCliInvoker = invokeGitHubCli,
+    private readonly wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))) {}
 
   async dispatch(request: GitHubWorkflowDispatchRequest): Promise<GitHubWorkflowDispatchResult> {
     const owner = repoPartSchema.parse(request.owner);
@@ -583,6 +625,24 @@ export class GitHubActionsGhCliApi implements GitHubActionsApi {
     const owner = repoPartSchema.parse(request.owner);
     const repo = repoPartSchema.parse(request.repo);
     const runId = runIdSchema.parse(request.runId);
-    await this.invoke(["api", "--method", "POST", `repos/${owner}/${repo}/actions/runs/${runId}/cancel`]);
+    const endpoint = `repos/${owner}/${repo}/actions/runs/${runId}`;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        await this.invoke(["api", "--method", "POST", `${endpoint}/cancel`]);
+        return;
+      } catch {
+        // GitHub can reject cancellation before a just-dispatched run becomes visible.
+        // A completed run is already safe; do not treat every nonzero exit as success.
+        try {
+          const response = JSON.parse(await this.invoke(["api", endpoint])) as Record<string, unknown>;
+          if (response["id"] === runId && response["status"] === "completed"
+              && typeof response["conclusion"] === "string") return;
+        } catch {
+          // Status may also be temporarily unavailable. Retry within the bounded budget.
+        }
+        if (attempt === 5) throw new Error("GitHub Actions cancellation not verified after bounded retries");
+        await this.wait(Math.min(16_000, 1000 * 2 ** attempt));
+      }
+    }
   }
 }

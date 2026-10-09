@@ -112,10 +112,18 @@ marker, and disposal/cancellation receipt.
 
 ## Limitations
 
-This POC is single-tenant and process-local. A Gateway restart loses its
-in-memory lease registry and ownership mapping; monitor or cancel surviving
-Actions runs separately. Do not run this on a shared Gateway or reuse it as a
-general-purpose runtime scheduler.
+This POC is single-tenant. When `mcpPocEnabled` is true, the isolated Gateway
+saves non-secret run correlation data to a private checkpoint and performs
+fail-closed cancellation of any recorded unfinished Actions Worker **before**
+binding listeners on restart. An existing OAuth client's in-flight lease is
+**not resumed**; the restarted Gateway requires a fresh dispatch. Do not run
+this on a shared Gateway or reuse it as a general-purpose runtime scheduler.
+
+A remaining crash window exists **between a successful GitHub dispatch and
+the first durable checkpoint write**. The Worker workflow's TTL is the final
+backstop in that case. Production operation still requires remote orphan
+reconciliation, persistent ingress, credential rotation, and availability
+supervision.
 
 The Browser Harness still depends on a continuously available authenticated
 Chrome host. A local persistent profile does not function when that host is
@@ -194,3 +202,35 @@ credential lifecycle controls.
 
 No OAuth tokens, approval secrets, browser cookies or user-specific browser
 state belong in this repository.
+## Gate C+ restart recovery acceptance (2026-10-09)
+
+A follow-up TDD slice adds a private atomic checkpoint for unfinished
+GitHub Actions runtime leases, scoped to the explicitly enabled
+`mcpPocEnabled` Gateway. It stores only validated runtime lease descriptors,
+not OAuth principals, cookies, browser profiles or access tokens.
+
+On startup, the Gateway reads the checkpoint, cancels each outstanding
+correlated run using GitHub Actions, and clears the checkpoint only after
+success. Corrupt data or an unverified cancellation stops Gateway startup
+before the MCP listener can accept requests. Journal writes are serialized to
+prevent an older snapshot from overwriting a newer one. The `gh-cli` adapter
+uses bounded retries and checks the exact GitHub run's terminal status when
+cancellation is temporarily rejected.
+
+**Real provider recovery smoke test** (two separate Coordinator instances
+using a private local checkpoint, **not** a full OS Gateway process restart):
+
+- [Run 37881977813](https://github.com/tibame201020/Queqiao/actions/runs/37881977813):
+  initial immediate cancellation failed; a later GitHub cancellation request
+  succeeded, and the repaired recovery path subsequently cleared the record.
+- [Run 37882127066](https://github.com/tibame201020/Queqiao/actions/runs/37882127066):
+  a new Coordinator read one persisted run, submitted cancellation, and
+  verified the checkpoint was empty.
+- Both Actions runs reached `completed / cancelled`.
+- Unit tests cover checkpoint corruption, failed cancellation retaining
+  the record, concurrent checkpoint writes, compensation after write failure,
+  and the CLI adapter's eventual-consistency retry behavior.
+
+**Result:** Gateway-restart cancellation logic and real GitHub cancellation
+are verified separately. A real OS-level crash-and-restart test and stable
+HTTPS host remain outside this acceptance slice.

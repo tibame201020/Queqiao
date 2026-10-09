@@ -408,6 +408,46 @@ describe("GitHub Actions REST adapter", () => {
     })).resolves.toMatchObject({ runId: 77 });
   });
 });
+describe("GitHub CLI cancellation with eventually consistent runs", () => {
+  it("retries a transient early cancellation failure while the run is active", async () => {
+    let attempts = 0;
+    const wait = vi.fn(async () => undefined);
+    const invoke = vi.fn(async (args: readonly string[]) => {
+      if (args.some((a) => a.endsWith("/cancel"))) {
+        attempts++;
+        if (attempts === 1) throw new Error("unavailable while queued");
+        return "";
+      }
+      return JSON.stringify({ status: "in_progress", conclusion: null });
+    });
+    const api = new GitHubActionsGhCliApi(invoke, wait);
+    await api.cancel({ owner: "example", repo: "runtime", runId: 12345 });
+    expect(attempts).toBe(2);
+    expect(wait).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a previously cancelled completed run as disposed without retrying", async () => {
+    const wait = vi.fn(async () => undefined);
+    const invoke = vi.fn(async (args: readonly string[]) => {
+      if (args.some((a) => a.endsWith("/cancel"))) throw new Error("HTTP 409");
+      return JSON.stringify({ id: 12345, status: "completed", conclusion: "cancelled" });
+    });
+    await new GitHubActionsGhCliApi(invoke, wait).cancel({ owner: "example", repo: "runtime", runId: 12345 });
+    expect(wait).not.toHaveBeenCalled();
+  });
+
+  it("fails closed after bounded cancellation failures, without misreporting disposal", async () => {
+    const wait = vi.fn(async () => undefined);
+    const invoke = vi.fn(async (args: readonly string[]) => {
+      if (args.some((a) => a.endsWith("/cancel"))) throw new Error("unavailable");
+      return JSON.stringify({ status: "in_progress", conclusion: null });
+    });
+    await expect(new GitHubActionsGhCliApi(invoke, wait).cancel({
+      owner: "example", repo: "runtime", runId: 12345,
+    })).rejects.toThrow(/not verified/i);
+    expect(wait).toHaveBeenCalledTimes(5);
+  });
+});
 describe("GitHub Actions gh-cli adapter", () => {
   it("dispatches and cancels using bounded gh api arguments without token materialization", async () => {
     const invoke = vi.fn(async (args: readonly string[], input?: string) => {
