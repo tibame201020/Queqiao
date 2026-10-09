@@ -50,13 +50,14 @@ export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?
   const shortTasks = preview?.enabled && githubActionsRuntime ? new ShortTaskService({
     journal: new ShortTaskJournal(path.join(config.stateDir, "short-tasks.json")),
     coordinator: githubActionsRuntime, workers: workerSource,
-    ownerSecret: Buffer.from(config.jwtSecret).toString("utf8"), sourceRevision: preview.sourceRevision,
+    ownerSecret: preview.ownerKey, sourceRevision: preview.sourceRevision,
   }) : undefined;
   if (shortTasks) {
     await shortTasks.restore();
     // Gateway runtime index.ts first cancels orphans via recoverPending().
     await shortTasks.reconcileAfterRuntimeRecovery();
-  }  const allowedOriginHostnames = [...new Set([config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]", ...[...config.allowedRedirectOrigins].map((origin) => new URL(origin).hostname)])];
+  }
+  const allowedOriginHostnames = [...new Set([config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]", ...[...config.allowedRedirectOrigins].map((origin) => new URL(origin).hostname)])];
   const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts: [config.publicBaseUrl.hostname, "localhost", "127.0.0.1", "[::1]"], jsonLimit: "6mb" });
   app.set("trust proxy", config.trustProxyHops); app.disable("x-powered-by");
   app.use((req, res, next) => {

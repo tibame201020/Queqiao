@@ -261,6 +261,7 @@ const runtimeConfigBaseSchema = z.object({
         shortTasksPreview: z.object({
           enabled: z.literal(true),
           sourceRevision: z.string().regex(/^[0-9a-f]{40}$/),
+          ownerKeyFile: z.string().min(1).max(4096),
         }).optional(),
       }).superRefine((provider, ctx) => {
         if (provider.mcpPocEnabled && provider.shortTasksPreview?.enabled) {

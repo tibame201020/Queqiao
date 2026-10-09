@@ -30,7 +30,7 @@ export type GatewayRuntimeConfig = {
     auth?: "gh-cli";
     audience: string;
     mcpPocEnabled?: boolean;
-    shortTasksPreview?: { enabled: true; sourceRevision: string };
+    shortTasksPreview?: { enabled: true; sourceRevision: string; ownerKey: string };
   };
 };
 
@@ -105,6 +105,17 @@ export function loadGatewayConfigFile(file: string): GatewayRuntimeConfig {
     ? { cert: readFileSync(path.resolve(gateway.workerSessionTls.certFile)), key: readFileSync(path.resolve(gateway.workerSessionTls.keyFile)) }
     : undefined;
   const githubActions = gateway.runtimeProviders.githubActions;
+  const taskOwnerKeyFile = githubActions?.shortTasksPreview?.ownerKeyFile;
+  if (taskOwnerKeyFile && path.resolve(taskOwnerKeyFile) === path.resolve(gateway.jwtSigningSecretFile)) {
+    throw new Error("Short-task owner key must use a separate file from the JWT signing secret");
+  }
+  const taskOwnerKey = taskOwnerKeyFile ? readFileSync(path.resolve(taskOwnerKeyFile), "utf8").trim() : undefined;
+  if (taskOwnerKey !== undefined && Buffer.byteLength(taskOwnerKey) < 32) {
+    throw new Error("Short-task owner key must be at least 32 bytes");
+  }
+  if (taskOwnerKey !== undefined && taskOwnerKey === signingSecret) {
+    throw new Error("Short-task owner key must be independent from the JWT signing secret");
+  }
   const githubActionsRuntime = githubActions
     ? {
         owner: githubActions.owner,
@@ -115,7 +126,7 @@ export function loadGatewayConfigFile(file: string): GatewayRuntimeConfig {
         ...(githubActions.auth ? { auth: githubActions.auth } : {}),
         audience: githubActions.audience ?? new URL("runtime/github-actions/claim", publicBaseUrl).href,
         mcpPocEnabled: githubActions.mcpPocEnabled,
-        ...(githubActions.shortTasksPreview ? { shortTasksPreview: githubActions.shortTasksPreview } : {}),
+        ...(githubActions.shortTasksPreview ? { shortTasksPreview: { enabled: true as const, sourceRevision: githubActions.shortTasksPreview.sourceRevision, ownerKey: taskOwnerKey! } } : {}),
       }
     : undefined;
   return {

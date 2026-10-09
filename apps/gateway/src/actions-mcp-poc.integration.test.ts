@@ -74,7 +74,7 @@ describe("Gate C opt-in MCP endpoint", () => {
       allowedRedirectOrigins: new Set(["https://chatgpt.com"]),
       extensions: [],
       configDirectory: root,
-      githubActionsRuntime: { owner: "example", repo: "runtime-host", workflowId: "runtime-provider-poc-worker.yml", ref: "main", token: "never-live", audience: "urn:test", mcpPocEnabled: enabled, ...(preview ? { shortTasksPreview: { enabled: true, sourceRevision: "a".repeat(40) } } : {}) },
+      githubActionsRuntime: { owner: "example", repo: "runtime-host", workflowId: "runtime-provider-poc-worker.yml", ref: "main", token: "never-live", audience: "urn:test", mcpPocEnabled: enabled, ...(preview ? { shortTasksPreview: { enabled: true, sourceRevision: "a".repeat(40), ownerKey: "stable-preview-owner-secret-key-at-least-32-bytes" } } : {}) },
     };
     const app = await createGatewayApp(config, undefined, undefined, undefined, fake as unknown as GitHubActionsRuntimeCoordinator);
     const server = await new Promise<Server>((resolve) => {

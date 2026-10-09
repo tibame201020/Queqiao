@@ -121,12 +121,12 @@ describe("extension config schema", () => {
       stateDirectory: "state", approvalSecretFile: "approval.secret", jwtSigningSecretFile: "jwt.secret" };
     const baseline = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: gh } } });
     expect(baseline.gateway?.runtimeProviders.githubActions?.shortTasksPreview).toBeUndefined();
-    const preview = { enabled: true, sourceRevision: "a".repeat(40) };
+    const preview = { enabled: true, sourceRevision: "a".repeat(40), ownerKeyFile: "/etc/queqiao/short-task-owner.secret" };
     const enabled = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gh, shortTasksPreview: preview } } } });
     expect(enabled.gateway?.runtimeProviders.githubActions?.shortTasksPreview).toEqual(preview);
     const cliPreview = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gh, tokenFile: undefined, auth: "gh-cli", shortTasksPreview: preview } } } });
     expect(cliPreview.gateway?.runtimeProviders.githubActions?.auth).toBe("gh-cli");
-    for (const invalid of [ { enabled: true }, { enabled: true, sourceRevision: "main" }, { enabled: false, sourceRevision: "a".repeat(40) } ]) {
+    for (const invalid of [ { enabled: true }, { enabled: true, sourceRevision: "main", ownerKeyFile: "task.key" }, { enabled: true, sourceRevision: "a".repeat(40) }, { enabled: false, sourceRevision: "a".repeat(40), ownerKeyFile: "task.key" } ]) {
       expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gh, shortTasksPreview: invalid } } } })).toThrow();
     }
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: {

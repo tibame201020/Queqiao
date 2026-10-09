@@ -1,4 +1,4 @@
-# Production short tasks — Issue #115, internal runtime slice
+# Production short tasks - Issue #115
 
 **State: internal engine + authenticated opt-in Preview API; NOT production enabled.**
 The authenticated Gate C marker and fixed Vitest short-task POCs established
@@ -17,7 +17,7 @@ additional argv, cwd, mode, environment ID, or source revision.
 
 The Preview MCP adapter binds the principal to the validated OAuth Client ID from
 the existing Gateway token middleware (never to an input argument). The service
-receives a host-held keyed-HMAC secret and a
+receives a separate host-held keyed-HMAC owner key and a
 40-digit revision identifier. It never accepts a caller-supplied principal
 from an MCP tool argument. The trusted source revision is propagated as a validated 40-digit SHA via
 the Runtime Provider's `source_revision` workflow input. The GitHub
@@ -37,12 +37,48 @@ The service provides an internal lifecycle:
   leased Worker environment, verify the routing receipt, bound
   stdout/stderr to 8192 characters each, record exit code, and confirm
   runtime disposal.
-- `cancel(clientId, id)`: enforce ownership and attempt lease cleanup.
+- `cancel(clientId, id)`: enforce ownership, persist `cancelling`,
+  abort the Worker request and dispose the lease without holding the
+  journal transaction during GitHub cancellation. Concurrent cancellation
+  calls share one result. Provider failures retain a retryable
+  `cancel_failed` status.
 - `restore()` followed by `reconcileAfterRuntimeRecovery()`: after
   the existing Coordinator has cancelled orphans, retain history and
   mark unfinished tasks `gateway_restart` (never auto re-dispatch).
   Failed cancellation retains the lease/run identity for reconciliation.
 
+### Concurrent execution and cancellation
+
+The service persists a short `running` transition, then releases the
+journal transaction while the Worker executes. The MCP owner may query
+status, reject duplicates or cancel the task during an active CLI. Cancellation
+persists `cancelling` before issuing an AbortSignal and cancelling the GitHub
+Actions lease. When the provider is slow, status remains available and
+duplicate cancels share the same cleanup promise. A successful late Worker
+response cannot overwrite `cancelled`. Aborting during Worker preflight
+prevents launching a command with an already-aborted signal.
+
+A failing provider cancellation preserves `cancelling`, lease identity,
+GitHub Run ID and `cancel_failed` for operator or owner retry. Restart
+recovery converts nonterminal tasks to `gateway_restart` only *after*
+the Coordinator has recovered and cancelled orphan Workers. Task submission
+and final disposal still perform some remote operations while holding the
+single-process transaction. This is not a distributed task scheduler.
+
+### Owner key continuity
+
+Preview requires `ownerKeyFile` (a separate, random, >=32-byte secret,
+outside the repository) and refuses to use the JWT signing key as task owner
+identity. Keep this key consistent across Gateway restarts and JWT rotations.
+Task journals include a **non-secret keyed verification value** and reject
+startup with a mismatched owner key if persisted tasks exist. This deliberately
+avoids silently losing access to existing task history after key rotation.
+
+Old Preview journals created before the owner-key proof existed are **not
+silently migrated**. Before upgrading an isolated Preview deployment, cancel
+and reconcile outstanding GitHub Actions leases, safely archive the earlier
+journal and use a fresh isolated Preview state directory. Real deployments
+require a reviewed, explicit migration path and backup process.
 A single-process private journal uses atomic file replacement, fsync on
 supported hosts, and restricted file/directory permissions. Stored owner
 and idempotency identities are keyed HMAC digests. Raw OAuth client IDs,
@@ -61,6 +97,7 @@ runtimeProviders:
     shortTasksPreview:
       enabled: true
       sourceRevision: 0123456789abcdef0123456789abcdef01234567
+      ownerKeyFile: /etc/queqiao/short-task-owner.secret
 ```
 
 The Preview setting requires a lowercase 40-hex revision and cannot
@@ -87,7 +124,9 @@ identity and fine-grained task authorization remain outstanding.
 deduplicated dispatch including concurrent submits, per-owner quota and
 cross-owner denial, exact argv and routing, exit code success and failure,
 idempotency conflict, recovery after restart, corrupt snapshot fail-closed,
-failed cancellation retaining correlation, and no stored raw OAuth ID.
+failed cancellation retaining correlation, concurrent status while the CLI is
+running, cancellation deduplication, abort before dispatch, owner key stability
+and rejection of mismatched journal owner keys, and no stored raw OAuth ID.
 `actions-mcp-poc.integration.test.ts` asserts that no task controls are
 advertised without the Preview flag, while a real OAuth token can use the
 Preview API with distinct-client ownership isolation, and Preview cannot

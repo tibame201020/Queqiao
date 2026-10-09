@@ -20,7 +20,7 @@ async function fixture() {
   };
   const worker = {
     requireTool: vi.fn(async () => undefined),
-    run: vi.fn(async () => ({
+    run: vi.fn(async (_input?: unknown, _signal?: AbortSignal) => ({
       value: { exitCode: 0, stdout: "8 passed", stderr: "", timedOut: false, aborted: false, outputLimitExceeded: false, durationMs: 65 },
       routing: { environmentId: lease.providerMetadata.environmentId, selectedTransport: "websocket" },
     })),
@@ -58,7 +58,7 @@ describe("durable scoped Actions short-task engine (not exposed over production 
     const w = await workers.current();
     expect(w.run).toHaveBeenCalledWith({ workspaceId: "runtime", environmentId: "gha_111111111111411181111111",
       executable: "node", args: ["node_modules/vitest/vitest.mjs", "run", "apps/gateway/src/actions-mcp-poc.test.ts", "--maxWorkers=2"],
-      cwd: ".", mode: "sync", timeoutMs: 45000 });
+      cwd: ".", mode: "sync", timeoutMs: 45000 }, expect.any(AbortSignal));
     expect(coordinator.complete).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111");
     await expect(service.execute("other", task.id)).rejects.toThrow(/not found/i);
     expect((await service.status("owner", task.id)).state).toBe("completed");
@@ -122,6 +122,16 @@ describe("durable scoped Actions short-task engine (not exposed over production 
     expect(still).toMatchObject({ leaseId: task.leaseId, runId: task.runId, failureReason: "cancel_failed" });
     expect((await options.journal.load()).find((entry) => entry.id === task.id)?.leaseId).toBe(task.leaseId);
   });
+  it("rejects a different owner-HMAC key before loading existing task history", async () => {
+    const { service, file, options } = await fixture();
+    const task = await service.submit("owner", { taskId: "gateway-vitest", idempotencyKey: "persistent-key" });
+    const rotated = new ShortTaskService({ ...options, ownerSecret: "different-owner-key-must-have-at-least-32-chars" });
+    await expect(rotated.restore()).rejects.toThrow(/owner.*key|mismatch/i);
+    const stored = JSON.parse(await readFile(file, "utf8"));
+    expect(stored.ownerKeyProof).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(stored)).not.toContain(options.ownerSecret);
+    expect(stored.tasks[0].id).toBe(task.id);
+  });
   it("fails closed on corrupt checkpoint without losing previous good data", async () => {
     const { file, options } = await fixture();
     const fs = await import("node:fs/promises");
@@ -143,6 +153,132 @@ describe("durable scoped Actions short-task engine (not exposed over production 
     expect((await service.status("owner", task.id)).state).toBe("failed");
   });
 
+  it("keeps status responsive and cancels an in-flight Worker without waiting for run completion", async () => {
+    const { service, workers, coordinator } = await fixture();
+    const worker = await workers.current();
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => { started = resolve; });
+    let aborted = false;
+    worker.run.mockImplementationOnce((_input, signal) => {
+      started();
+      return new Promise((_, reject) => {
+        signal?.addEventListener("abort", () => { aborted = true; reject(new Error("remote aborted")); }, { once: true });
+      });
+    });
+    const task = await service.submit("owner", { taskId: "gateway-vitest", idempotencyKey: "in-flight" });
+    const running = service.execute("owner", task.id);
+    const rejected = expect(running).rejects.toThrow(/cancelled/i);
+    await entered;
+    const deadline = <T>(operation: Promise<T>) => Promise.race([
+      operation, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("task lifecycle was blocked by the running CLI")), 700)),
+    ]);
+    expect((await deadline(service.status("owner", task.id))).state).toBe("running");
+    await expect(deadline(service.execute("owner", task.id))).rejects.toThrow(/not runnable|already running/i);
+    const ended = await deadline(service.cancel("owner", task.id));
+    expect(ended.state).toBe("cancelled");
+    expect(aborted).toBe(true);
+    await rejected;
+    expect(coordinator.fail).toHaveBeenCalledTimes(1);
+    expect(coordinator.complete).not.toHaveBeenCalled();
+    expect((await service.status("owner", task.id)).state).toBe("cancelled");
+  });
+
+  it("keeps status and other requests responsive during slow GitHub cancellation, deduplicates cancel", async () => {
+    const { service, coordinator } = await fixture();
+    const task = await service.submit("owner", { taskId: "gateway-vitest", idempotencyKey: "slow-provider-cancel" });
+    let release!: () => void;
+    coordinator.fail.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve({ state: "disposed" }); }));
+    const cancel1 = service.cancel("owner", task.id);
+    await vi.waitFor(() => expect(coordinator.fail).toHaveBeenCalledTimes(1));
+    const status = await Promise.race([
+      service.status("owner", task.id),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("status blocked by GitHub API cancellation")), 600)),
+    ]);
+    expect(status.state).toBe("cancelling");
+    const cancel2 = service.cancel("owner", task.id);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(coordinator.fail).toHaveBeenCalledTimes(1);
+    release();
+    expect((await cancel1).state).toBe("cancelled");
+    expect((await cancel2).state).toBe("cancelled");
+    expect(coordinator.fail).toHaveBeenCalledTimes(1);
+  });
+
+  it("never dispatches a Worker command after cancellation while preflight is still pending", async () => {
+    const { service, workers, coordinator } = await fixture();
+    const worker = await workers.current();
+    let preflightStarted!: () => void;
+    let releasePreflight!: () => void;
+    const entered = new Promise<void>((resolve) => { preflightStarted = resolve; });
+    worker.requireTool.mockImplementationOnce(async () => {
+      preflightStarted();
+      await new Promise<void>((resolve) => { releasePreflight = resolve; });
+    });
+    const task = await service.submit("owner", { taskId: "gateway-vitest", idempotencyKey: "pending-preflight" });
+    const execution = service.execute("owner", task.id);
+    const rejected = expect(execution).rejects.toThrow(/cancelled/i);
+    await entered;
+    await expect(service.cancel("owner", task.id)).resolves.toMatchObject({ state: "cancelled" });
+    releasePreflight();
+    await rejected;
+    await Promise.resolve();
+    expect(worker.run).not.toHaveBeenCalled();
+    expect(coordinator.complete).not.toHaveBeenCalled();
+    expect(coordinator.fail).toHaveBeenCalledTimes(1);
+  });
+  it("rejects concurrent cross-owner cancellation without stopping the owner process", async () => {
+    const { service, workers, coordinator } = await fixture();
+    const worker = await workers.current();
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => { started = resolve; });
+    let resolveRun!: (value: Awaited<ReturnType<typeof worker.run>>) => void;
+    let abortSeen = false;
+    worker.run.mockImplementationOnce((_input, signal) => {
+      started();
+      signal?.addEventListener("abort", () => { abortSeen = true; });
+      return new Promise((resolve) => { resolveRun = resolve; });
+    });
+    const task = await service.submit("owner", { taskId: "gateway-vitest", idempotencyKey: "foreign-denial" });
+    const execution = service.execute("owner", task.id);
+    await entered;
+    await expect(Promise.race([
+      service.cancel("intruder", task.id),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("cross-owner check blocked")), 700)),
+    ])).rejects.toThrow(/not found/i);
+    expect(abortSeen).toBe(false);
+    resolveRun({
+      value: { exitCode: 0, stdout: "8 passed", stderr: "", durationMs: 1,
+        timedOut: false, aborted: false, outputLimitExceeded: false },
+      routing: { environmentId: "gha_111111111111411181111111", selectedTransport: "websocket" },
+    });
+    await expect(execution).resolves.toMatchObject({ state: "completed", exitCode: 0 });
+    expect(coordinator.complete).toHaveBeenCalledTimes(1);
+    expect(coordinator.fail).not.toHaveBeenCalled();
+  });
+
+  it("preserves a retryable cancellation state on provider failure during active execution", async () => {
+    const { service, workers, coordinator, options } = await fixture();
+    const worker = await workers.current();
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => { started = resolve; });
+    worker.run.mockImplementationOnce((_input, signal) => {
+      started();
+      return new Promise((_, reject) => {
+        signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
+    });
+    const task = await service.submit("owner", { taskId: "gateway-vitest", idempotencyKey: "retry-active-cancel" });
+    coordinator.fail.mockRejectedValueOnce(new Error("transient cancellation error"));
+    const execution = service.execute("owner", task.id);
+    const rejected = expect(execution).rejects.toThrow(/cancelled/i);
+    await entered;
+    await expect(service.cancel("owner", task.id)).rejects.toThrow(/transient cancellation/);
+    expect(await service.status("owner", task.id)).toMatchObject({ state: "cancelling", failureReason: "cancel_failed" });
+    await expect(service.cancel("owner", task.id)).resolves.toMatchObject({ state: "cancelled" });
+    await rejected;
+    expect(coordinator.fail).toHaveBeenCalledTimes(2);
+    expect((await options.journal.load()).find((entry) => entry.id === task.id)?.state).toBe("cancelled");
+  });
   it("enforces idempotency conflicts and cancellation ownership", async () => {
     const { service, coordinator } = await fixture();
     const task = await service.submit("owner", { taskId: "gateway-vitest", idempotencyKey: "same" });
