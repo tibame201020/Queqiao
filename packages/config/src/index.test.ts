@@ -124,6 +124,8 @@ describe("extension config schema", () => {
     const preview = { enabled: true, sourceRevision: "a".repeat(40) };
     const enabled = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gh, shortTasksPreview: preview } } } });
     expect(enabled.gateway?.runtimeProviders.githubActions?.shortTasksPreview).toEqual(preview);
+    const cliPreview = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gh, tokenFile: undefined, auth: "gh-cli", shortTasksPreview: preview } } } });
+    expect(cliPreview.gateway?.runtimeProviders.githubActions?.auth).toBe("gh-cli");
     for (const invalid of [ { enabled: true }, { enabled: true, sourceRevision: "main" }, { enabled: false, sourceRevision: "a".repeat(40) } ]) {
       expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gh, shortTasksPreview: invalid } } } })).toThrow();
     }

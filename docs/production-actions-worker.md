@@ -87,6 +87,8 @@ Issue #115 now has a private task journal and an explicit opt-in OAuth
 MCP Preview interface. It requires a trusted source SHA and a keyed-HMAC
 principal binding. See [Production short-task runtime](production-short-task-runtime.md).
 The default Gateway config still does **not** expose task dispatch.
+A controlled real Preview OAuth MCP run also passed with source-SHA verification,
+8 Vitest tests, durable task completion and GitHub Cleanup (Run 37929140957).
 This Preview is not an approved multi-tenant production API.
 ## Persistent-host starter templates
 A provider-neutral Linux Gateway + named HTTPS Tunnel host starter lives in

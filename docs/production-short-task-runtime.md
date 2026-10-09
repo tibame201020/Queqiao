@@ -95,6 +95,33 @@ enable legacy `actions_worker_*` POC tools at the same time.
 
 The security CI includes the short-task unit tests.
 
+## Isolated real OAuth MCP → GitHub Actions Preview acceptance (2026-10-09)
+
+**PASS in one controlled single-host Preview session**:
+
+- [GitHub Actions Run 37929140957](https://github.com/tibame201020/Queqiao/actions/runs/37929140957)
+  executed source SHA `8b1fa8aeef6b4e46095f2a956cf5a661095d4305`
+  on the isolated acceptance branch.
+- A privately stored OAuth MCP test client used
+  `short_task_submit` → `short_task_status` → `short_task_execute`
+  → `short_task_status` (not the test-only `actions_worker_*` methods).
+  The Gateway was bound to localhost and used a disposable HTTPS Quick Tunnel.
+- The Workflow **Verify source revision** step passed, and OIDC enrollment
+  plus reverse WebSocket readiness succeeded. The MCP routing receipt's
+  environment `gha_5f26221cb69f43218f465d74` matched the lease.
+- The Runner executed the exact catalogued Node/Vitest command under
+  `/home/runner/work/Queqiao/Queqiao`. Result: `8 passed`,
+  `exitCode: 0`, empty `stderr`; durable Task Journal recorded
+  `completed` with the same GitHub Run ID and exit code.
+- Runtime lease disposal was confirmed. GitHub finished
+  `completed / cancelled`; **Cleanup** step `success`.
+- The private task journal did not include the raw OAuth client ID,
+  access token, approval secret or other identity material.
+
+**Boundary:** this is a controlled Preview E2E by an independently
+authenticated OAuth MCP client. It is **not** a ChatGPT Browser Harness
+execution of the new Preview API, not a live managed cloud deployment,
+and not a multi-instance or disconnect/restart recovery acceptance.
 ## Blocking work before activation
 
 1. **Production identity and authorization**: the Preview uses existing
@@ -116,10 +143,11 @@ The security CI includes the short-task unit tests.
 4. **Isolation**: exact argv cannot sandbox a malicious checked-in script.
    Use a locked-down ephemeral Worker with restricted egress, permissions,
    immutable source, and no personal data or broad cloud token.
-5. **Live E2E**: after connecting the reviewed API, run the complete
-   ChatGPT → OAuth → immutable task → Actions Worker → results → cleanup
-   process; kill/restart the Gateway mid-task, test disconnected clients,
-   cross-principal access and lost-run reconciliation.
+5. **Final production E2E**: a Preview real OAuth MCP → SHA-pinned
+   Actions Worker → durable result → Cleanup run passed. Still required:
+   ChatGPT Browser Harness with the new API, host powered off, forced
+   Gateway restart mid-task, disconnected client recovery, cross-tenant
+   identity, and orphan reconciliation.
 
 The default production config advertises no Preview task controls.
 This PR provides a deliberately isolated, explicitly enabled Preview API,
