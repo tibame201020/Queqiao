@@ -1,0 +1,8 @@
+﻿# Template only. Replace with an owned, named Cloudflare Tunnel.
+# The credentials JSON is a private host secret; never commit it.
+tunnel: REPLACE_WITH_NAMED_TUNNEL_UUID
+credentials-file: /etc/queqiao/tunnel-credentials.json
+ingress:
+  - hostname: gateway.example.invalid
+    service: http://127.0.0.1:7575
+  - service: http_status:404
