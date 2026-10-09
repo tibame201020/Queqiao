@@ -46,6 +46,40 @@ jobs:
       - if: runner.os == 'Windows'
         run: npm run typecheck && npm run test:security -- --maxWorkers=2
 
+  postgres-task-ledger:
+    name: PostgreSQL transactional task ledger (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: queqiao_test
+          POSTGRES_PASSWORD: integration-only-password
+          POSTGRES_DB: queqiao_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U queqiao_test -d queqiao_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      QUEQIAO_TEST_PG_URL: postgresql://queqiao_test:integration-only-password@127.0.0.1:5432/queqiao_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Prove competing Gateway reservations and fenced cleanup on real PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$QUEQIAO_TEST_PG_URL"
+          npm run build
+          npm test -- apps/gateway/src/postgres-task-ledger.test.ts --maxWorkers=2
   dependency-gate:
     name: Runtime dependency audit
     runs-on: ubuntu-latest
