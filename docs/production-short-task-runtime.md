@@ -285,3 +285,46 @@ a same-host guard, not a multi-host coordination test.
 TDD and cross-process tests cover competing owners, symlink aliases,
 separate state directories, graceful release and actual process SIGKILL.
 The new cases run in the GitHub Actions Security baseline.
+## Shared PostgreSQL task coordination ledger (Issue #115, first database slice)
+
+An independent, non-public transactional Ledger now exists in
+apps/gateway/src/postgres-task-ledger.ts. It uses the runtime pg dependency
+and PostgreSQL 16+. This Ledger is NOT wired into the Gateway OAuth MCP
+tool handler, Runtime Coordinator, or Worker WebSocket routing. The
+existing JSON-based single-host path stays unchanged for now.
+
+The coordination contract works across two separate Gateway DB pools:
+
+- Atomic reservation: an advisory transaction lock serializes quota
+  checks with insertion. A unique owner + idempotency digest prevents
+  replay from reserving twice. One active task per owner, 16 active
+  globally, and a hard cap of 256 retained rows.
+- Fenced ownership: queued work can be claimed exactly once. PostgreSQL
+  bigint fencing epochs, Gateway UUIDs and database-clock expiries
+  protect Run ID binding, renewal, and result updates. JavaScript carries
+  fencing values as strings to avoid loss of integer precision.
+- Cancellation: a verified owner can request cancel; the state becomes
+  cancelling and the old fence is invalidated. Late completions fail.
+- Expiry: already-claimed tasks move to reconciling, NEVER queued.
+  Cancellation and reconciliation cleanup can be claimed exclusively;
+  expired cleanup claims can be taken over with a larger fence.
+  Cleanup acknowledgment is an internal API that MUST be called only
+  after independent verification of GitHub Actions disposal/nonexistence.
+- Privacy: store only keyed owner/idempotency digests, trusted catalog
+  names, immutable source SHA and runtime correlation IDs. No raw OAuth
+  client identity, browser state, credentials or user-supplied commands.
+
+Real PostgreSQL integration tests in
+apps/gateway/src/postgres-task-ledger.test.ts use private temporary
+schemas. They exercise 24 concurrent requests through two independent
+connection pools, quota races, exclusive claims, cancellation fencing,
+expired lease reconciliation, cleanup ownership and timed takeover.
+GitHub Actions Security Baseline includes a PostgreSQL 16 container job.
+Its credentials are ephemeral test-only fixtures, not production secrets.
+
+Remaining production requirements: versioned schema migrations, managed
+PostgreSQL credentials/TLS/backups, safe horizontal Gateway routing,
+transactionally paired GitHub Actions dispatch, unknown-run discovery,
+fenced cross-host cancellation/reconciliation, tenant authorization and
+live multi-Gateway outage testing. This database slice alone must not be
+exposed as production multi-Gateway task dispatch.
