@@ -18,7 +18,15 @@ export function verifyRemoteBrowserTool(input:unknown,environmentId:string):{rou
     !result["stdout"].includes("QUEQIAO_CI_BROWSER_HARNESS_OK")) {
    throw new Error("Remote Worker Browser Harness failed: keys="+Object.keys(result).sort().join(",")+
      " exit="+String(result["exitCode"])+ " timedOut="+String(result["timedOut"])+ " aborted="+String(result["aborted"])+
-     " marker="+String(typeof result["stdout"]==="string" && result["stdout"].includes("QUEQIAO_CI_BROWSER_HARNESS_OK")));
+     " marker="+String(typeof result["stdout"]==="string" && result["stdout"].includes("QUEQIAO_CI_BROWSER_HARNESS_OK"))+
+     " failureClass="+(typeof result["stderr"]==="string" ?
+       (result["stderr"].includes("ERR_MODULE_NOT_FOUND") ? "module_not_found" :
+       result["stderr"].includes("ERR_CERT") ? "tls_error" :
+       result["stderr"].includes("net::") ? "navigation_error" :
+       result["stderr"].includes("BROWSER_CDP") ? "cdp_unavailable" :
+       result["stderr"].includes("EACCES") ? "permission_denied" :
+       result["stderr"].includes("Cannot find") ? "missing_dependency" : "other") : "missing_stderr")+
+     " stderrLine="+(typeof result["stderr"]==="string" ? result["stderr"].split(/\r?\n/).find(x=>x.trim()&&!x.includes("://"))?.slice(0,220) : ""));
  }
  return {routed:true};
 }
