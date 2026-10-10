@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { vi } from "vitest";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PostgresTaskLedger } from "./postgres-task-ledger.js";
+import { PostgresUnknownRunInspector } from "./pg-unknown-run-inspector.js";
 
 const dsn = process.env.QUEQIAO_TEST_PG_URL;
 const { Pool } = pg;
@@ -99,6 +101,28 @@ describe.runIf(Boolean(dsn))("PostgreSQL transactional multi-Gateway ledger — 
     expect(await a.renew(reserved.id, gatewayA, lease!.fence, 20)).toBe(false);
   });
 
+  it("inspects lost-run candidates only for the original HMAC owner and quarantined task", async () => {
+    const reserved=await fresh("gateway-vitest",owner("b"));
+    const finder={inspect:vi.fn(async ()=>({status:"candidate" as const,runId:9022}))};
+    const inspector=new PostgresUnknownRunInspector(b,finder,{
+      owner:"example",repo:"runtime-host",
+      workflowId:"runtime-provider-poc-worker.yml",
+      ref:"main",trustedActor:"trusted-bot",
+    });
+    await expect(inspector.inspect(owner("c"),reserved.id)).rejects.toThrow(/not found/i);
+    expect(finder.inspect).not.toHaveBeenCalled();
+    await expect(inspector.inspect(owner("b"),reserved.id)).rejects.toThrow(/not eligible/i);
+    expect(finder.inspect).not.toHaveBeenCalled();
+    const claimed=await a.claim(reserved.id,gatewayA,60);
+    expect(await a.quarantineUncertainDispatch(reserved.id,gatewayA,claimed!.fence)).toBe(true);
+    await expect(inspector.inspect(owner("b"),reserved.id)).resolves.toEqual({status:"candidate",runId:9022});
+    expect(finder.inspect).toHaveBeenCalledWith(expect.objectContaining({
+      leaseId:reserved.id,createdAt:reserved.createdAt.toISOString(),
+      actor:"trusted-bot",workflowId:"runtime-provider-poc-worker.yml",
+    }));
+    const still=await a.read(owner("b"),reserved.id);
+    expect(still).toMatchObject({state:"reconciling",runId:null});
+  });
   it("validates schema identifiers and refuses arbitrary SQL/catalog names", async () => {
     expect(() => new PostgresTaskLedger(pool, "public; DROP TABLE secrets")).toThrow();
     await expect(a.reserve({
