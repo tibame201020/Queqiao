@@ -13,6 +13,7 @@ describe("remote CI Browser Harness Phase 3 POC topology",()=>{
   expect(controller).toContain("github.head_ref == 'feat/124-actions-worker-browser'");
   expect(controller).toContain("head.repo.full_name == github.repository");
   expect(controllerWorkflow.on.schedule).toBeUndefined();
+  expect(controller).not.toContain("github.ref == 'refs/heads/main'");
  });
  it("requires real Gateway+Worker registration before triggering browser through MCP",()=>{
   expect(controller).toContain("Provision ephemeral Worker through Runtime Provider");

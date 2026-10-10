@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   phase3-e2e:
-    if: (github.event_name == 'pull_request' && github.head_ref == 'feat/124-actions-worker-browser' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    if: (github.event_name == 'pull_request' && github.head_ref == 'feat/124-actions-worker-browser' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feat/124-actions-worker-browser')
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

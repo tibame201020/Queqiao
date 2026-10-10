@@ -23,3 +23,20 @@ Workflow writes only the numeric child GITHUB_RUN_ID to an untracked
 ci-browser-metadata.json file; the fixed browser program validates it with
 a strict schema and writes ci-browser-receipt.json in the Worker checkout.
 Neither file contains tokens, cookies, browser profiles or user data.
+
+## Actual isolated GitHub Actions acceptance — 2026-10-10
+
+Controller GitHub Actions Run 38048667385: SUCCESS.
+OIDC child Worker Run 38048686376: completed/cancelled on normal cleanup.
+Runtime Lease 2639dabf-47b6-4056-955a-20b7516d961f: disposed.
+MCP run and read_file both routed to environment
+gha_2639dabf47b64056955a20b7. Verified receipt shows
+runId 38048686376, example.com, one DOM click, synthetic echoed input
+and QUEQIAO_CI_BROWSER_HARNESS_OK. The controller did not read
+any ChatGPT credentials or rely on the local PC.
+
+This is a *branch-scoped test*, not an unrestricted manually dispatchable
+production job. Run it from feat/124-actions-worker-browser while that
+test branch exists; the main branch remains excluded from the browser
+execution allowlist. Real ChatGPT authentication is still BLOCKED by
+session portability/browser challenge and is a separate acceptance gate.
