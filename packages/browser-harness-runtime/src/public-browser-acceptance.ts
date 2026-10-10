@@ -1,10 +1,16 @@
-﻿import { writeFile } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
+import path from "node:path";
+import { resolvePublicBrowserCIContext } from "./public-browser-ci-context.js";
 import { chromium } from "playwright-core";
 import { validatePublicBrowserReceipt } from "./public-browser-verdict.js";
 
 /** Isolated Actions Chrome test: no ChatGPT sessions or persisted browser profiles. */
-const runId = process.env["GITHUB_RUN_ID"];
-const output = process.env["BROWSER_RECEIPT_PATH"];
+const runId = resolvePublicBrowserCIContext(
+  {GITHUB_RUN_ID:process.env["GITHUB_RUN_ID"]},
+  process.env["GITHUB_RUN_ID"] ? undefined :
+    await readFile(path.join(process.cwd(),"ci-browser-metadata.json"),"utf8"),
+).runId;
+const output = process.env["BROWSER_RECEIPT_PATH"] ?? path.join(process.cwd(),"ci-browser-receipt.json");
 const cdp = process.env["BROWSER_CDP_URL"] ?? "http://127.0.0.1:9555";
 if (!runId || !output) throw new Error("Missing CI run correlation or artifact path");
 const endpoint = new URL(cdp);
@@ -46,7 +52,7 @@ try {
       inputEcho: await page.locator("#result").getAttribute("data-input-echo"),
       headless: true,
     });
-    await writeFile(output, JSON.stringify(receipt, null, 2) + "\n", { mode: 0o600, flag: "wx" });
+    await writeFile(output, JSON.stringify(receipt) + "\n", { mode: 0o600, flag: "wx" });
     console.log("QUEQIAO_CI_BROWSER_HARNESS_OK");
     console.log("Verified synthetic CDP browser interaction for GitHub run " + receipt.runId);
   } finally {
