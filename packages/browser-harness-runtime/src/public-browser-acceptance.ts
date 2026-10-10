@@ -1,4 +1,4 @@
-﻿import { writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { chromium } from "playwright-core";
 import { validatePublicBrowserReceipt } from "./public-browser-verdict.js";
 
@@ -46,7 +46,7 @@ try {
       inputEcho: await page.locator("#result").getAttribute("data-input-echo"),
       headless: true,
     });
-    await writeFile(output, JSON.stringify(receipt, null, 2) + "\n", { mode: 0o600, flag: "wx" });
+    await writeFile(output, JSON.stringify(receipt) + "\n", { mode: 0o600, flag: "wx" });
     console.log("QUEQIAO_CI_BROWSER_HARNESS_OK");
     console.log("Verified synthetic CDP browser interaction for GitHub run " + receipt.runId);
   } finally {

@@ -116,7 +116,14 @@ jobs:
               stepUp: []
             }]
           };
-          fs.writeFileSync(process.env.CONFIG_FILE, JSON.stringify(config, null, 2));
+          // Only the synthetic-browser POC branch permits this exact Node command.
+          if (process.env.GITHUB_REF_NAME === "feat/124-actions-worker-browser") {
+            config.workspaces[0].commands.exact.push({
+              executable: "node",
+              args: ["packages/browser-harness-runtime/dist/public-browser-acceptance.js"],
+              cwd: ".", mode: "sync", maxTimeoutMs: 60000
+            });
+          }          fs.writeFileSync(process.env.CONFIG_FILE, JSON.stringify(config, null, 2));
           NODE
 
           printf 'QUEQIAO-GITHUB-CONNECTOR-OK\n' > "$GITHUB_WORKSPACE/poc-marker.txt"
@@ -125,6 +132,25 @@ jobs:
           echo "LOCAL_WORKER_TOKEN=$local_token" >> "$GITHUB_ENV"
           echo "QUEQIAO_CONFIG_FILE=$runtime_dir/config.json" >> "$GITHUB_ENV"
 
+      - name: Start CI-only Chrome for Browser Harness task
+        if: github.ref_name == 'feat/124-actions-worker-browser'
+        shell: bash
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          test -n "$chrome"
+          profile="$RUNNER_TEMP/queqiao-worker-browser-profile"
+          mkdir -p "$profile"
+          "$chrome" --headless=new --user-data-dir="$profile" --remote-debugging-address=127.0.0.1 --remote-debugging-port=9555 --no-first-run --no-default-browser-check --disable-dev-shm-usage --no-sandbox about:blank > "$RUNNER_TEMP/queqiao-worker-browser.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/queqiao-worker-browser.pid"
+          echo "BROWSER_CDP_URL=http://127.0.0.1:9555" >> "$GITHUB_ENV"
+          echo "BROWSER_RECEIPT_PATH=$GITHUB_WORKSPACE/ci-browser-receipt.json" >> "$GITHUB_ENV"
+          for i in {1..45}; do
+            if curl -fsS http://127.0.0.1:9555/json/version > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "::error::Worker Browser Harness CDP unavailable"
+          exit 1
       - name: Start Worker
         shell: bash
         run: |
@@ -193,3 +219,13 @@ jobs:
           if [ -f "$RUNNER_TEMP/queqiao-worker.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/queqiao-worker.pid")" 2>/dev/null || true
           fi
+          if [ -f "$RUNNER_TEMP/queqiao-worker-browser.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/queqiao-worker-browser.pid")" 2>/dev/null || true
+          fi
+          if [ -d "$RUNNER_TEMP/queqiao-worker-browser-profile" ]; then
+            for attempt in {1..15}; do
+              if rm -rf "$RUNNER_TEMP/queqiao-worker-browser-profile" 2>/dev/null; then break; fi
+              sleep 1
+            done
+          fi
+          test ! -e "$RUNNER_TEMP/queqiao-worker-browser-profile"
