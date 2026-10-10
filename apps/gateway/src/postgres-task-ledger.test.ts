@@ -4,6 +4,8 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PostgresTaskLedger } from "./postgres-task-ledger.js";
 import { PostgresUnknownRunInspector } from "./pg-unknown-run-inspector.js";
+import { PostgresAttestedRunRecovery } from "./pg-attested-run-recovery.js";
+import { GitHubActionsRecoveryAttestor } from "@queqiao/runtime-provider-github-actions";
 
 const dsn = process.env.QUEQIAO_TEST_PG_URL;
 const { Pool } = pg;
@@ -101,6 +103,123 @@ describe.runIf(Boolean(dsn))("PostgreSQL transactional multi-Gateway ledger — 
     expect(await a.renew(reserved.id, gatewayA, lease!.fence, 20)).toBe(false);
   });
 
+  it("migrates an earlier PostgreSQL table without trusting old unknown runs", async () => {
+    await pool.query('ALTER TABLE "'+schema+'"."queqiao_short_tasks_v1" DROP COLUMN recovery_provenance');
+    await a.migrate();
+    await a.migrate();
+    const t=await fresh("gateway-vitest",owner("2"));
+    expect(await a.read(owner("2"),t.id)).toMatchObject({recoveryProvenance:"none"});
+  });
+  it("durably binds an OIDC-attested Run only with the live fenced cleanup lease", async () => {
+    const task=await fresh("gateway-vitest",owner("9"));
+    const first=await a.claim(task.id,gatewayA,60);
+    expect(await a.quarantineUncertainDispatch(task.id,gatewayA,first!.fence)).toBe(true);
+    const cleanup=await b.claimCleanup(task.id,gatewayB,30);
+    expect(cleanup).not.toBeNull();
+    expect(await a.recordAttestedRun(task.id,gatewayA,cleanup!.fence,"9001","gha_verify")).toBe(false);
+    expect(await b.recordAttestedRun(task.id,gatewayB,cleanup!.fence,"9001","gha_verify")).toBe(true);
+    expect(await a.read(owner("9"),task.id)).toMatchObject({
+      state:"reconciling",runId:"9001",environmentId:"gha_verify",recoveryProvenance:"oidc",
+    });
+    expect(await b.recordAttestedRun(task.id,gatewayB,cleanup!.fence,"9002","gha_verify")).toBe(false);
+    expect(await a.acknowledgeCleanup(task.id,gatewayA,cleanup!.fence,"failed")).toBe(false);
+  });
+  it("confirms signed OIDC plus GitHub terminal state before durably acknowledging disposal", async () => {
+    const t=await fresh("gateway-vitest",owner("7"));
+    const started=await a.claim(t.id,gatewayA,60);
+    await a.quarantineUncertainDispatch(t.id,gatewayA,started!.fence);
+    const settings={owner:"example",repo:"runtime-host",workflowId:"runtime.yml",ref:"main",trustedActor:"bot"};
+    const finder={inspect:vi.fn(async()=>({status:"candidate" as const,runId:8001}))};
+    const verify=vi.fn(async()=>({
+      repository:"example/runtime-host",runId:8001,
+      workflowRef:"example/runtime-host/.github/workflows/runtime.yml@refs/heads/main",
+      ref:"refs/heads/main",eventName:"workflow_dispatch",
+      subject:"repo:example/runtime-host:ref:refs/heads/main",
+    }));
+    const remote={id:8001,repository:"example/runtime-host",workflow:"runtime.yml",
+      path:".github/workflows/runtime.yml",head_branch:"main",event:"workflow_dispatch",
+      actor:"bot",display_title:"Queqiao Runtime "+t.id,run_attempt:1,
+      status:"in_progress",conclusion:null as string|null};
+    const api={
+      get:vi.fn().mockResolvedValueOnce(remote).mockResolvedValueOnce({...remote,status:"completed",conclusion:"cancelled"}),
+      cancel:vi.fn(async()=>undefined),
+    };
+    const engine=new PostgresAttestedRunRecovery(a,finder,new GitHubActionsRecoveryAttestor({verify}),
+      api,settings,gatewayB,async()=>undefined);
+    await expect(engine.recover(owner("7"),t.id,"t".repeat(48))).resolves.toEqual({state:"reconciled",runId:8001});
+    expect(verify).toHaveBeenCalledWith("t".repeat(48),"urn:queqiao:run-recovery:"+t.id);
+    expect(api.cancel).toHaveBeenCalledTimes(1);
+    expect(await b.read(owner("7"),t.id)).toMatchObject({state:"failed",runId:"8001",recoveryProvenance:"oidc"});
+    await expect(engine.resume(owner("7"),t.id)).rejects.toThrow(/eligible/i);
+  });
+
+  it("never cancels a title-matching Run when OIDC verification fails", async () => {
+    const t=await fresh("gateway-vitest",owner("8"));
+    const c=await a.claim(t.id,gatewayA,60);
+    await a.quarantineUncertainDispatch(t.id,gatewayA,c!.fence);
+    const get=vi.fn(),cancel=vi.fn();
+    const proof=new GitHubActionsRecoveryAttestor({verify:vi.fn(async()=>{throw Error("OIDC signature invalid");})});
+    const engine=new PostgresAttestedRunRecovery(a,
+      {inspect:vi.fn(async()=>({status:"candidate" as const,runId:9002}))},
+      proof,{get,cancel},
+      {owner:"example",repo:"runtime-host",workflowId:"runtime.yml",ref:"main",trustedActor:"bot"},
+      gatewayB);
+    await expect(engine.recover(owner("8"),t.id,"z".repeat(48))).rejects.toThrow(/signature invalid/);
+    expect(get).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(await b.read(owner("8"),t.id)).toMatchObject({state:"reconciling",runId:null,recoveryProvenance:"none"});
+  });
+
+  it("keeps an attested Run quarantined if cancellation fails; same task cannot be redispatched", async () => {
+    const t=await fresh("gateway-vitest",owner("1"));
+    const claim=await a.claim(t.id,gatewayA,60);
+    await a.quarantineUncertainDispatch(t.id,gatewayA,claim!.fence);
+    const remote={id:9004,repository:"example/runtime-host",workflow:"runtime.yml",
+      path:".github/workflows/runtime.yml",head_branch:"main",event:"workflow_dispatch",
+      actor:"bot",display_title:"Queqiao Runtime "+t.id,run_attempt:1,status:"in_progress",conclusion:null};
+    const api={get:vi.fn(async()=>remote),cancel:vi.fn(async()=>{throw Error("provider unavailable");})};
+    const engine=new PostgresAttestedRunRecovery(a,
+      {inspect:vi.fn(async()=>({status:"candidate" as const,runId:9004}))},
+      new GitHubActionsRecoveryAttestor({verify:vi.fn(async()=>({
+        repository:"example/runtime-host",runId:9004,
+        workflowRef:"example/runtime-host/.github/workflows/runtime.yml@refs/heads/main",
+        ref:"refs/heads/main",eventName:"workflow_dispatch",
+        subject:"repo:example/runtime-host:ref:refs/heads/main",
+      }))}),api,
+      {owner:"example",repo:"runtime-host",workflowId:"runtime.yml",ref:"main",trustedActor:"bot"},gatewayB);
+    await expect(engine.recover(owner("1"),t.id,"z".repeat(48))).rejects.toThrow(/provider unavailable/);
+    expect(await b.read(owner("1"),t.id)).toMatchObject({state:"reconciling",runId:"9004",recoveryProvenance:"oidc"});
+    expect(await b.claim(t.id,gatewayA,20)).toBeNull();
+  });
+  it("resumes OIDC-proven cleanup after Gateway lease expiry without reusing the token", async () => {
+    const t=await fresh("gateway-vitest",owner("3"));
+    const claim=await a.claim(t.id,gatewayA,60);
+    await a.quarantineUncertainDispatch(t.id,gatewayA,claim!.fence);
+    const configuration={owner:"example",repo:"runtime-host",workflowId:"runtime.yml",ref:"main",trustedActor:"bot"};
+    const run={id:1234,repository:"example/runtime-host",workflow:"runtime.yml",path:".github/workflows/runtime.yml",
+      head_branch:"main",event:"workflow_dispatch",actor:"bot",display_title:"Queqiao Runtime "+t.id,
+      run_attempt:1,status:"in_progress",conclusion:null as string|null};
+    const api={get:vi.fn(async()=>run),cancel:vi.fn(async()=>undefined)};
+    const initial=new PostgresAttestedRunRecovery(a,
+      {inspect:vi.fn(async()=>({status:"candidate" as const,runId:1234}))},
+      new GitHubActionsRecoveryAttestor({verify:vi.fn(async()=>({
+        repository:"example/runtime-host",runId:1234,
+        workflowRef:"example/runtime-host/.github/workflows/runtime.yml@refs/heads/main",
+        ref:"refs/heads/main",eventName:"workflow_dispatch",
+        subject:"repo:example/runtime-host:ref:refs/heads/main",
+      }))}),api,configuration,gatewayA,async()=>undefined);
+    expect(await initial.recover(owner("3"),t.id,"t".repeat(48))).toEqual({state:"pending",runId:1234});
+    expect((await b.read(owner("3"),t.id))?.state).toBe("reconciling");
+    await pool.query("UPDATE \""+schema+"\".\"queqiao_short_tasks_v1\" SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",[t.id]);
+    const resumedApi={get:vi.fn(async()=>({...run,status:"completed",conclusion:"cancelled"})),
+      cancel:vi.fn(async()=>undefined)};
+    const resumed=new PostgresAttestedRunRecovery(b,{inspect:vi.fn()},new GitHubActionsRecoveryAttestor({verify:vi.fn()}),
+      resumedApi,configuration,gatewayB,async()=>undefined);
+    await expect(resumed.resume(owner("3"),t.id)).resolves.toEqual({state:"reconciled",runId:1234});
+    expect(resumedApi.cancel).not.toHaveBeenCalled();
+    expect((await a.read(owner("3"),t.id))?.state).toBe("failed");
+    expect(await a.acknowledgeCleanup(t.id,gatewayA,claim!.fence,"failed")).toBe(false);
+  });
   it("inspects lost-run candidates only for the original HMAC owner and quarantined task", async () => {
     const reserved=await fresh("gateway-vitest",owner("b"));
     const finder={inspect:vi.fn(async ()=>({status:"candidate" as const,runId:9022}))};
