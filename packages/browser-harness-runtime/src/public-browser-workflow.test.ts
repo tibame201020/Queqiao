@@ -1,4 +1,4 @@
-﻿import { readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import path from "node:path";
@@ -19,7 +19,11 @@ describe("CI-only Browser Harness workflow security and deliverables",()=>{
     expect(steps.some(s=>s.uses?.startsWith("actions/upload-artifact@"))).toBe(true);
     expect(steps.some(s=>s.run?.includes("ci-browser-receipt.json")&&s.run?.includes("GITHUB_RUN_ID"))).toBe(true);
   });
-  it("does not read ChatGPT credentials, persistent browser profiles or session secrets",()=>{
+  it("waits and retries profile cleanup after Chrome termination",()=>{
+    const cleanup=workflow.jobs["ci-browser-harness"].steps.find((step:{name?:string})=>step.name==="Cleanup ephemeral Chrome");
+    expect(cleanup.run).toContain("for attempt in");
+    expect(cleanup.run).toContain("test ! -e");
+  });  it("does not read ChatGPT credentials, persistent browser profiles or session secrets",()=>{
     expect(text).not.toMatch(/secrets\./i);
     expect(text).not.toMatch(/CHATGPT_BROWSER_SESSION_CAPSULE/i);
     expect(text).not.toMatch(/chatgpt\.com/i);

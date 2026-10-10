@@ -1,4 +1,4 @@
-﻿name: CI-only Browser Harness Acceptance
+name: CI-only Browser Harness Acceptance
 
 on:
   workflow_dispatch:
@@ -73,7 +73,16 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set -euo pipefail
           if [ -f "$RUNNER_TEMP/queqiao-ci-browser.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/queqiao-ci-browser.pid")" 2>/dev/null || true
           fi
-          rm -rf "$RUNNER_TEMP/queqiao-ci-browser-profile"
+          # Chrome helpers may still be terminating after its parent exits.
+          # Retry only this ephemeral CI directory; never touch user profiles.
+          for attempt in {1..15}; do
+            if rm -rf "$RUNNER_TEMP/queqiao-ci-browser-profile" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          test ! -e "$RUNNER_TEMP/queqiao-ci-browser-profile"
