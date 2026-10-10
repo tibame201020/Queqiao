@@ -26,6 +26,8 @@ describe("remote CI Browser Harness Phase 3 POC topology",()=>{
   expect(worker).toContain('packages/browser-harness-runtime/dist/public-browser-acceptance.js');
   expect(steps.some(s=>s.name==="Start CI-only Chrome for Browser Harness task" && s.if?.includes("feat/124-actions-worker-browser"))).toBe(true);
   expect(worker).not.toContain("CHATGPT_BROWSER_SESSION_CAPSULE");
+  expect(worker).toContain('ci-browser-metadata.json');
+  expect(worker).toContain('GITHUB_RUN_ID');
  });
  it("protects all Node -e payloads from dash-prefixed dynamic runtime tokens",()=>{
   expect(worker).toContain('))" -- "$join_token"');

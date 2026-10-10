@@ -1,4 +1,4 @@
-﻿# Issue 124: GitHub Actions Gateway / Worker / Browser Harness
+# Issue 124: GitHub Actions Gateway / Worker / Browser Harness
 
 The isolated workflow runtime-provider-browser-controller.yml reuses
 Phase 3 Gateway -> OIDC-attested Actions Worker reverse-WebSocket registration.
@@ -17,3 +17,9 @@ publication is required or modified.
 Unproven: actual GitHub-hosted E2E until CI Run passed; ChatGPT session
 portability remains separately blocked by browser challenge. Do not
 activate the production 05:00 schedule or claim content generation works.
+
+Worker subprocess environment variables are intentionally sanitized. The POC
+Workflow writes only the numeric child GITHUB_RUN_ID to an untracked
+ci-browser-metadata.json file; the fixed browser program validates it with
+a strict schema and writes ci-browser-receipt.json in the Worker checkout.
+Neither file contains tokens, cookies, browser profiles or user data.

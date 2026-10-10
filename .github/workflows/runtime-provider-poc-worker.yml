@@ -145,6 +145,7 @@ jobs:
           echo "$!" > "$RUNNER_TEMP/queqiao-worker-browser.pid"
           echo "BROWSER_CDP_URL=http://127.0.0.1:9555" >> "$GITHUB_ENV"
           echo "BROWSER_RECEIPT_PATH=$GITHUB_WORKSPACE/ci-browser-receipt.json" >> "$GITHUB_ENV"
+          printf '{"runId":"%s"}\n' "$GITHUB_RUN_ID" > "$GITHUB_WORKSPACE/ci-browser-metadata.json"
           for i in {1..45}; do
             if curl -fsS http://127.0.0.1:9555/json/version > /dev/null; then exit 0; fi
             sleep 1
