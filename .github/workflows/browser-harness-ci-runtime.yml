@@ -1,0 +1,88 @@
+name: CI-only Browser Harness Acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/browser-harness-ci-runtime.yml"
+      - "packages/browser-harness-runtime/src/public-browser-*"
+
+permissions:
+  contents: read
+
+jobs:
+  ci-browser-harness:
+    name: Ephemeral CI Chrome Browser Harness (no session)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: TDD receipt validation
+        run: npx vitest run packages/browser-harness-runtime/src/public-browser-verdict.test.ts
+      - name: Start isolated headless Chrome with ephemeral profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          test -n "$chrome"
+          profile="$RUNNER_TEMP/queqiao-ci-browser-profile"
+          mkdir -p "$profile"
+          "$chrome" \
+            --headless=new \
+            --user-data-dir="$profile" \
+            --remote-debugging-address=127.0.0.1 \
+            --remote-debugging-port=9555 \
+            --no-first-run \
+            --no-default-browser-check \
+            --disable-dev-shm-usage \
+            --no-sandbox \
+            about:blank > "$RUNNER_TEMP/queqiao-ci-browser.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/queqiao-ci-browser.pid"
+          for i in {1..45}; do
+            if curl -fsS http://127.0.0.1:9555/json/version >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::CI Chrome CDP did not start"
+          exit 1
+      - name: Run public page and DOM interaction on real CI Chromium
+        env:
+          BROWSER_CDP_URL: http://127.0.0.1:9555
+          BROWSER_RECEIPT_PATH: ${{ runner.temp }}/ci-browser-receipt.json
+        run: npx tsx packages/browser-harness-runtime/src/public-browser-acceptance.ts
+      - name: Validate CI receipt and originating Run ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const fs=require('fs'); const p=process.argv[1]; const r=JSON.parse(fs.readFileSync(p,'utf8')); if(r.runId!==process.env.GITHUB_RUN_ID||r.interactiveMarker!=='QUEQIAO_CI_BROWSER_HARNESS_OK'||r.origin!=='https://example.com'||r.clicks!==1) process.exit(1); console.log('CI browser receipt verified for Run '+r.runId);" "$RUNNER_TEMP/ci-browser-receipt.json"
+      - name: Upload public synthetic browser receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-browser-harness-receipt
+          path: ${{ runner.temp }}/ci-browser-receipt.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Cleanup ephemeral Chrome
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/queqiao-ci-browser.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/queqiao-ci-browser.pid")" 2>/dev/null || true
+          fi
+          # Chrome helpers may still be terminating after its parent exits.
+          # Retry only this ephemeral CI directory; never touch user profiles.
+          for attempt in {1..15}; do
+            if rm -rf "$RUNNER_TEMP/queqiao-ci-browser-profile" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          test ! -e "$RUNNER_TEMP/queqiao-ci-browser-profile"
