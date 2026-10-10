@@ -16,7 +16,9 @@ export function verifyRemoteBrowserTool(input:unknown,environmentId:string):{rou
     result["exitCode"]!==0||result["outputLimitExceeded"]===true||
     typeof result["stdout"]!=="string"||
     !result["stdout"].includes("QUEQIAO_CI_BROWSER_HARNESS_OK")) {
-   throw new Error("Remote Worker command did not execute the Browser Harness successfully");
+   throw new Error("Remote Worker Browser Harness failed: keys="+Object.keys(result).sort().join(",")+
+     " exit="+String(result["exitCode"])+ " timedOut="+String(result["timedOut"])+ " aborted="+String(result["aborted"])+
+     " marker="+String(typeof result["stdout"]==="string" && result["stdout"].includes("QUEQIAO_CI_BROWSER_HARNESS_OK")));
  }
  return {routed:true};
 }
