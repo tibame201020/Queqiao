@@ -9,18 +9,18 @@ const states = ["queued","provisioning","ready","running","cancelling","reconcil
 export type LedgerTask = {
   id:string; ownerDigest:string; idempotencyDigest:string; taskId:string; sourceRevision:string;
   state:string; holder:string|null; fence:string; leaseUntil:Date|null; runId:string|null;
-  environmentId:string|null; updatedAt:Date; createdAt:Date;
+  environmentId:string|null; updatedAt:Date; createdAt:Date; recoveryProvenance:string;
 };
 type Row = {
   id:string; owner_digest:string; idempotency_digest:string;task_id:string; source_revision:string;
   state:string; holder:string|null;fence:string;lease_until:Date|null;
-  run_id:string|null;environment_id:string|null;updated_at:Date;created_at:Date;
+  run_id:string|null;environment_id:string|null;updated_at:Date;created_at:Date;recovery_provenance:string;
 };
 function fromRow(r:Row):LedgerTask {
   return {id:r.id,ownerDigest:r.owner_digest,idempotencyDigest:r.idempotency_digest,
     taskId:r.task_id,sourceRevision:r.source_revision,state:r.state,holder:r.holder,
     fence:r.fence,leaseUntil:r.lease_until,runId:r.run_id,
-    environmentId:r.environment_id,updatedAt:r.updated_at,createdAt:r.created_at};
+    environmentId:r.environment_id,updatedAt:r.updated_at,createdAt:r.created_at,recoveryProvenance:r.recovery_provenance};
 }
 const uuid=(id:string)=>z.string().uuid().parse(id);
 function epoch(raw:string):string {
@@ -51,10 +51,29 @@ export class PostgresTaskLedger {
       state text NOT NULL DEFAULT 'queued' CHECK (state IN
         ('queued','provisioning','ready','running','cancelling','reconciling','completed','failed','cancelled')),
       holder uuid, fence bigint NOT NULL DEFAULT 0 CHECK(fence>=0),
+      recovery_provenance text NOT NULL DEFAULT 'none' CHECK (recovery_provenance IN ('none','oidc')),
       lease_until timestamptz,run_id text,environment_id text,
       created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
       updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
       UNIQUE(owner_digest,idempotency_digest))`));
+    await this.pool.query(this.sql("ALTER TABLE @T@ ADD COLUMN IF NOT EXISTS recovery_provenance text NOT NULL DEFAULT 'none' CHECK (recovery_provenance IN ('none','oidc'))"));
+  }
+  /**
+   * The caller must verify GitHub OIDC evidence and an exact Run match.
+   * CAS preserves cleanup ownership, prevents conflicting run IDs, and
+   * never restores a quarantined task to the dispatch queue.
+   */
+  async recordAttestedRun(id:string,holder:string,fence:string,runId:string,environmentId:string):Promise<boolean>{
+    const verified=z.string().regex(/^[0-9]{1,20}$/).parse(runId);
+    const environment=z.string().min(1).max(128).parse(environmentId);
+    const r=await this.pool.query(this.sql(`UPDATE @T@ SET
+      run_id=$4,environment_id=$5,recovery_provenance='oidc',
+      updated_at=clock_timestamp()
+      WHERE id=$1 AND holder=$2 AND fence=$3::bigint
+        AND lease_until>clock_timestamp() AND state='reconciling'
+        AND (run_id IS NULL OR (run_id=$4 AND environment_id=$5 AND recovery_provenance='oidc'))
+      RETURNING id`),[uuid(id),uuid(holder),epoch(fence),verified,environment]);
+    return r.rowCount===1;
   }
   private async tx<T>(fn:(db:PoolClient)=>Promise<T>):Promise<T>{
     const db=await this.pool.connect();

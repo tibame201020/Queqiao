@@ -399,3 +399,53 @@ marks a task disposed. Production still needs an authenticated
 run-provenance verification and final-state/disposal reconciler, then
 a multi-Gateway worker routing/failover E2E. Existing production/Preview
 dispatch remains unchanged and disabled by default where configured.
+## OIDC-attested Run disposal controller (Issue #115, internal-only)
+
+The new internal PostgresAttestedRunRecovery controller connects a unique
+candidate from the read-only discovery layer to the existing GitHub
+Actions OIDC verifier, PostgreSQL cleanup fencing and a bounded GitHub
+REST status/cancellation adapter. The controller is **not exposed via MCP**,
+not enabled in the production Gateway, and not yet connected to the
+Worker recovery bootstrap.
+
+A candidate can be acted on only when the running GitHub Actions job
+supplies its **GitHub-issued, cryptographically verified OIDC JWT**.
+Verification uses the special audience:
+urn:queqiao:run-recovery:<task UUID>.
+The signed repository, run ID, workflow_ref, ref, event_name and subject
+must all match the trusted server-side task and unique candidate. A
+matching run-name alone is NEVER sufficient. The controller then claims
+a PostgreSQL cleanup lease, re-GETs the Run through GitHub REST, checks
+repository, workflow path, branch, actor, event, run title and attempt,
+and records run ID, environment ID and recovery_provenance=oidc under
+the live fencing token. Neither the raw JWT nor OAuth identities are
+persisted.
+
+Only then may the internal controller request GitHub cancellation. HTTP
+202 is NOT considered completion. It re-reads the actual Run and commits
+a terminal failed task state only after GitHub reports completed with
+a non-null conclusion AND the fencing token still matches. Failure to
+cancel, incomplete status, database outage, spoofed Run or stale fencing
+leave the task quarantined; it is never silently redispatched.
+
+An interrupted cleanup may be resumed from the durable OIDC-verified
+Run ID after the cleanup lease expires. The resumed Gateway must re-read
+and validate the remote Run identity before confirming terminal state.
+The first Gateway cannot acknowledge with its old fencing token.
+
+TDD uses real PostgreSQL and two independent pools; tests cover signed
+claim field mismatches, bad signature, owner isolation, CAS fencing,
+older-schema migration, HTTP errors, successful terminal verification,
+unconfirmed cancellation, and cleanup resumed by another Gateway.
+The PostgreSQL 16 GitHub Actions Security job runs the new tests.
+
+**Unfinished Production Gate:** the Worker does not yet request/send
+the dedicated recovery-audience OIDC token through a secured ingress.
+The existing Worker OIDC registration does not provide this alternate
+attestation after a lost dispatch response. These tests use a mocked
+OIDC verifier and GitHub API for the cleanup transaction; the actual
+GitHub REST GET adapter was separately smoke-tested read-only.
+Therefore this change does not constitute a live OIDC-to-cancellation
+E2E proof and the Preview remains disabled by default. Cross-Gateway
+Worker routing, tenant authentication and #112 always-on hosting still
+require implementation and verification.

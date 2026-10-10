@@ -652,3 +652,5 @@ export class GitHubActionsGhCliApi implements GitHubActionsApi {
 }
 
 export { GitHubActionsRunDiscovery, GitHubWorkflowRunFetchApi, runtimeRunTitle } from "./run-discovery.js";
+export { GitHubActionsRecoveryAttestor } from "./recovery-attestation.js";
+export { GitHubRecoveryRestApi } from "./recovery-rest.js";
