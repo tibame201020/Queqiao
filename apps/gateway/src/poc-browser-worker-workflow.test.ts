@@ -1,4 +1,4 @@
-﻿import { readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 
@@ -27,7 +27,12 @@ describe("remote CI Browser Harness Phase 3 POC topology",()=>{
   expect(steps.some(s=>s.name==="Start CI-only Chrome for Browser Harness task" && s.if?.includes("feat/124-actions-worker-browser"))).toBe(true);
   expect(worker).not.toContain("CHATGPT_BROWSER_SESSION_CAPSULE");
  });
- it("retains cleanup and bounded remote execution",()=>{
+ it("protects all Node -e payloads from dash-prefixed dynamic runtime tokens",()=>{
+  expect(worker).toContain('))" -- "$join_token"');
+  expect(worker).toContain('))" -- "$transaction_id"');
+  expect(worker).toContain('))" -- "$gateway"');
+  expect(worker).toContain('))" -- "$LEASE_ID"');
+ }); it("retains cleanup and bounded remote execution",()=>{
   expect(controller).toContain("Complete lease and verify provider cancellation");
   expect(worker).toContain("maxTimeoutMs: 60000");
   expect(worker).toContain("test ! -e");
