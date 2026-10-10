@@ -12,6 +12,7 @@ describe("Actions Gate C short-task Worker least-privilege contract", () => {
       jobs: Record<string, { steps: Array<{ uses?: string; with?: Record<string, unknown>; name?: string; run?: string }> }>;
     };
     expect(workflow.on.workflow_dispatch.inputs.source_revision).toMatchObject({ required: false });
+    expect((workflow as typeof workflow & { "run-name"?: string })["run-name"]).toContain("inputs.lease_id");
     const steps = workflow.jobs["runtime-worker"]!.steps;
     const checkout = steps.find((step) => step.uses?.startsWith("actions/checkout@"));
     expect(checkout?.with?.ref).toContain("inputs.source_revision");

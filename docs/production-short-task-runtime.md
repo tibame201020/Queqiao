@@ -367,3 +367,35 @@ Distributed Worker transport/affinity, formal end-user/tenant scope,
 cloud hosting, network partition recovery and a real multi-Gateway
 GitHub Actions E2E are NOT complete. Do not enable this adapter as
 production task dispatch before those gates pass.
+## Unknown GitHub Actions Run identification (Issue #115 discovery slice)
+
+A workflow_dispatch request can be accepted by GitHub but lose the
+response before the Gateway stores its Run ID. The PostgreSQL task stays
+in reconciling. It MUST NOT be blindly redispatched.
+
+The isolated GitHub Actions POC workflow now sets run-name to
+"Queqiao Runtime <lease UUID>". The new read-only
+GitHubActionsRunDiscovery uses GitHub's per-workflow REST list endpoint
+and checks ALL of these against trusted server-side metadata: exact
+run title, repository, workflow path, workflow_dispatch event, configured
+branch, expected dispatch actor, run attempt 1, and a bounded creation
+window based on the persisted task creation timestamp (minus 2 minutes,
+plus 20 minutes). The scan uses up to 10 pages of 100 runs with a
+fail-closed pagination and 1000-result ceiling. Zero candidates yields
+not_found, more than one yields ambiguous; listing errors or incomplete
+results are never considered successful.
+
+PostgresUnknownRunInspector only allows the original HMAC task owner to
+perform this read-only lookup on a reconciling task without a recorded
+runId. It uses PostgreSQL created_at, not a caller-provided timestamp.
+No OAuth identity, GitHub token or workflow input is committed to the
+repository.
+
+SECURITY LIMIT: GitHub run-name/display_title is user-configurable,
+not a cryptographic dispatch attestation. Even a unique candidate is
+ONLY an investigation lead. This discovery code never persists the
+candidate as a verified Run ID, cancels it, authorizes Worker OIDC, or
+marks a task disposed. Production still needs an authenticated
+run-provenance verification and final-state/disposal reconciler, then
+a multi-Gateway worker routing/failover E2E. Existing production/Preview
+dispatch remains unchanged and disabled by default where configured.

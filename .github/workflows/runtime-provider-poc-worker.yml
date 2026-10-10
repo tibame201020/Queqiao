@@ -1,4 +1,5 @@
 name: Runtime Provider POC Worker
+run-name: Queqiao Runtime ${{ inputs.lease_id }}
 
 on:
   workflow_dispatch:

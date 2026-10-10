@@ -9,18 +9,18 @@ const states = ["queued","provisioning","ready","running","cancelling","reconcil
 export type LedgerTask = {
   id:string; ownerDigest:string; idempotencyDigest:string; taskId:string; sourceRevision:string;
   state:string; holder:string|null; fence:string; leaseUntil:Date|null; runId:string|null;
-  environmentId:string|null; updatedAt:Date;
+  environmentId:string|null; updatedAt:Date; createdAt:Date;
 };
 type Row = {
   id:string; owner_digest:string; idempotency_digest:string;task_id:string; source_revision:string;
   state:string; holder:string|null;fence:string;lease_until:Date|null;
-  run_id:string|null;environment_id:string|null;updated_at:Date;
+  run_id:string|null;environment_id:string|null;updated_at:Date;created_at:Date;
 };
 function fromRow(r:Row):LedgerTask {
   return {id:r.id,ownerDigest:r.owner_digest,idempotencyDigest:r.idempotency_digest,
     taskId:r.task_id,sourceRevision:r.source_revision,state:r.state,holder:r.holder,
     fence:r.fence,leaseUntil:r.lease_until,runId:r.run_id,
-    environmentId:r.environment_id,updatedAt:r.updated_at};
+    environmentId:r.environment_id,updatedAt:r.updated_at,createdAt:r.created_at};
 }
 const uuid=(id:string)=>z.string().uuid().parse(id);
 function epoch(raw:string):string {
