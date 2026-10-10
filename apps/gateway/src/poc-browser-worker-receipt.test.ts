@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { verifyRemoteBrowserTool, verifyRemoteBrowserReceipt } from "./poc-browser-worker-receipt.js";
 
 const environmentId="gha_abcdef";
@@ -28,7 +28,12 @@ describe("Actions Gateway -> Worker -> Browser Harness receipt contract",()=>{
    runId:"772200",interactiveMarker:marker,clicks:1,
   });
  });
- it("rejects incorrect Run ID, forged marker, or wrong routed environment",()=>{
+ it("accepts Worker read_file with a trailing blank line counted in total lines",()=>{
+  const lines="Workspace: runtime\nPath: ci-browser-receipt.json\nLines: 1-1 of 2\n\n"+receipt;
+  expect(verifyRemoteBrowserReceipt(routed(lines),environmentId,"772200")).toMatchObject({
+   runId:"772200",clicks:1,
+  });
+ }); it("rejects incorrect Run ID, forged marker, or wrong routed environment",()=>{
   const lines="Workspace: runtime\nPath: ci-browser-receipt.json\nLines: 1-1 of 1\n\n"+receipt;
   expect(()=>verifyRemoteBrowserReceipt(routed(lines),environmentId,"9999")).toThrow();
   expect(()=>verifyRemoteBrowserReceipt(routed(lines,"wrong"),environmentId,"772200")).toThrow();

@@ -32,8 +32,11 @@ export function verifyRemoteBrowserTool(input:unknown,environmentId:string):{rou
 }
 export function verifyRemoteBrowserReceipt(input:unknown,environmentId:string,workerRunId:string){
  const text=payload(input,environmentId);
- const matched=/^Workspace: runtime\r?\nPath: ci-browser-receipt\.json\r?\nLines: 1-1 of 1\r?\n\r?\n([^\r\n]+)/.exec(text);
- if(!matched)throw new Error("Remote receipt format mismatch");
+ const matched=/^Workspace: runtime\r?\nPath: ci-browser-receipt\.json\r?\nLines: 1-1 of [1-9]\d*\r?\n\r?\n([^\r\n]+)/.exec(text);
+ if(!matched){
+  const safeHeader=text.split(/\r?\n/).slice(0,4).map(s=>s.slice(0,130));
+  throw new Error("Remote receipt format mismatch: "+JSON.stringify(safeHeader));
+ }
  const receipt=z.object({
  runId:z.string().regex(/^[0-9]+$/),origin:z.literal("https://example.com"),
  pageTitle:z.literal("Example Domain"), interactiveMarker:z.literal("QUEQIAO_CI_BROWSER_HARNESS_OK"),
