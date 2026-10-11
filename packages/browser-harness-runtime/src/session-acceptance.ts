@@ -4,6 +4,7 @@ import { classifySessionPage, type SessionPageSignals, type SessionPageVerdict }
 import { summarizeCookieRestore, summarizeStorageRestore } from "./session-restore-diagnostics.js";
 import { assessSessionComparison, probeUnauthenticatedControl } from "./session-control.js";
 import { readSessionEvidence, type SessionEvidence } from "./session-auth-evidence.js";
+import {createHttpDiagnostics,failedNavigation,summarizeNavigation,summarizeCookieExpiry,type NavigationSummary} from "./session-http-diagnostics.js";
 
 const capsule = process.env["CHATGPT_BROWSER_SESSION_CAPSULE"];
 if (!capsule) throw new Error("CHATGPT_BROWSER_SESSION_CAPSULE is required");
@@ -30,7 +31,17 @@ try {
   await installLocalStorage(context);
 
   const page = context.pages()[0] ?? await context.newPage();
-  await page.goto("https://chatgpt.com/", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  const http=createHttpDiagnostics();
+  page.on("response",response=>http.observe(response.url(),response.status()));
+  let navigation:NavigationSummary=failedNavigation();
+  let navigationFailed=false;
+  try {
+    const response=await page.goto("https://chatgpt.com/", { waitUntil: "domcontentloaded", timeout: 30_000 });
+    navigation=summarizeNavigation(response);
+  } catch {
+    // Do not print raw browser errors: request URLs may contain private data.
+    navigationFailed=true;
+  }
   // Allow a normal page load to settle. Do not interact with or attempt to bypass browser challenges.
   const deadline = Date.now() + 45_000;
   let sessionEvidence:SessionEvidence={sessionConfirmed:false,check:"not_checked"};
@@ -44,7 +55,7 @@ try {
     composerCount: 0,
   };
 
-  while (Date.now() < deadline) {
+  while (!navigationFailed && Date.now() < deadline) {
     last = {
       url: page.url(),
       title: await page.title().catch(() => ""),
@@ -78,6 +89,9 @@ try {
     control,
     comparison: assessSessionComparison(control,verdict),
     sessionEvidence,
+    navigation,
+    http:http.snapshot(),
+    cookieExpiry:summarizeCookieExpiry(state.cookies,Date.now()),
     loggedIn: verdict === "authenticated",
     urlHost: new URL(last.url).hostname,
     loginLink: last.loginLinks,
