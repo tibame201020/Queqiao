@@ -139,3 +139,30 @@ records navigation_error without printing the raw Playwright exception,
 which might include a private URL. The existing Secret remains
 accessible only to a new, manually dispatched and reviewed main run;
 PR checks receive no Session Secret.
+## One additional isolated restored Context (Issue #101 P2)
+
+After the P1 Run 38143848890 demonstrated guest HTTP 200 versus
+restored HTTP 403, this phase compares the original default CDP
+Context against ONE new isolated Context on the SAME Chrome/Runner,
+with the same existing Capsule. It executes only when the first
+restored Context shows browser_challenge and the no-session control
+shows guest_composer. The new Context starts with verified empty
+storage; the already validated Capsule is injected only in memory,
+and the same ChatGPT localStorage initialization is applied.
+
+The probe performs one bounded, read-only navigation and never clicks,
+retries a challenge, rotates network endpoints, changes browser flags,
+or simulates a human verification action. It checks the same safe
+HTTP/document status, eligible Cookie matching, storage matching and
+page verdict; all returned fields are sanitized aggregates. Guest
+Composer still does not count as authenticated. The additional Context
+is always closed. A failure to build this Context records a generic
+error flag rather than outputting any raw browser exception.
+
+Both-restored-contexts-challenged indicates the original/default
+Profile is NOT the sole observable trigger under this controlled run;
+this comparison alone does not prove why the website returns 403.
+Default-only-challenged suggests a profile/context difference worth
+investigating. Neither result is proof of authentication; only a
+confirmed service session plus usable Composer can pass Gate 1.
+No new Secret or local PC service is needed.
