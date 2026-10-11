@@ -33,3 +33,32 @@ For a production design, prefer a dedicated account/session boundary with least 
 Record only run ID, commit SHA, job status, and a sanitized authentication verdict. A missing-secret error means the browser login test was **not executed**; it is not evidence that session restoration failed. A browser challenge or expired session may also cause a false negative and must be classified separately.
 
 After testing, revoke the test ChatGPT session and delete the repository secret. Do not merge this experimental workflow into a default branch as a general-purpose auth mechanism without a security review.
+## Session restore diagnostics (Issue #101, October 2026)
+
+The acceptance script compares the decoded capsule against Chrome's
+actual cookies before and after ChatGPT navigation. Cookies with a
+positive expiry at or before the test clock are excluded from eligible;
+session cookies with expires=-1 or 0 remain eligible. Comparisons use
+cookie identity and value only in memory. Logs contain source, eligible,
+expired, matched, missing, changed counts, NEVER names or values.
+
+The ChatGPT localStorage report contains aggregate expected, observed,
+matched counts, status and storageStateReadable. A missing observable
+origin means not_observed, not restored. Neither Playwright storageState
+nor the decoded capsule is logged, persisted, captured or uploaded.
+
+Interpretation:
+- If pre-navigation matched is less than eligible, Chrome restoration
+  is incomplete regardless of ChatGPT server response.
+- If cookies are initially present and subsequently absent, their
+  state changed during navigation.
+- If cookies remain matched yet verdict is browser_challenge,
+  client-side restoration occurred but server acceptance is unproven.
+  Do not bypass challenges or call them successful login.
+- Authenticated still requires a real ChatGPT composer and no login
+  links or challenge. This gate does not submit prompts.
+
+Only manual dispatch on reviewed main may access the existing Secret.
+PR checks run only unit tests without it. Queue a NEW main workflow
+run following merge, as reruns may retain captured Secret revisions.
+This change creates no credentials or user browser profiles in repo.
