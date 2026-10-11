@@ -62,3 +62,29 @@ Only manual dispatch on reviewed main may access the existing Secret.
 PR checks run only unit tests without it. Queue a NEW main workflow
 run following merge, as reruns may retain captured Secret revisions.
 This change creates no credentials or user browser profiles in repo.
+
+## Unauthenticated control comparison (Issue #101)
+
+The existing approved, main-only workflow uses one GitHub-hosted Chrome
+process and one Actions Runner. Before injecting the current session
+capsule into the original Chrome context, it creates a new isolated
+incognito BrowserContext with explicitly empty Playwright storage state.
+The control context visits the ChatGPT home page without cookies or
+localStorage, performs NO login and NO challenge interaction, and then
+is closed. Only a sanitized verdict and isolation boolean are kept.
+
+The original context then restores the same existing capsule as before.
+The acceptance output adds control verdict and a comparison of both
+outcomes. Both-contexts-challenged means the challenge affects both
+fresh and restored contexts in this CI run; it does NOT prove a precise
+root cause. Restored-only-challenged is a difference worth investigating,
+not proof that the capsule is invalid. A navigation error or pending
+page remains inconclusive. Successful login still requires a real
+authenticated composer in the restored context.
+
+The test is not a challenge bypass, browser fingerprint alteration,
+network/IP rotation, password login, external browser host, profile
+persistence, or alternative API. No page content, screenshots, cookies,
+localStorage keys/values, or browser state are logged/uploaded.
+The Session Secret stays in the existing manually dispatched main job,
+never in PR tests.

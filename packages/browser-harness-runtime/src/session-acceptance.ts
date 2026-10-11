@@ -2,6 +2,7 @@ import { chromium, type BrowserContext } from "playwright-core";
 import { decodeBrowserSessionCapsule } from "./session-capsule.js";
 import { classifySessionPage, type SessionPageSignals, type SessionPageVerdict } from "./session-verdict.js";
 import { summarizeCookieRestore, summarizeStorageRestore } from "./session-restore-diagnostics.js";
+import { assessSessionComparison, probeUnauthenticatedControl } from "./session-control.js";
 
 const capsule = process.env["CHATGPT_BROWSER_SESSION_CAPSULE"];
 if (!capsule) throw new Error("CHATGPT_BROWSER_SESSION_CAPSULE is required");
@@ -13,6 +14,9 @@ const browser = await chromium.connectOverCDP(cdpUrl);
 try {
   const context = browser.contexts()[0];
   if (!context) throw new Error("Browser Harness CDP context is unavailable");
+  // Same GitHub Runner and Chrome, but fresh independent incognito Context.
+  // Do this before restoring any capsule to the existing default context.
+  const control = await probeUnauthenticatedControl(browser);
 
   // A valid decoded capsule alone does not prove Chrome retained it.
   // Compare cookie values in memory, then report ONLY aggregate counts.
@@ -60,6 +64,8 @@ try {
   const localStorage = summarizeStorageRestore(state.origins, observedStorage.origins);
   const result = {
     verdict,
+    control,
+    comparison: assessSessionComparison(control,verdict),
     loggedIn: verdict === "authenticated",
     urlHost: new URL(last.url).hostname,
     loginLink: last.loginLinks,
