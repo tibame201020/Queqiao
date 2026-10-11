@@ -5,6 +5,7 @@ import { summarizeCookieRestore, summarizeStorageRestore } from "./session-resto
 import { assessSessionComparison, probeUnauthenticatedControl } from "./session-control.js";
 import { readSessionEvidence, type SessionEvidence } from "./session-auth-evidence.js";
 import {createHttpDiagnostics,failedNavigation,summarizeNavigation,summarizeCookieExpiry,type NavigationSummary} from "./session-http-diagnostics.js";
+import {compareRestoredContexts,probeRestoredContext,type RestoredContextProbe} from "./session-restored-control.js";
 
 const capsule = process.env["CHATGPT_BROWSER_SESSION_CAPSULE"];
 if (!capsule) throw new Error("CHATGPT_BROWSER_SESSION_CAPSULE is required");
@@ -84,10 +85,25 @@ try {
     () => ({ readable: false, origins: [] }),
   );
   const localStorage = summarizeStorageRestore(state.origins, observedStorage.origins);
-  const result = {
+  // One additional same-Runner comparison only when the default restored
+  // Context failed with challenge but the guest control loaded.
+  // Never retry, rotate network, or interact with the browser challenge.
+  let restoredContext:RestoredContextProbe|null=null;
+  let restoredContextError=false;
+  if(verdict==="browser_challenge" && control.verdict==="guest_composer"){
+    try{
+      restoredContext=await probeRestoredContext(browser,state,installLocalStorage);
+    }catch{
+      // Return a sanitized failure rather than raw browser/profile errors.
+      restoredContextError=true;
+    }
+  }  const result = {
     verdict,
     control,
     comparison: assessSessionComparison(control,verdict),
+    restoredContext,
+    restoredContextError,
+    restoredComparison:restoredContext ? compareRestoredContexts(verdict,navigation.status,restoredContext) : "not_run",
     sessionEvidence,
     navigation,
     http:http.snapshot(),
