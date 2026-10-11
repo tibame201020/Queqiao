@@ -7,9 +7,14 @@ const sample: SessionPageSignals = {
   loginLinks: 0,
   signupLinks: 0,
   composerCount: 1,
+  sessionConfirmed: true,
 };
 
 describe("ChatGPT Browser Harness acceptance verdict", () => {
+  it("does not treat a public guest composer as an authenticated user", () => {
+    expect(classifySessionPage({ ...sample, sessionConfirmed: false })).toBe("guest_composer");
+    expect(classifySessionPage({ ...sample, sessionConfirmed: undefined })).toBe("guest_composer");
+  });
   it("recognizes a ready authenticated composer", () => {
     expect(classifySessionPage(sample)).toBe("authenticated");
   });

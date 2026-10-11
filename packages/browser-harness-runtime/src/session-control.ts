@@ -1,4 +1,4 @@
-﻿import type { Browser } from "playwright-core";
+import type { Browser } from "playwright-core";
 import { classifySessionPage, type SessionPageVerdict } from "./session-verdict.js";
 
 export type ControlResult={
@@ -11,7 +11,7 @@ export function assessSessionComparison(control:ControlResult,restored:SessionPa
   if(!control.isolated || control.verdict==="authenticated") throw new Error("Unauthenticated control isolation not proven");
   if(restored==="authenticated")return "authenticated_composer";
   if(control.verdict==="browser_challenge" && restored==="browser_challenge")return "both_contexts_challenged";
-  if(control.verdict==="logged_out" && restored==="browser_challenge")return "restored_only_challenged";
+  if((control.verdict==="logged_out" || control.verdict==="guest_composer") && restored==="browser_challenge")return "restored_only_challenged";
   if(control.verdict==="navigation_error" || control.verdict==="pending")return "inconclusive";
   return "not_authenticated";
 }
@@ -39,7 +39,7 @@ export async function probeUnauthenticatedControl(browser:Browser):Promise<Contr
           signupLinks:await page.getByRole("link",{name:/sign up|註冊/i}).count().catch(()=>0),
           composerCount:await page.locator('textarea,[contenteditable="true"]').count().catch(()=>0),
         });
-        if(verdict==="logged_out" || verdict==="authenticated")break;
+        if(verdict==="logged_out" || verdict==="guest_composer" || verdict==="authenticated")break;
         await page.waitForTimeout(1_500);
       }
     }catch{

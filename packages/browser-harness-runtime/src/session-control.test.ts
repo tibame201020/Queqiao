@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { assessSessionComparison, type ControlResult } from "./session-control.js";
 import type { SessionPageVerdict } from "./session-verdict.js";
 
@@ -21,6 +21,10 @@ describe("isolated CI ChatGPT control and restored-context comparison",()=>{
  it("treats navigation errors and pending page as inconclusive",()=>{
   expect(compare({verdict:"navigation_error",isolated:true},"browser_challenge")).toBe("inconclusive");
   expect(compare({verdict:"pending",isolated:true},"browser_challenge")).toBe("inconclusive");
+ });
+ it("accepts a guest composer as evidence of an unauthenticated control, not login",()=>{
+  expect(compare({verdict:"guest_composer",isolated:true},"browser_challenge")).toBe("restored_only_challenged");
+  expect(compare({verdict:"guest_composer",isolated:true},"guest_composer")).toBe("not_authenticated");
  });
  it("fails closed if isolated context has any pre-existing storage or appears authenticated",()=>{
   expect(()=>compare({verdict:"logged_out",isolated:false},"browser_challenge")).toThrow(/isolation/i);
