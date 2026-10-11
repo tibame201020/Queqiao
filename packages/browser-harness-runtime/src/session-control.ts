@@ -1,9 +1,12 @@
 import type { Browser } from "playwright-core";
 import { classifySessionPage, type SessionPageVerdict } from "./session-verdict.js";
+import { createHttpDiagnostics,failedNavigation,summarizeNavigation,type NavigationSummary,type HttpSummary } from "./session-http-diagnostics.js";
 
 export type ControlResult={
   verdict:SessionPageVerdict|"navigation_error";
   isolated:boolean;
+  navigation?:NavigationSummary;
+  http?:HttpSummary;
 };
 export type SessionComparison="both_contexts_challenged"|"restored_only_challenged"|"authenticated_composer"|"inconclusive"|"not_authenticated";
 
@@ -27,9 +30,13 @@ export async function probeUnauthenticatedControl(browser:Browser):Promise<Contr
     const isolated=initial.cookies.length===0 && initial.origins.length===0;
     if(!isolated)throw new Error("Unauthenticated control isolation not proven");
     const page=await context.newPage();
+    const http=createHttpDiagnostics();
+    page.on("response",response=>http.observe(response.url(),response.status()));
+    let navigation:NavigationSummary=failedNavigation();
     let verdict:ControlResult["verdict"]="pending";
     try{
-      await page.goto("https://chatgpt.com/",{waitUntil:"domcontentloaded",timeout:30_000});
+      const response=await page.goto("https://chatgpt.com/",{waitUntil:"domcontentloaded",timeout:30_000});
+      navigation=summarizeNavigation(response);
       const deadline=Date.now()+18_000;
       while(Date.now()<deadline){
         verdict=classifySessionPage({
@@ -43,10 +50,11 @@ export async function probeUnauthenticatedControl(browser:Browser):Promise<Contr
         await page.waitForTimeout(1_500);
       }
     }catch{
+      navigation=failedNavigation();
       verdict="navigation_error";
     }
     if(verdict==="authenticated")throw new Error("Unauthenticated control isolation not proven");
-    return {verdict,isolated};
+    return {verdict,isolated,navigation,http:http.snapshot()};
   }finally{
     await context.close();
   }

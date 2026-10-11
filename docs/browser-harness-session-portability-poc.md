@@ -112,3 +112,30 @@ Neither session check nor any other POC code interacts with or bypasses
 browser security challenges. Continue using the existing repository
 Secret in the manually dispatched reviewed main workflow; no new
 credentials and no local host runtime are involved.
+## Read-only HTTP and expiry diagnostics (Issue #101 P1)
+
+The main-only Session Portability gate now compares BOTH the no-session
+incognito control and the restored Context in the SAME CI Chrome/Runner.
+The extra HTTP diagnostics observe existing network responses without
+intercepting, blocking, retrying, altering or bypassing authentication
+or browser challenges. Only response status categories from the exact
+chatgpt.com and auth.openai.com hosts are counted; status 401/403/429,
+other 4xx, 5xx, 2xx, 3xx and other are reported as aggregate totals.
+Final main-document HTTP status, a bounded redirect count and a
+destination class (chatgpt/auth/other/unknown) are recorded without
+any URL path, query, request headers, response body, cookie identity,
+username, account identifier, token or browser storage.
+
+The decoded capsule's Cookie expiries are counted as session, expired,
+remaining up to 24h, within 7 days and beyond 7 days. Individual expiry
+timestamps and Cookie identifiers are not printed. These buckets do
+not prove which Cookie is required for authorization. A redirect or
+HTTP 403/429 does not by itself establish why the website decided to
+show a browser challenge.
+
+The script does not upload HAR files, screenshots, traces, raw page
+responses or browser profiles. If navigation fails, the diagnostic
+records navigation_error without printing the raw Playwright exception,
+which might include a private URL. The existing Secret remains
+accessible only to a new, manually dispatched and reviewed main run;
+PR checks receive no Session Secret.
