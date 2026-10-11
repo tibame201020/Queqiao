@@ -4,9 +4,10 @@ export type SessionPageSignals = {
   loginLinks: number;
   signupLinks: number;
   composerCount: number;
+  sessionConfirmed?:boolean;
 };
 
-export type SessionPageVerdict = "authenticated" | "logged_out" | "browser_challenge" | "pending";
+export type SessionPageVerdict = "authenticated" | "logged_out" | "browser_challenge" | "pending" | "guest_composer";
 
 export function classifySessionPage(signals: SessionPageSignals): SessionPageVerdict {
   if (/just a moment|請稍候|checking your browser|verify you are human/i.test(signals.title)) {
@@ -17,7 +18,7 @@ export function classifySessionPage(signals: SessionPageSignals): SessionPageVer
     return "logged_out";
   }
   if (signals.composerCount > 0 && new URL(signals.url).hostname === "chatgpt.com") {
-    return "authenticated";
+    return signals.sessionConfirmed===true?"authenticated":"guest_composer";
   }
   return "pending";
 }

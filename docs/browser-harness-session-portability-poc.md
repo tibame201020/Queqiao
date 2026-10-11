@@ -88,3 +88,27 @@ persistence, or alternative API. No page content, screenshots, cookies,
 localStorage keys/values, or browser state are logged/uploaded.
 The Session Secret stays in the existing manually dispatched main job,
 never in PR tests.
+## Guest Composer and authentication evidence (Issue #101)
+
+CI Run 38136907842 found that an explicitly empty incognito
+BrowserContext displayed a Composer. The former heuristic incorrectly
+called this authenticated, which is a false positive. The acceptance
+contract now returns guest_composer whenever a Composer is visible
+without separate verified session evidence. The hybrid readiness check
+must reject guest_composer.
+
+For a restored context that has a Composer and is not on a login or
+challenge page, the script makes a single same-origin, read-only check
+of the ChatGPT website's session status. This is an INTERNAL, UNSTABLE
+website route, not a supported developer API or a new content backend.
+The browser discards the returned response locally and forwards ONLY
+a confirmed/not_confirmed/unavailable boolean verdict. No account
+identifier, token or response JSON is logged, committed or uploaded.
+
+A successful acceptance requires an authenticated session indication
+and a usable Composer at the same time. If the website session check
+is unavailable, the gate fails closed rather than reporting login.
+Neither session check nor any other POC code interacts with or bypasses
+browser security challenges. Continue using the existing repository
+Secret in the manually dispatched reviewed main workflow; no new
+credentials and no local host runtime are involved.

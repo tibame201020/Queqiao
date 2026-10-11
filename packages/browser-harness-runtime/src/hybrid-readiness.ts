@@ -1,4 +1,4 @@
-﻿import type { SessionPageVerdict } from "./session-verdict.js";
+import type { SessionPageVerdict } from "./session-verdict.js";
 
 export type HybridReadinessInput = {
   browser: SessionPageVerdict | "unreachable";
@@ -10,6 +10,7 @@ export type HybridReadinessReason =
   | "browser_challenge"
   | "browser_logged_out"
   | "browser_pending"
+  | "browser_guest"
   | "browser_unreachable"
   | "provider_missing"
   | "management_unauthorized"
@@ -22,6 +23,7 @@ export function classifyHybridReadiness(input: HybridReadinessInput): { ready: b
       browser_challenge: "browser_challenge",
       logged_out: "browser_logged_out",
       pending: "browser_pending",
+      guest_composer:"browser_guest",
       unreachable: "browser_unreachable",
     };
     return { ready: false, reason: reasons[input.browser] };

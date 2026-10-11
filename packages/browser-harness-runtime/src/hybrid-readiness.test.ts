@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { classifyHybridReadiness } from "./hybrid-readiness.js";
 
 describe("hybrid Browser Harness runtime preflight", () => {
@@ -26,6 +26,11 @@ describe("hybrid Browser Harness runtime preflight", () => {
     });
   });
 
+  it("never accepts a guest composer as an authenticated session",()=>{
+    expect(classifyHybridReadiness({browser:"guest_composer",managementStatus:200})).toEqual({
+      ready:false,reason:"browser_guest"
+    });
+  });
   it("will never pass a challenge or logged out browser", () => {
     expect(classifyHybridReadiness({ browser: "browser_challenge", managementStatus: 200 })).toEqual({
       ready: false, reason: "browser_challenge"

@@ -3,6 +3,7 @@ import { decodeBrowserSessionCapsule } from "./session-capsule.js";
 import { classifySessionPage, type SessionPageSignals, type SessionPageVerdict } from "./session-verdict.js";
 import { summarizeCookieRestore, summarizeStorageRestore } from "./session-restore-diagnostics.js";
 import { assessSessionComparison, probeUnauthenticatedControl } from "./session-control.js";
+import { readSessionEvidence, type SessionEvidence } from "./session-auth-evidence.js";
 
 const capsule = process.env["CHATGPT_BROWSER_SESSION_CAPSULE"];
 if (!capsule) throw new Error("CHATGPT_BROWSER_SESSION_CAPSULE is required");
@@ -32,6 +33,8 @@ try {
   await page.goto("https://chatgpt.com/", { waitUntil: "domcontentloaded", timeout: 30_000 });
   // Allow a normal page load to settle. Do not interact with or attempt to bypass browser challenges.
   const deadline = Date.now() + 45_000;
+  let sessionEvidence:SessionEvidence={sessionConfirmed:false,check:"not_checked"};
+  let sessionEvidenceChecked=false;
   let verdict: SessionPageVerdict = "pending";
   let last: SessionPageSignals = {
     url: page.url(),
@@ -49,8 +52,16 @@ try {
       signupLinks: await page.getByRole("link", { name: /sign up|註冊/i }).count().catch(() => 0),
       composerCount: await page.locator('textarea,[contenteditable="true"]').count().catch(() => 0),
     };
-    verdict = classifySessionPage(last);
-    if (verdict === "authenticated" || verdict === "logged_out") break;
+    // A guest Composer is not login proof (verified by the empty CI control).
+    // Consult the first-party website's read-only session-status route only
+    // when a Composer is visible and there is no challenge or sign-in page.
+    if(!sessionEvidenceChecked && classifySessionPage(last)==="guest_composer"){
+      sessionEvidenceChecked=true;
+      sessionEvidence=await readSessionEvidence(page);
+    }
+    last.sessionConfirmed=sessionEvidence.sessionConfirmed;
+    verdict=classifySessionPage(last);
+    if (verdict === "authenticated" || verdict === "logged_out" || verdict==="guest_composer") break;
     await page.waitForTimeout(1_500);
   }
 
@@ -66,6 +77,7 @@ try {
     verdict,
     control,
     comparison: assessSessionComparison(control,verdict),
+    sessionEvidence,
     loggedIn: verdict === "authenticated",
     urlHost: new URL(last.url).hostname,
     loginLink: last.loginLinks,
