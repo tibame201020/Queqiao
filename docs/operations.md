@@ -43,6 +43,20 @@ It does not allow a wildcard loopback port or arbitrary redirect URI. If OAuth a
 stalls, first check the browser console for a `form-action` violation. Optional blocked
 analytics scripts are unrelated. Do not reuse or paste expired authorization codes.
 
+### OAuth compatibility gate for Gateway upgrades
+
+Before shipping changes to OAuth or CSP, require automated tests for all three independent
+clients: (1) an existing ChatGPT Connector redirect and valid refresh grant, (2) a newly
+registered ChatGPT Connector with a different allowed redirect path and independent refresh
+grant, and (3) a standalone loopback client with a registered callback including its port.
+After adding/authorizing (3), (1) and (2) must still refresh; all three authorized clients
+must remain in Gateway-owned persistent state. A malformed/unregistered redirect must
+remain rejected. These are synthetic contract tests; they cannot inspect ChatGPT-hosted
+tokens. Release acceptance additionally requires a smoke call through an existing connected
+ChatGPT Connector, fresh connector registration/reconnect when available, and a real
+Workstation callback/token exchange on the deployed Gateway. Do not declare backward
+compatibility from CSP header inspection alone.
+
 In ChatGPT, a public MCP schema migration is applied with the connector/app **Refresh** action, then verified from a new conversation because an already-open conversation can retain its prior tool-schema snapshot. **Reconnect** re-establishes the connection/OAuth lifecycle but does not replace schema discovery. Reinstalling the same app can also reuse cached tool metadata; prefer Refresh before considering connector recreation.
 ## Enrollment and membership
 

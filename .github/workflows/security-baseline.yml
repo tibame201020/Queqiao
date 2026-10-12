@@ -28,6 +28,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Verify existing and newly registered ChatGPT Connector OAuth compatibility
+        run: npx vitest run apps/gateway/src/security-baseline.test.ts --maxWorkers=2
       - if: runner.os != 'Windows'
         run: npm run typecheck && npm run test:security
       - name: Verify persistent Gateway systemd units
