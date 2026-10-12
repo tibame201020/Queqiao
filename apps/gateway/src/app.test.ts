@@ -36,7 +36,7 @@ describe("Queqiao v0 vertical slice", () => {
     const address = workerServer.address(); if (!address || typeof address === "string") throw new Error("Worker did not listen");
     const stateDir = path.join(temporary, ".state");
     await seedTestWorkerMembership({ stateDirectory: stateDir, environmentId: "windows", endpoint: `http://127.0.0.1:${address.port}` });
-    const config: GatewayRuntimeConfig = { port: 7575, publicBaseUrl: base, resourceUrl: "http://localhost:7575/mcp", stateDir, approvalSecret: "correct horse battery staple", jwtSecret: new TextEncoder().encode("test-signing-secret-with-at-least-thirty-two-bytes"), trustProxyHops: 1, allowedRedirectOrigins: new Set(["https://chatgpt.com"]), extensions: [], configDirectory: temporary };
+    const config: GatewayRuntimeConfig = { port: 7575, publicBaseUrl: base, resourceUrl: "http://localhost:7575/mcp", stateDir, approvalSecret: "correct horse battery staple", jwtSecret: new TextEncoder().encode("test-signing-secret-with-at-least-thirty-two-bytes"), trustProxyHops: 1, allowedRedirectOrigins: new Set(["https://chatgpt.com", "http://127.0.0.1"]), extensions: [], configDirectory: temporary };
     gateway = await createGatewayApp(config);
   });
 
@@ -57,13 +57,37 @@ describe("Queqiao v0 vertical slice", () => {
     expect(challenge.headers["www-authenticate"]).toContain("resource_metadata=");
   });
 
+  it("limits authorize form-action to the configured Gateway origin and the validated callback origin including its port", async () => {
+    const redirectUri = "http://127.0.0.1:3873/queqiao/callback";
+    const registered = await request(gateway).post("/oauth/register").set("Host", "localhost")
+      .send({ client_name: "Local workstation", redirect_uris: [redirectUri], token_endpoint_auth_method: "none", scope: "queqiao:access" }).expect(201);
+    const verifier = randomBytes(40).toString("base64url");
+    const authorization = { client_id: registered.body.client_id as string, redirect_uri: redirectUri, response_type: "code", code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256", scope: "queqiao:access", resource: "http://localhost:7575/mcp", state: "poc" };
+    const page = await request(gateway).get("/oauth/authorize").set("Host", "localhost").query(authorization).expect(200);
+    const csp = String(page.headers["content-security-policy"]);
+    expect(csp).toContain("form-action 'self'");
+    expect(csp).toContain("http://localhost:7575");
+    expect(csp).toContain("http://127.0.0.1:3873");
+    expect(csp).not.toContain("http://127.0.0.1:*");
+    expect(csp).not.toContain("https://untrusted.example");
+    expect(page.text).toContain('action="/oauth/authorize"');
+    const approved = await request(gateway).post("/oauth/authorize").set("Host", "localhost")
+      .type("form").send({ ...authorization, approval_secret: "correct horse battery staple" }).expect(303);
+    expect(String(approved.headers["content-security-policy"])).toContain("http://127.0.0.1:3873");
+    expect(new URL(approved.headers.location).origin).toBe("http://127.0.0.1:3873");
+    const notRegistered = await request(gateway).get("/oauth/authorize").set("Host", "localhost")
+      .query({ ...authorization, redirect_uri: "http://127.0.0.1:3999/queqiao/callback" }).expect(400);
+    expect(String(notRegistered.headers["content-security-policy"])).not.toContain("http://127.0.0.1:3999");
+  });
+
   it("completes OAuth, lists the stable v0 tools, and reads through the worker", async () => {
     const registered = await request(gateway).post("/oauth/register").set("Host", "localhost").send({ client_name: "ChatGPT", redirect_uris: ["https://chatgpt.com/connector/oauth/callback"], token_endpoint_auth_method: "none", scope: "workspace:read" }).expect(201);
     const verifier = randomBytes(40).toString("base64url");
     const authorization = { client_id: registered.body.client_id as string, redirect_uri: "https://chatgpt.com/connector/oauth/callback", response_type: "code", code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256", scope: "workspace:read", resource: "http://localhost:7575/mcp", state: "v0" };
     const authorizationPage = await request(gateway).get("/oauth/authorize").set("Host", "localhost").query(authorization).expect(200);
     expect(authorizationPage.text).toContain("Scopes: queqiao:access");
-    expect(authorizationPage.headers["content-security-policy"]).toContain("form-action 'self' https://chatgpt.com");
+    expect(authorizationPage.headers["content-security-policy"]).toContain("form-action 'self'");
+    expect(authorizationPage.headers["content-security-policy"]).toContain("https://chatgpt.com");
     const approved = await request(gateway).post("/oauth/authorize").set("Host", "localhost").type("form").send({ ...authorization, approval_secret: "correct horse battery staple" }).expect(303);
     const code = new URL(approved.headers.location).searchParams.get("code");
     const token = await request(gateway).post("/oauth/token").set("Host", "localhost").type("form").send({ grant_type: "authorization_code", code, redirect_uri: authorization.redirect_uri, client_id: authorization.client_id, code_verifier: verifier, resource: authorization.resource }).expect(200);
