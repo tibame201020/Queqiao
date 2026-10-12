@@ -1,11 +1,11 @@
-﻿import {gzipSync} from "node:zlib";
+import {gzipSync} from "node:zlib";
 import {
   decodeBrowserSessionCapsule,validateBrowserSessionState,
   type BrowserSessionCookie,type BrowserSessionOrigin,
 } from "./session-capsule.js";
 import type {SessionEvidence} from "./session-auth-evidence.js";
 
-const domains=/^(?:\.?chatgpt\.com|\.?openai\.com|\.?auth\.openai\.com)$/i;
+const domains=/(^|\.)chatgpt\.com$|(^|\.)openai\.com$/i;
 const origins=new Set(["https://chatgpt.com","https://auth.openai.com","https://openai.com"]);
 export type BrowserSnapshot={cookies:BrowserSessionCookie[];origins:BrowserSessionOrigin[]};
 export type RenewalSummary={eligibleCookies:number;expiredCookies:number;originCount:number;compressedBytes:number};

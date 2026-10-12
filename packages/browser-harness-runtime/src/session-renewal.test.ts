@@ -35,6 +35,12 @@ describe("attended session renewal preflight",()=>{
    {name:"blob",value:Array.from({length:12500},(_,i)=>String(i%10)).join("")}]}]};
   expect(()=>prepareRenewedCapsule(huge,1780000000000,10)).toThrow();
  });
+ it("keeps existing decoder-allowlisted nested OpenAI domain cookies",()=>{
+   const {capsule}=prepareRenewedCapsule({
+     ...sample,cookies:[goodCookie,{...goodCookie,name:"subdomain",domain:".accounts.openai.com"}],
+   },1780000000000);
+   expect(decodeBrowserSessionCapsule(capsule).cookies).toHaveLength(2);
+ });
  it("never accepts a third-party cookie as part of renewal",()=>{
   const {capsule}=prepareRenewedCapsule({...sample,cookies:[goodCookie,{...goodCookie,domain:"evilchatgpt.com"}]},1780000000000);
   expect(decodeBrowserSessionCapsule(capsule).cookies).toHaveLength(1);
