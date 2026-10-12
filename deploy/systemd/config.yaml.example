@@ -1,0 +1,27 @@
+﻿# Template only. Never commit real OAuth secrets, JWT signing keys or GitHub tokens.
+version: 1
+workspaces: []
+gateway:
+  publicBaseUrl: https://gateway.example.invalid/
+  listen:
+    host: 127.0.0.1
+    port: 7575
+  managementListen:
+    host: 127.0.0.1
+    port: 7574
+  workerSessionListen:
+    host: 127.0.0.1
+    port: 7573
+  stateDirectory: /var/lib/queqiao
+  approvalSecretFile: /etc/queqiao/oauth-approval.secret
+  jwtSigningSecretFile: /etc/queqiao/jwt-signing.secret
+  allowedRedirectOrigins:
+    - https://chatgpt.com
+  runtimeProviders:
+    githubActions:
+      owner: tibame201020
+      repo: Queqiao
+      workflowId: runtime-provider-poc-worker.yml
+      ref: main
+      tokenFile: /etc/queqiao/github-actions.token
+      mcpPocEnabled: false

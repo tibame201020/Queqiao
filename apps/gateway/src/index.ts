@@ -12,13 +12,18 @@ import { WorkerSessionRegistry } from "./worker-session-registry.js";
 import { WorkerGrpcSessionServer } from "./grpc-worker-session-server.js";
 import { WorkerWebSocketSessionServer } from "./websocket-worker-session-server.js";
 import { createConfiguredGitHubActionsRuntime, startGitHubActionsRuntimeExpiryMonitor } from "./github-actions-runtime.js";
+import { acquireGatewayStateOwner } from "./gateway-state-owner.js";
 
 const config = loadGatewayConfigFile(requireRuntimeConfigFile());
+// Acquire exclusive local state ownership BEFORE runtime lease recovery.
+const stateOwner = await acquireGatewayStateOwner(config.stateDir);
 const audit = new AuditLogStore(process.env.QUEQIAO_AUDIT_DIR?.trim() || path.join(config.stateDir, "audit"));
 const memberships = new WorkerMembershipStore(config.stateDir);
 const sessions = new WorkerSessionRegistry();
 const enrollment = new EnrollmentService(memberships, config.stateDir, sessions, audit);
-const githubActionsRuntime = config.githubActionsRuntime ? createConfiguredGitHubActionsRuntime(config.githubActionsRuntime, config.publicBaseUrl) : undefined;
+const githubActionsRuntime = config.githubActionsRuntime ? createConfiguredGitHubActionsRuntime(config.githubActionsRuntime, config.publicBaseUrl, config.stateDir) : undefined;
+// Cancel any unfinished Actions Worker from the previous Gateway process before listening.
+await githubActionsRuntime?.recoverPending();
 const stopRuntimeExpiryMonitor = githubActionsRuntime ? startGitHubActionsRuntimeExpiryMonitor(githubActionsRuntime) : undefined;
 const managementSecret = await ensureGatewayManagementSecret(config.stateDir);
 const workerSessionServer = new WorkerGrpcSessionServer({ sessions, authenticate: (hello, credential) => enrollment.authenticateWorkerSession(hello, credential), audit });
@@ -53,7 +58,8 @@ const shutdown = () => {
     closeHttpServer(managementServer),
     workerSessionServer.close().catch((error) => console.error("Worker gRPC session shutdown failed", error)),
     workerWebSocketSessionServer.close().catch((error) => console.error("Worker WebSocket session shutdown failed", error)),
-  ]).catch((error) => console.error("Gateway shutdown failed", error));
+  ]).catch((error) => console.error("Gateway shutdown failed", error))
+    .finally(() => stateOwner.release().catch((error) => console.error("Gateway state owner release failed", error)));
 };
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);

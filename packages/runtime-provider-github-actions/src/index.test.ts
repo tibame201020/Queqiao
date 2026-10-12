@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   GitHubActionsFetchApi,
+  GitHubActionsGhCliApi,
   GitHubActionsRuntimeClaimRegistry,
   GitHubActionsRuntimeCoordinator,
   GitHubActionsRuntimeProvider,
@@ -96,6 +97,29 @@ describe("GitHub Actions Runtime Provider", () => {
     });
   });
 
+  it("propagates a validated trusted source SHA to the dispatched ephemeral Worker", async () => {
+    const dispatch = vi.fn(async () => ({ runId: 12345, runUrl: "url", htmlUrl: "url" }));
+    const provider = new GitHubActionsRuntimeProvider({
+      owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main",
+      gatewayUrl: "https://gateway.example.test/", api: { dispatch, cancel: vi.fn() },
+    });
+    const sha = "a".repeat(40);
+    await provider.provision({ leaseId, ttlSeconds: 180, metadata: { sourceRevision: sha } });
+    expect(dispatch.mock.calls[0]?.[0].inputs).toMatchObject({ source_revision: sha });
+    expect(JSON.stringify(dispatch.mock.calls[0])).not.toContain("authorization");
+  });
+
+  it("fails before dispatch for non-SHA source revisions", async () => {
+    const dispatch = vi.fn();
+    const provider = new GitHubActionsRuntimeProvider({
+      owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main",
+      gatewayUrl: "https://gateway.example.test/", api: { dispatch, cancel: vi.fn() },
+    });
+    for (const bad of ["main", "../main", "b".repeat(39), "b".repeat(40) + "\n"]) {
+      await expect(provider.provision({ leaseId, ttlSeconds: 180, metadata: { sourceRevision: bad } })).rejects.toThrow();
+    }
+    expect(dispatch).not.toHaveBeenCalled();
+  });
   it("registers the dispatched run for OIDC claim correlation", async () => {
     const registry = new GitHubActionsRuntimeClaimRegistry("urn:queqiao:runtime", verifier());
     const provider = new GitHubActionsRuntimeProvider({
@@ -308,6 +332,32 @@ describe("GitHub Actions Runtime reconciliation", () => {
 });
 
 describe("GitHub Actions Runtime Coordinator", () => {
+  it("uses a trusted pre-reserved PostgreSQL task UUID as lease ID and denies local duplicate", async () => {
+    const dispatch = vi.fn(async () => ({
+      runId: 12345, runUrl: "https://api.github.test/runs/12345", htmlUrl: "https://github.test/runs/12345",
+    }));
+    const registry = new GitHubActionsRuntimeClaimRegistry("urn:queqiao:runtime", verifier());
+    const provider = new GitHubActionsRuntimeProvider({
+      owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main",
+      gatewayUrl: "https://gateway.example.test/",
+      api: { dispatch, cancel: vi.fn(async () => undefined) },
+      claimRegistry: registry,
+    });
+    const coordinator = new GitHubActionsRuntimeCoordinator(provider, registry);
+    const chosen = "33333333-3333-4333-8333-333333333333";
+    const result = await coordinator.provision({
+      leaseId: chosen, ttlSeconds: 240, metadata: { sourceRevision: "a".repeat(40) },
+    });
+    expect(result.leaseId).toBe(chosen);
+    expect(registry.get(chosen)).toMatchObject({ leaseId: chosen, runId: 12345 });
+    expect(dispatch.mock.calls[0]?.[0].inputs).toMatchObject({
+      lease_id: chosen, source_revision: "a".repeat(40),
+    });
+    await expect(coordinator.provision({ leaseId: chosen, ttlSeconds: 240 })).rejects.toThrow(/already present/i);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    await expect(coordinator.provision({ leaseId: "not-a-uuid", ttlSeconds: 240 })).rejects.toThrow();
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
   it("runs provision -> OIDC claim -> Worker ready -> completion -> disposal", async () => {
     let currentMs = nowMs;
     const cancel = vi.fn(async () => undefined);
@@ -405,5 +455,64 @@ describe("GitHub Actions REST adapter", () => {
       ref: "main",
       inputs: { lease_id: leaseId },
     })).resolves.toMatchObject({ runId: 77 });
+  });
+});
+describe("GitHub CLI cancellation with eventually consistent runs", () => {
+  it("retries a transient early cancellation failure while the run is active", async () => {
+    let attempts = 0;
+    const wait = vi.fn(async () => undefined);
+    const invoke = vi.fn(async (args: readonly string[]) => {
+      if (args.some((a) => a.endsWith("/cancel"))) {
+        attempts++;
+        if (attempts === 1) throw new Error("unavailable while queued");
+        return "";
+      }
+      return JSON.stringify({ status: "in_progress", conclusion: null });
+    });
+    const api = new GitHubActionsGhCliApi(invoke, wait);
+    await api.cancel({ owner: "example", repo: "runtime", runId: 12345 });
+    expect(attempts).toBe(2);
+    expect(wait).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a previously cancelled completed run as disposed without retrying", async () => {
+    const wait = vi.fn(async () => undefined);
+    const invoke = vi.fn(async (args: readonly string[]) => {
+      if (args.some((a) => a.endsWith("/cancel"))) throw new Error("HTTP 409");
+      return JSON.stringify({ id: 12345, status: "completed", conclusion: "cancelled" });
+    });
+    await new GitHubActionsGhCliApi(invoke, wait).cancel({ owner: "example", repo: "runtime", runId: 12345 });
+    expect(wait).not.toHaveBeenCalled();
+  });
+
+  it("fails closed after bounded cancellation failures, without misreporting disposal", async () => {
+    const wait = vi.fn(async () => undefined);
+    const invoke = vi.fn(async (args: readonly string[]) => {
+      if (args.some((a) => a.endsWith("/cancel"))) throw new Error("unavailable");
+      return JSON.stringify({ status: "in_progress", conclusion: null });
+    });
+    await expect(new GitHubActionsGhCliApi(invoke, wait).cancel({
+      owner: "example", repo: "runtime", runId: 12345,
+    })).rejects.toThrow(/not verified/i);
+    expect(wait).toHaveBeenCalledTimes(5);
+  });
+});
+describe("GitHub Actions gh-cli adapter", () => {
+  it("dispatches and cancels using bounded gh api arguments without token materialization", async () => {
+    const invoke = vi.fn(async (args: readonly string[], input?: string) => {
+      expect(args[0]).toBe("api");
+      expect(args).not.toContain("--hostname");
+      expect(args.join(" ")).not.toContain("Authorization");
+      if (args.some((arg) => arg.endsWith("/dispatches"))) {
+        expect(JSON.parse(input ?? "")).toEqual({ ref: "main", inputs: { lease_id: leaseId } });
+        return JSON.stringify({ workflow_run_id: 77, run_url: "https://api.github.test/runs/77", html_url: "https://github.test/runs/77" });
+      }
+      expect(args.join(" ")).toContain("/actions/runs/77/cancel");
+      return "";
+    });
+    const api = new GitHubActionsGhCliApi(invoke);
+    await expect(api.dispatch({ owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main", inputs: { lease_id: leaseId } })).resolves.toMatchObject({ runId: 77 });
+    await api.cancel({ owner: "example", repo: "runtime-host", runId: 77 });
+    expect(invoke).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,0 +1,31 @@
+﻿[Unit]
+Description=Queqiao persistent MCP Gateway
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=6
+
+[Service]
+Type=simple
+User=queqiao
+Group=queqiao
+WorkingDirectory=/opt/queqiao
+Environment=NODE_ENV=production
+Environment=QUEQIAO_CONFIG_FILE=/etc/queqiao/config.yaml
+ExecStart=/usr/bin/node /opt/queqiao/apps/gateway/dist/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+StateDirectory=queqiao
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/queqiao
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

@@ -8,6 +8,9 @@ import { QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS } from "@queqiao/mcp-compat";
 import { buildOperationsDiagnostics, publicOperationsProjection } from "@queqiao/operations";
 import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import type { McpCancellationRegistry } from "./cancellation-registry.js";
+import type { ActionsMcpPoc } from "./actions-mcp-poc.js";
+import type { ShortTaskService } from "./short-task-runtime.js";
+import { z } from "zod";
 import { toQueqiaoErrorEnvelope } from "./errors.js";
 
 export const QUEQIAO_V0_TOOL_NAMES = ["workspace_info", "read_file"] as const;
@@ -58,7 +61,7 @@ export function createGatewayToolRuntime(): ToolRuntime<GatewayToolContext> {
   return runtime.seal();
 }
 
-export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = []): McpServer {
+export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = [], actionsMcpPoc?: ActionsMcpPoc, shortTasks?: ShortTaskService): McpServer {
   const server = new McpServer({ name: "queqiao-mcp", version: "0.1.0" }, { supportedProtocolVersions: [...QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS] });
   const runtime = createGatewayToolRuntime();
   const diagnostics = buildOperationsDiagnostics({
@@ -131,6 +134,70 @@ export function createMcpServer(workers: WorkerRegistry, scopes: readonly string
         }
       },
     );
+  }
+  // Test-only capabilities. Never exposed without explicit provider opt-in.
+  // All actions are bound to the authenticated OAuth client ID.
+  if (actionsMcpPoc) {
+    const principal = cancellation?.principalId ?? "";
+    const register = (name: string, description: string, action: () => Promise<unknown> | unknown, readOnly: boolean) => {
+      server.registerTool(name, {
+        description,
+        inputSchema: z.object({}).shape,
+        annotations: { readOnlyHint: readOnly, destructiveHint: !readOnly, idempotentHint: readOnly, openWorldHint: !readOnly },
+      }, async () => {
+        try {
+          if (!scopes.includes("queqiao:access") || !principal) throw new Error("Authenticated Queqiao OAuth client required");
+          return result(await action());
+        } catch (error) { return failure(error); }
+      });
+    };
+    register("actions_worker_start", "Gate C POC only: start one short-lived GitHub Actions Worker (max 3 dispatches per Gateway).", () => actionsMcpPoc.start(principal), false);
+    register("actions_worker_status", "Gate C POC only: check readiness of your GitHub Actions Worker.", () => actionsMcpPoc.status(principal), true);
+    register("actions_worker_read_marker", "Gate C POC only: read runtime/poc-marker.txt from your Worker, validate routing, and dispose the lease.", () => actionsMcpPoc.readMarker(principal), false);
+    register("actions_worker_cancel", "Gate C POC only: cancel your active GitHub Actions Worker and dispose its lease.", () => actionsMcpPoc.cancel(principal), false);
+  }
+  if (shortTasks) {
+    const principal = cancellation?.principalId ?? "";
+    const requireAuthorized = () => {
+      if (!principal || !scopes.includes("queqiao:access")) throw new Error("Authenticated Queqiao OAuth client required");
+      return principal;
+    };
+    const id = z.string().uuid();
+    server.registerTool("short_task_submit", {
+      description: "Preview: submit one SHA-pinned, idempotent catalog task.",
+      inputSchema: {
+        taskId: z.enum(["gateway-vitest", "gateway-cancel-smoke"]),
+        idempotencyKey: z.string().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    }, async (input) => {
+      try { return result(await shortTasks.submit(requireAuthorized(), input)); }
+      catch (error) { return failure(error); }
+    });
+    server.registerTool("short_task_status", {
+      description: "Preview: inspect only your own task.",
+      inputSchema: { id },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    }, async (input) => {
+      try { return result(await shortTasks.status(requireAuthorized(), input.id)); }
+      catch (error) { return failure(error); }
+    });
+    server.registerTool("short_task_execute", {
+      description: "Preview: run the catalogued task on a ready leased Worker.",
+      inputSchema: { id },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    }, async (input) => {
+      try { return result(await shortTasks.execute(requireAuthorized(), input.id)); }
+      catch (error) { return failure(error); }
+    });
+    server.registerTool("short_task_cancel", {
+      description: "Preview: cancel only your task and dispose its runtime.",
+      inputSchema: { id },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    }, async (input) => {
+      try { return result(await shortTasks.cancel(requireAuthorized(), input.id)); }
+      catch (error) { return failure(error); }
+    });
   }
   return server;
 }

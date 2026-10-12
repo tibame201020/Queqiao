@@ -122,12 +122,27 @@ export class WorkerCoreCapabilities {
     this.#require("workspace:write");
     return this.#workspace.reader.resolveNewDirectoryTarget(path);
   }
+  #requireExactCommand(executable: string, args: readonly string[], cwd: string, mode: "sync" | "async" | "job", timeoutMs: number): void {
+    if (this.#authority !== "core") return;
+    const exact = this.#workspace.config.commands.exact;
+    if (!exact) return; // Backward-compatible: existing workspaces retain executable-only policy.
+    const matched = exact.some((entry) =>
+      entry.executable.toLowerCase() === executable.toLowerCase()
+      && entry.mode === mode
+      && entry.cwd === cwd
+      && Number.isFinite(timeoutMs) && timeoutMs > 0 && timeoutMs <= entry.maxTimeoutMs
+      && entry.args.length === args.length
+      && entry.args.every((value, index) => value === args[index])
+    );
+    if (!matched) throw new WorkerToolError(403, "command_denied", "Exact invocation is not allowed by Workspace command policy");
+  }
   async run(input: { executable: string; args: readonly string[]; cwd: string; timeoutMs: number; mode: ProcessExecutionMode }) {
     this.#require("workspace:exec");
     const normalizedExecutable = input.executable.toLowerCase();
     if (this.#authority === "core" && !this.#workspace.config.commands.allow.some((allowed) => allowed.toLowerCase() === normalizedExecutable)) {
       throw new WorkerToolError(403, "command_denied", `${input.executable} is not allowed by Workspace command policy`);
     }
+    this.#requireExactCommand(input.executable, input.args, input.cwd, input.mode, input.timeoutMs);
     const cwd = await this.#workspace.reader.resolveStrictDirectory(input.cwd);
     const request = { executable: input.executable, args: input.args, cwd, workspaceId: this.#workspace.config.id, timeoutMs: input.timeoutMs, ...(this.#signal ? { signal: this.#signal } : {}) };
     return input.mode === "async" ? this.#processes.start(request) : this.#processes.run(request);
@@ -140,6 +155,7 @@ export class WorkerCoreCapabilities {
       throw new WorkerToolError(403, "command_denied", `${input.executable} is not allowed by Workspace command policy`);
     }
     const cwd = await this.#workspace.reader.resolveStrictDirectory(input.cwd);
+    this.#requireExactCommand(input.executable, input.args, input.cwd, "job", input.timeoutMs);
     return this.#processes.startJob({
       executable: input.executable,
       args: input.args,

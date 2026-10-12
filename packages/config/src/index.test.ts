@@ -55,6 +55,26 @@ describe("extension config schema", () => {
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, listen: { host: "0.0.0.0", port: 7575 } } })).toThrow();
   });
 
+  it("validates exact process invocations and rejects malformed task policies", () => {
+    const exact = { executable: "node", args: ["--version"], cwd: ".", mode: "sync", maxTimeoutMs: 9000 };
+    const commands = { allow: ["node"], exact: [exact] };
+    const parsed = runtimeConfigSchema.parse({ ...base, workspaces: [{ ...base.workspaces[0], commands }] });
+    expect(parsed.workspaces[0]?.commands.exact).toEqual([exact]);
+    for (const invalid of [
+      { ...exact, args: ["--version", 123] },
+      { ...exact, executable: "/usr/bin/node" },
+      { ...exact, mode: "shell" },
+      { ...exact, maxTimeoutMs: 0 },
+      { ...exact, cwd: "../" },
+    ]) {
+      expect(() => runtimeConfigSchema.parse({
+        ...base, workspaces: [{ ...base.workspaces[0], commands: { allow: ["node"], exact: [invalid] } }],
+      })).toThrow();
+    }
+    expect(() => runtimeConfigSchema.parse({
+      ...base, workspaces: [{ ...base.workspaces[0], commands: { allow: ["git"], exact: [exact] } }],
+    })).toThrow();
+  });
   it("accepts an optional GitHub Actions runtime provider without embedding its token", () => {
     const gateway = {
       publicBaseUrl: "https://queqiao.example/",
@@ -73,6 +93,19 @@ describe("extension config schema", () => {
       },
     };
     const parsed = runtimeConfigSchema.parse({ ...base, gateway });
+    expect(parsed.gateway?.runtimeProviders.githubActions?.mcpPocEnabled).toBeUndefined();
+    const enabled = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gateway.runtimeProviders.githubActions, mcpPocEnabled: true } } } });
+    expect(enabled.gateway?.runtimeProviders.githubActions?.mcpPocEnabled).toBe(true);
+    expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gateway.runtimeProviders.githubActions, mcpPocEnabled: "true" } } } })).toThrow();
+    const ghCli = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: {
+      owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main",
+      auth: "gh-cli", mcpPocEnabled: true,
+    } } } });
+    expect(ghCli.gateway?.runtimeProviders.githubActions?.auth).toBe("gh-cli");
+    expect(ghCli.gateway?.runtimeProviders.githubActions?.tokenFile).toBeUndefined();
+    expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: {
+      owner: "example", repo: "runtime-host", workflowId: "runtime.yml",
+    } } } })).toThrow(/tokenFile/);
     expect(parsed.gateway?.runtimeProviders.githubActions).toEqual({
       owner: "example",
       repo: "runtime-host",
@@ -82,6 +115,24 @@ describe("extension config schema", () => {
     });
   });
 
+  it("requires an explicit immutable source SHA for opt-in short-task Preview, and keeps it disabled by default", () => {
+    const gh = { owner: "example", repo: "runtime-host", workflowId: "runtime.yml", ref: "main", tokenFile: "github.secret" };
+    const gateway = { publicBaseUrl: "https://gateway.example/", listen: { host: "127.0.0.1", port: 7575 },
+      stateDirectory: "state", approvalSecretFile: "approval.secret", jwtSigningSecretFile: "jwt.secret" };
+    const baseline = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: gh } } });
+    expect(baseline.gateway?.runtimeProviders.githubActions?.shortTasksPreview).toBeUndefined();
+    const preview = { enabled: true, sourceRevision: "a".repeat(40), ownerKeyFile: "/etc/queqiao/short-task-owner.secret" };
+    const enabled = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gh, shortTasksPreview: preview } } } });
+    expect(enabled.gateway?.runtimeProviders.githubActions?.shortTasksPreview).toEqual(preview);
+    const cliPreview = runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gh, tokenFile: undefined, auth: "gh-cli", shortTasksPreview: preview } } } });
+    expect(cliPreview.gateway?.runtimeProviders.githubActions?.auth).toBe("gh-cli");
+    for (const invalid of [ { enabled: true }, { enabled: true, sourceRevision: "main", ownerKeyFile: "task.key" }, { enabled: true, sourceRevision: "a".repeat(40) }, { enabled: false, sourceRevision: "a".repeat(40), ownerKeyFile: "task.key" } ]) {
+      expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: { githubActions: { ...gh, shortTasksPreview: invalid } } } })).toThrow();
+    }
+    expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, runtimeProviders: {
+      githubActions: { ...gh, mcpPocEnabled: true, shortTasksPreview: preview },
+    } } })).toThrow(/mutually exclusive/i);
+  });
   it("rejects Gateway listener collisions including the implicit local Worker-session port", () => {
     const gateway = { publicBaseUrl: "https://queqiao.example/", listen: { host: "127.0.0.1", port: 7575 }, stateDirectory: "state", approvalSecretFile: "approval.secret", jwtSigningSecretFile: "jwt.secret" };
     expect(() => runtimeConfigSchema.parse({ ...base, gateway: { ...gateway, managementListen: { host: "127.0.0.1", port: 7573 } } })).toThrow(/Worker session.*Management/i);

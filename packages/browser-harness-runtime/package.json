@@ -1,0 +1,11 @@
+{
+  "name": "@queqiao/browser-harness-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./dist/session-capsule.js",
+  "types": "./dist/session-capsule.d.ts",
+  "dependencies": {
+    "playwright-core": "1.55.0"
+  }
+}

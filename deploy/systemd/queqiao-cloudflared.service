@@ -1,0 +1,21 @@
+﻿[Unit]
+Description=Queqiao fixed HTTPS named-tunnel ingress
+Wants=network-online.target queqiao-gateway.service
+After=network-online.target queqiao-gateway.service
+
+[Service]
+Type=simple
+User=cloudflared
+Group=cloudflared
+ExecStart=/usr/local/bin/cloudflared --config /etc/queqiao/tunnel.yml tunnel run
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

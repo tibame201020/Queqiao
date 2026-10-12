@@ -25,8 +25,30 @@ const toolRulesSchema = z.object({
   explicit: z.array(toolNameSchema).default([]),
 });
 
+const commandExecutableSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/);
+const commandCwdSchema = z.string().min(1).max(256)
+  .refine((value) => value === "." || (
+    !value.startsWith("/") && !value.includes("\\") &&
+    value.split("/").every((segment) => segment !== "." && segment !== ".." && /^[A-Za-z0-9._-]+$/.test(segment))
+  ), "Exact process cwd must be a workspace-relative literal without traversal");
+const exactCommandSchema = z.object({
+  executable: commandExecutableSchema,
+  args: z.array(z.string().max(4096)).max(32),
+  cwd: commandCwdSchema,
+  mode: z.enum(["sync", "async", "job"]),
+  maxTimeoutMs: z.number().int().min(1000).max(600_000),
+});
 const commandRulesSchema = z.object({
   allow: z.array(z.string().min(1).max(128)).default([]),
+  // Omitted = legacy behavior. Present, including [] = require exact matching.
+  exact: z.array(exactCommandSchema).max(32).optional(),
+}).superRefine((policy, context) => {
+  for (const [index, invocation] of (policy.exact ?? []).entries()) {
+    if (!policy.allow.some((allowed) => allowed.toLowerCase() === invocation.executable.toLowerCase())) {
+      context.addIssue({ code: "custom", path: ["exact", index, "executable"],
+        message: "Exact executable must appear in the workspace command allowlist" });
+    }
+  }
 });
 
 export const stepUpRuleSchema = z.object({
@@ -230,8 +252,21 @@ const runtimeConfigBaseSchema = z.object({
         repo: z.string().min(1).max(100).regex(/^[A-Za-z0-9_.-]+$/),
         workflowId: z.string().min(1).max(255),
         ref: z.string().min(1).max(255).default("main"),
-        tokenFile: z.string().min(1),
+        tokenFile: z.string().min(1).optional(),
+        auth: z.literal("gh-cli").optional(),
         audience: z.string().min(1).max(2048).optional(),
+        // Gate C test-only MCP controls; disabled by default on every Gateway.
+        mcpPocEnabled: z.boolean().optional(),
+        // Task API preview: explicit SHA is mandatory, cannot coexist with POC tools.
+        shortTasksPreview: z.object({
+          enabled: z.literal(true),
+          sourceRevision: z.string().regex(/^[0-9a-f]{40}$/),
+          ownerKeyFile: z.string().min(1).max(4096),
+        }).optional(),
+      }).superRefine((provider, ctx) => {
+        if (provider.mcpPocEnabled && provider.shortTasksPreview?.enabled) {
+          ctx.addIssue({ code: "custom", message: "POC and short-task Preview MCP controls are mutually exclusive" });
+        }
       }).optional(),
     }).default({}),
   }).optional(),
@@ -271,6 +306,13 @@ const runtimeConfigBaseSchema = z.object({
 });
 
 export const runtimeConfigRepairSchema = runtimeConfigBaseSchema.superRefine((config, ctx) => {
+  const githubActions = config.gateway?.runtimeProviders.githubActions;
+  if (githubActions && !githubActions.tokenFile && githubActions.auth !== "gh-cli") {
+    ctx.addIssue({ code: "custom", path: ["gateway", "runtimeProviders", "githubActions", "tokenFile"], message: "tokenFile is required unless auth is gh-cli" });
+  }
+  if (githubActions?.auth === "gh-cli" && !githubActions.mcpPocEnabled && !githubActions.shortTasksPreview?.enabled) {
+    ctx.addIssue({ code: "custom", path: ["gateway", "runtimeProviders", "githubActions", "auth"], message: "gh-cli authentication requires isolated POC or short-task Preview" });
+  }
   if (config.gateway?.workerSessionListen?.host === "0.0.0.0") {
     if (!config.gateway.workerSessionAdvertiseHost) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionAdvertiseHost"], message: "Remote Worker session listener requires an advertised host" });
     if (!config.gateway.workerSessionTls) ctx.addIssue({ code: "custom", path: ["gateway", "workerSessionTls"], message: "Remote Worker session listener requires TLS" });

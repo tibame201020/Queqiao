@@ -14,6 +14,8 @@ import {
   type McpCancellationRegistry,
 } from "./cancellation-registry.js";
 import type { WorkerRegistry } from "./worker-registry.js";
+import type { ActionsMcpPoc } from "./actions-mcp-poc.js";
+import type { ShortTaskService } from "./short-task-runtime.js";
 import type { InstalledExtensionConfig } from "@queqiao/config";
 
 export type McpNodeAdapter = {
@@ -47,8 +49,10 @@ export function createMcpNodeAdapter(
   scopes: readonly string[],
   cancellation?: { principalId: string; registry: McpCancellationRegistry },
   extensions: readonly InstalledExtensionConfig[] = [],
+  actionsMcpPoc?: ActionsMcpPoc,
+  shortTasks?: ShortTaskService,
 ): McpNodeAdapter {
-  const factory = () => createMcpServer(workers, scopes, cancellation, extensions);
+  const factory = () => createMcpServer(workers, scopes, cancellation, extensions, actionsMcpPoc, shortTasks);
   const modern = createMcpHandler(factory, {
     legacy: "reject",
     responseMode: "auto",
