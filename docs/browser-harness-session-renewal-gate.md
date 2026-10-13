@@ -52,7 +52,7 @@ Nothing here switches to OpenAI API, enables signal-notes daily production
 publishing, adds a local always-on Worker, or exposes user data.
 ## Two-part Session Capsule transport (Issue #101 P3 size regression)
 
-The attended, already authenticated Chrome 155 Jeff profile supplied
+The attended, already authenticated attended Chrome 155 profile supplied
 aggregate diagnostics only: 52 eligible Cookies, 51 ChatGPT LocalStorage
 entries and 60,044 ASCII bytes of gzip/base64 capsule. The export
 correctly stopped BEFORE overwriting the old GitHub Secret.
@@ -167,17 +167,35 @@ content. CI uploads `gate3-artifact.json` (article, intended path, sanitized
 receipt and SHA-256) for seven days only after validation succeeds. It is not
 proof of a signal-notes commit or a Gateway/Worker lease.
 
-Optional `gate3_publish=true` additionally requires a dedicated scoped
-`SIGNAL_NOTES_GATE3_TOKEN` Queqiao Actions Secret granting signal-notes
-Contents/PR writes. As of initial implementation this credential is NOT
-provisioned. Its absence fails closed. The publish job verifies receipt
-provenance, run ID, hash, date-specific test branch, and absence of any existing
-destination. It runs signal-notes tests, validation and build before it pushes
-one draft post to `gate3/synthetic-YYYY-MM-DD` and opens a draft PR targeting
-main. Never auto-merge the PR or update the live schedule. A duplicate branch
-is a stop condition rather than an implicit overwrite. Production publication,
-PC-off scheduling and integrated Gateway/Worker lease acceptance remain separate
-open milestones until proven in real hosted runs.
+### Gate 3 handoff: existing ChatGPT GitHub Connector (no additional PAT)
+
+The Gate 3 hosted workflow intentionally **stops after generation and artifact
+validation**. It does not receive an extra cross-repository Token, invoke
+`git push`, use a `GH_TOKEN` or merge/modify signal-notes main. The previous
+`gate3_publish` Actions job and `SIGNAL_NOTES_GATE3_TOKEN` dependency were
+removed because an Actions Shell does not inherit ChatGPT's already granted
+GitHub Connector authorization.
+
+Evidence: reviewed-main Queqiao Run 38353538530 produced a real authenticated
+completed content task `gate3-38353538530-1` and the seven-day synthetic
+artifact. An independent SHA-256 check confirmed the draft contents. ChatGPT
+then used its already connected GitHub Connector in the active authorized
+conversation to create `signal-notes` test branch
+`gate3/synthetic-2026-10-13`, commit
+`e9498df322401da29e87444bd27e13d250e14294` and **Draft PR #2**.
+The test post stays `draft: true`; signal-notes/main stayed unchanged.
+This proves a manual ChatGPT Connector handoff without provisioning a new PAT.
+
+It does **not** prove the GitHub-hosted CI Chrome has autonomous GitHub Connector
+invocation: browser login alone is insufficient. An attempt to wire a replayed
+CI browser Session directly to Connector write automation was blocked by the
+execution environment's safety check. Do not route around that block by a
+different tool, hidden Token or shell identity. A future approved control
+plane must independently demonstrate tool invocation and a GitHub-observed
+write before any unattended Connector publication is accepted. Until then,
+Gate 3 content generation and **manual** Connector handoff are separate
+milestones. Daily production scheduling and merged release remain disabled;
+#124 remains open for the unattended integration milestone.
 
 ### Gate 3 preflight diagnostic failure
 
