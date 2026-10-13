@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {createHash} from "node:crypto";
-import {validateGate3Output,makeGate3Artifact,assessGate3Publication} from "./gate3-content.js";
+import {validateGate3Output,makeGate3Artifact,assessGate3Handoff} from "./gate3-content.js";
 
 const response=JSON.stringify({
  concept:"測試驅動開發先將預期行為寫成測試，讓需求具備可執行的驗收標準。",
@@ -39,14 +39,12 @@ describe("Gate 3 generated-content and publication gate",()=>{
    expect(()=>makeGate3Artifact({...context,fields,authenticated:true,userTurn:true,assistantTurn:true,generationFinished:true,...delta})).toThrow(/GATE3_NOT_COMPLETE/);
   }
  });
- it("publication is fail-closed for duplicate run, existing destination, wrong branch, invalid receipt, or absent cross-repo permission",()=>{
+ it("hands off only an immutable validated synthetic draft, never a credential or claimed publication",()=>{
   const artifact=makeGate3Artifact({...context,fields:validateGate3Output(response),authenticated:true,userTurn:true,assistantTurn:true,generationFinished:true});
-  const good={receipt:artifact.receipt,article:artifact.article,branch:"gate3/synthetic-2026-10-13",exists:false,hasWriteCredential:true};
-  expect(assessGate3Publication(good)).toBe("publish");
-  expect(assessGate3Publication({...good,exists:true})).toBe("duplicate");
-  expect(assessGate3Publication({...good,branch:"main"})).toBe("forbidden_branch");
-  expect(assessGate3Publication({...good,hasWriteCredential:false})).toBe("missing_credential");
-  expect(assessGate3Publication({...good,article:good.article+"X"})).toBe("hash_mismatch");
-  expect(assessGate3Publication({...good,receipt:{...good.receipt,status:"failed"}})).toBe("not_complete");
+  expect(assessGate3Handoff(artifact)).toBe("ready_for_connector");
+  expect(assessGate3Handoff({...artifact,article:artifact.article+"X"})).toBe("hash_mismatch");
+  expect(assessGate3Handoff({...artifact,receipt:{...artifact.receipt,status:"failed"}})).toBe("not_complete");
+  expect(assessGate3Handoff({...artifact,path:"src/content/posts/daily-world-2026-10-13/index.md"})).toBe("wrong_target");
+  expect(assessGate3Handoff({...artifact,article:artifact.article.replace("draft: true","draft: false")})).toBe("hash_mismatch");
  });
 });
