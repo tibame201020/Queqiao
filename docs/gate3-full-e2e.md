@@ -18,11 +18,27 @@ PAT, production daily schedule, or merge to signal-notes/main.
 
 | Slice | Deliverable | Pass condition | Status |
 | --- | --- | --- | --- |
-| G3.1 | Immutable public `gate3.trace.v1`, deterministic date logical target, run-attempt identity, and pre-upload verification | Unit tests, PR CI and real hosted artifact with matching run ID, hash and explicit unobserved downstream stages | In progress |
+| G3.1 | Immutable public `gate3.trace.v1`, deterministic date logical target, run-attempt identity, and pre-upload verification | Unit tests, PR CI and real hosted artifact with matching run ID, hash and explicit unobserved downstream stages | **PASS: PR #145; Run 38359475732** |
 | G3.2 | Same-task Worker-to-content task bridge | A **single** Controller Run records Worker Run ID, authenticated content result and hash-bound receipt; no simulated or stitched Run IDs | Not proved |
 | G3.3 | Supported Connector invocation boundary | Explicitly supported authorization and real tool invocation from the approved control plane; an observed ChatGPT reply or authenticated browser alone is insufficient | Blocked: earlier replayed-session-to-Connector automated write was rejected by execution-environment safety check; do not route around it |
 | G3.4 | Restricted test publication and true idempotency | One date-specific test branch, one draft PR, exact article hash, independently verified commit and CI. Atomic target claim/remote conflict handling prevents retries from creating duplicate publication | Not proved |
 | G3.5 | Unattended full E2E/PC independence | One run links task, Worker, content, Connector, commit, CI and disposed lease, with failure cleanup and no user PC dependency | Not proved |
+
+## G3.1 actual acceptance — 2026-10-13
+
+PR #145 merged reviewed-main SHA `204afe0c89ef6339e99a8b552276a09177b83698`
+after 15 required CI checks passed. Real hosted
+[Run 38359475732](https://github.com/tibame201020/Queqiao/actions/runs/38359475732)
+completed SUCCESS with authenticated user and assistant turns and finished
+synthetic answer. In-job trace verification completed successfully before
+upload. The seven-day public artifact `gate3-synthetic-38359475732-1`
+(ID `11794465320`) was independently downloaded and verified:
+`taskId=gate3-38359475732-1`,
+`logicalKey=gate3/synthetic-2026-10-13`,
+`articleSha256=225580b6e3a7d7d8746256248812fe1383e2f2d053d76aa03704ff6e50aa4c71`,
+same path and `draft: true`. Worker, Connector, target CI and lease all
+remain `not_observed` in this trace; earlier independent demonstrations
+cannot be pasted together into one completed task.
 
 ## G3.1 trace contract
 
