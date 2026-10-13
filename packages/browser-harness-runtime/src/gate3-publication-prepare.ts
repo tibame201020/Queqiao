@@ -25,6 +25,7 @@ const verdict=assessGate3Publication({
 });
 if(verdict!=="publish")throw Error("GATE3_PUBLICATION_"+verdict.toUpperCase());
 if(process.env["GATE3_EXPECTED_RUN_ID"]!==receipt.runId)throw Error("GATE3_WRONG_RUN_ID");
+if(process.env["GATE3_EXPECTED_DATE"]!==receipt.date)throw Error("GATE3_WRONG_DATE");
 mkdirSync(resolve(candidate,".."),{recursive:true});
 writeFileSync(candidate,obj["article"],{encoding:"utf8",flag:"wx",mode:0o644});
 const env=process.env["GITHUB_ENV"];
