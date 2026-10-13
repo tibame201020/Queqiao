@@ -30,5 +30,7 @@ describe("G3.3 native ChatGPT GitHub App read-only capability preflight",()=>{
   expect(assessConnectorReadProof({appSelected:false,toolObserved:true,reply:sha,expectedSha:sha})).toBe("app_not_selected");
   expect(assessConnectorReadProof({appSelected:true,toolObserved:true,reply:"UNAVAILABLE",expectedSha:sha})).toBe("result_mismatch");
   expect(assessConnectorReadProof({appSelected:true,toolObserved:true,reply:"bad",expectedSha:sha})).toBe("result_mismatch");
+  expect(assessConnectorReadProof({appSelected:true,toolObserved:true,reply:sha.toUpperCase(),expectedSha:sha})).toBe("result_mismatch");
+  expect(assessConnectorReadProof({appSelected:true,toolObserved:true,reply:sha,expectedSha:"0".repeat(40)})).toBe("result_mismatch");
  });
 });
