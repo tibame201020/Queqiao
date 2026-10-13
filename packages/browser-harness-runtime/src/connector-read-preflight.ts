@@ -41,7 +41,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   let blankStart=false;
   try{blankStart=new URL(page.url()).pathname==="/";}catch{/* fail closed */}
   preflightSignals={
-   authenticated,runIdValid:/^\\d{1,20}$/.test(runId),expectedShaValid:/^[a-f0-9]{40}$/.test(expectedSha),
+   authenticated,runIdValid:/^\d{1,20}$/.test(runId),expectedShaValid:/^[a-f0-9]{40}$/.test(expectedSha),
    blankStart,editorVisible:await editor.isVisible().catch(()=>false),
    editorEnabled:await editor.isEnabled().catch(()=>false),
   };
