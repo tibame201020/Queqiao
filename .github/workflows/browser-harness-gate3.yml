@@ -16,11 +16,6 @@ on:
         type: boolean
         default: false
         required: false
-      gate3_publish:
-        description: "After Gate 3 success, create only signal-notes test branch and draft PR (requires scoped credential)"
-        type: boolean
-        default: false
-        required: false
 
 permissions:
   contents: read
@@ -60,10 +55,8 @@ jobs:
       - name: Validate Gate 3 dispatch selection
         env:
           GATE3: ${{ inputs.gate3 && '1' || '0' }}
-          PUBLISH: ${{ inputs.gate3_publish && '1' || '0' }}
         run: |
           if [ "$GATE3" != "1" ]; then exit 1; fi
-          if [ "$PUBLISH" = "1" ] && [ "$GATE3" != "1" ]; then exit 1; fi
 
       - name: Validate session capsule secret
         shell: bash
@@ -167,84 +160,3 @@ jobs:
             kill "$(cat "$RUNNER_TEMP/xvfb.pid")" 2>/dev/null || true
           fi
 
-  publish-gate3-draft:
-    # Cross-repo write requires an explicitly scoped, approved Secret.
-    # No secret is present in PR CI, and this job never writes signal-notes/main.
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.gate3 && inputs.gate3_publish
-    needs: session-portability
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - name: Require separate scoped signal-notes credential
-        env:
-          SIGNAL_NOTES_GATE3_TOKEN: ${{ secrets.SIGNAL_NOTES_GATE3_TOKEN }}
-        run: |
-          if [ -z "$SIGNAL_NOTES_GATE3_TOKEN" ]; then
-            echo "::error::GATE3_MISSING_CROSS_REPO_CREDENTIAL"
-            exit 1
-          fi
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: gate3-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/gate3-in
-      - name: Checkout signal-notes main to isolated directory
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: tibame201020/signal-notes
-          ref: main
-          token: ${{ secrets.SIGNAL_NOTES_GATE3_TOKEN }}
-          path: signal-notes-target
-          fetch-depth: 0
-      - name: Validate target has no prior branch; fail closed on duplicate
-        shell: bash
-        run: |
-          set -euo pipefail
-          date_value="$(TZ=Asia/Taipei date +%F)"
-          branch="gate3/synthetic-${date_value}"
-          rc=0
-          git -C signal-notes-target ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null || rc=$?
-          if [ "$rc" -eq 0 ]; then
-            echo "::error::GATE3_DUPLICATE_BRANCH"
-            exit 1
-          fi
-          if [ "$rc" -ne 2 ]; then
-            echo "::error::GATE3_REMOTE_BRANCH_CHECK_FAILED"
-            exit 1
-          fi
-          echo "GATE3_EXPECTED_DATE=$date_value" >> "$GITHUB_ENV"
-      - name: Validate receipt and prepare draft-only file
-        env:
-          SIGNAL_NOTES_GATE3_TOKEN: ${{ secrets.SIGNAL_NOTES_GATE3_TOKEN }}
-          GATE3_EXPECTED_RUN_ID: ${{ github.run_id }}
-        run: npx tsx packages/browser-harness-runtime/src/gate3-publication-prepare.ts "$RUNNER_TEMP/gate3-in/gate3-artifact.json" signal-notes-target
-      - name: Run signal-notes publication validation before push
-        working-directory: signal-notes-target
-        run: |
-          npm ci
-          npm run test:investment
-          npm run validate:investment
-          npm run test:market
-          npm run validate:language
-          npm run build
-      - name: Commit to new test branch and open draft PR only
-        working-directory: signal-notes-target
-        env:
-          GH_TOKEN: ${{ secrets.SIGNAL_NOTES_GATE3_TOKEN }}
-        run: |
-          set -euo pipefail
-          git checkout -b "$GATE3_TARGET_BRANCH"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- "$GATE3_ARTICLE_PATH"
-          git diff --cached --quiet && exit 1
-          git commit -m "test(content): isolated Gate 3 synthetic draft ${GITHUB_RUN_ID}"
-          git push origin "HEAD:refs/heads/$GATE3_TARGET_BRANCH"
-          gh pr create --repo tibame201020/signal-notes --head "$GATE3_TARGET_BRANCH" --base main --draft --title "test: Gate 3 synthetic content ${GITHUB_RUN_ID}" --body "Synthetic draft-only acceptance from Queqiao hosted run ${GITHUB_RUN_ID}. Do not merge or publish as a daily article."
