@@ -24,6 +24,28 @@ PAT, production daily schedule, or merge to signal-notes/main.
 | G3.4 | Restricted test publication and true idempotency | One date-specific test branch, one draft PR, exact article hash, independently verified commit and CI. Atomic target claim/remote conflict handling prevents retries from creating duplicate publication | Not proved |
 | G3.5 | Unattended full E2E/PC independence | One run links task, Worker, content, Connector, commit, CI and disposed lease, with failure cleanup and no user PC dependency | Not proved |
 
+## G3.3 first read-only capability experiment (PR #149; live acceptance not yet observed)
+
+An independent, reviewed-main-only manual `browser-harness-session-portability.yml`
+dispatch may select `connector_read_probe=true`. This restores the existing
+Session with the normal Gate 1 authentication controls, uses the **normal
+user-facing ChatGPT App selector** to select GitHub, and submits **one**
+public READ-only request for this Queqiao repository's default-branch HEAD
+SHA. It must not substitute a textual `@GitHub` mention for actual App
+selection. The main-only workflow compares the answer with its separately
+pinned `github.sha` and requires a visible native tool card; a model claim,
+matching answer without tool evidence, nonselection, challenge, timeout or
+uncertain send is failure, not Connector proof. The verifier exposes only
+bounded stage/boolean results. No new credential, API impersonation,
+private data export, extra PAT, artifact, publication, GitHub write or PR
+Secret is involved. Any safety or authorization rejection stops the probe;
+there is no alternative routing around it.
+
+This is a narrow **CI Browser App-read capability preflight**. It cannot
+complete G3.3 on its own: a supported, approved same-controller control-plane
+invocation and actual result correlation remain to be demonstrated. It does
+not change the G3.2 PASS evidence or enable G3.4/G3.5.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch

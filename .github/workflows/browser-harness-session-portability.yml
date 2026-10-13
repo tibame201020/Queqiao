@@ -11,6 +11,11 @@ on:
       - "tsconfig.json"
   workflow_dispatch:
     inputs:
+      connector_read_probe:
+        description: "Read-only native GitHub App UI capability preflight; manually reviewed main only"
+        type: boolean
+        default: false
+        required: false
       gate2:
         description: "After Gate 1 authenticated Composer, send exactly one synthetic UI prompt and verify actual finished answer"
         type: boolean
@@ -41,7 +46,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: unit-tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
@@ -51,6 +56,18 @@ jobs:
           cache: npm
 
       - run: npm ci --ignore-scripts
+
+      - name: Reject ambiguous manual probe mode
+        env:
+          GATE2: ${{ inputs.gate2 && '1' || '0' }}
+          CONNECTOR_READ: ${{ inputs.connector_read_probe && '1' || '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GATE2" = "1" ] && [ "$CONNECTOR_READ" = "1" ]; then
+            echo "::error::Only one ChatGPT browser task per dispatch"
+            exit 1
+          fi
 
       - name: Validate session capsule secret
         shell: bash
@@ -117,6 +134,8 @@ jobs:
           CHATGPT_BROWSER_SESSION_CAPSULE_PART_2: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE_PART_2 }}
           BROWSER_CDP_URL: http://127.0.0.1:9555
           CHATGPT_BROWSER_GATE2: ${{ inputs.gate2 && '1' || '0' }}
+          CHATGPT_BROWSER_CONNECTOR_READ_PROBE: ${{ inputs.connector_read_probe && '1' || '0' }}
+          CONNECTOR_EXPECTED_SHA: ${{ github.sha }}
         run: npx tsx packages/browser-harness-runtime/src/session-acceptance.ts
 
       - name: Diagnostics on failure

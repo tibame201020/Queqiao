@@ -1,6 +1,7 @@
 import { chromium, type BrowserContext } from "playwright-core";
 import {runGate2Prompt} from "./gate2-prompt.js";
 import {runGate3Prompt} from "./gate3-prompt.js";
+import {runConnectorReadPreflight} from "./connector-read-preflight.js";
 import { decodeBrowserSessionCapsule, resolveBrowserSessionCapsule } from "./session-capsule.js";
 import { classifySessionPage, type SessionPageSignals, type SessionPageVerdict } from "./session-verdict.js";
 import { summarizeCookieRestore, summarizeStorageRestore } from "./session-restore-diagnostics.js";
@@ -135,7 +136,8 @@ try {
     throw new Error(`CHATGPT_${verdict.toUpperCase()}`);
   }
   // Gate 2 and Gate 3 are mutually exclusive. No ambiguous multi-send dispatch.
-  if(process.env["CHATGPT_BROWSER_GATE2"]==="1" && process.env["CHATGPT_BROWSER_GATE3"]==="1")
+  if(["CHATGPT_BROWSER_GATE2","CHATGPT_BROWSER_GATE3","CHATGPT_BROWSER_CONNECTOR_READ_PROBE"]
+    .filter(key=>process.env[key]==="1").length>1)
     throw Error("BROWSER_GATE_CONFLICT");
   if(process.env["CHATGPT_BROWSER_GATE2"]==="1") {
     const receipt=await runGate2Prompt(page,sessionEvidence.sessionConfirmed===true);
@@ -144,6 +146,9 @@ try {
   if(process.env["CHATGPT_BROWSER_GATE3"]==="1") {
     const receipt=await runGate3Prompt(page,sessionEvidence.sessionConfirmed===true);
     console.log(JSON.stringify(receipt));
+  }
+  if(process.env["CHATGPT_BROWSER_CONNECTOR_READ_PROBE"]==="1") {
+    await runConnectorReadPreflight(page,sessionEvidence.sessionConfirmed===true);
   }
 } finally {
   await browser.close();

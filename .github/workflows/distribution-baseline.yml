@@ -45,8 +45,10 @@ jobs:
       - run: npm run typecheck
       - if: runner.os != 'Windows'
         run: npm test
+      # Windows integration tests create native processes, filesystem locks and loopback listeners.
+      # Run them serially to avoid shared-runner contention and timeout cascades.
       - if: runner.os == 'Windows'
-        run: npm test -- --maxWorkers=2
+        run: npm test -- --maxWorkers=1
 
   package-install:
     name: Self-contained package (${{ matrix.os }})
