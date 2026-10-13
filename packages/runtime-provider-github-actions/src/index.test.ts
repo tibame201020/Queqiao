@@ -109,6 +109,29 @@ describe("GitHub Actions Runtime Provider", () => {
     expect(JSON.stringify(dispatch.mock.calls[0])).not.toContain("authorization");
   });
 
+  it("accepts only an explicitly pinned non-secret Gate 3 Worker profile and date",async()=>{
+    const dispatch=vi.fn(async()=>({runId:12345,runUrl:"url",htmlUrl:"url"}));
+    const provider=new GitHubActionsRuntimeProvider({
+      owner:"example",repo:"runtime-host",workflowId:"runtime.yml",ref:"main",
+      gatewayUrl:"https://gateway.example.test/",api:{dispatch,cancel:vi.fn()},
+    });
+    const metadata={taskKind:"gate3-content",gate3Date:"2026-10-13",
+      controllerRunId:"38359475732",controllerRunAttempt:"1",sourceRevision:"a".repeat(40)};
+    await provider.provision({leaseId,ttlSeconds:540,metadata});
+    expect(dispatch.mock.calls[0]?.[0].inputs).toMatchObject({
+      task_kind:"gate3-content",gate3_date:"2026-10-13",
+      controller_run_id:"38359475732",controller_run_attempt:"1",
+      source_revision:"a".repeat(40),
+    });
+    expect(JSON.stringify(dispatch.mock.calls[0])).not.toMatch(/CHATGPT_BROWSER_SESSION|capsule|cookie|secret/i);
+    for(const bad of [
+      {...metadata,gate3Date:"2026-02-30"},{...metadata,gate3Date:"$(echo bad)"},
+      {...metadata,controllerRunId:"not-a-run"},{...metadata,controllerRunAttempt:"0"},
+      {...metadata,sourceRevision:undefined},{...metadata,taskKind:"unrestricted"},
+      {taskKind:"gate3-content"},
+    ])await expect(provider.provision({leaseId,ttlSeconds:540,metadata:bad})).rejects.toThrow();
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
   it("fails before dispatch for non-SHA source revisions", async () => {
     const dispatch = vi.fn();
     const provider = new GitHubActionsRuntimeProvider({
