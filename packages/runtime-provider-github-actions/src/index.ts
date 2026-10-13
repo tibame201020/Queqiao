@@ -262,11 +262,11 @@ export class GitHubActionsRuntimeProvider implements RuntimeProvider {
     if(taskKind === "gate3-content") {
       if(this.ref !== "main" || !sourceRevision || request.ttlSeconds < 480)
         throw new Error("Gate 3 requires main, pinned source SHA and bounded Worker TTL");
-      const date = z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).parse(request.metadata?.["gate3Date"]);
+      const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(request.metadata?.["gate3Date"]);
       if(Number.isNaN(Date.parse(date)) || new Date(date).toISOString().slice(0,10) !== date)
         throw new Error("Invalid pinned Gate 3 date");
-      const controllerRunId = z.string().regex(/^[1-9]\\d{0,19}$/).parse(request.metadata?.["controllerRunId"]);
-      const controllerRunAttempt = z.string().regex(/^[1-9]\\d{0,7}$/).parse(request.metadata?.["controllerRunAttempt"]);
+      const controllerRunId = z.string().regex(/^[1-9]\d{0,19}$/).parse(request.metadata?.["controllerRunId"]);
+      const controllerRunAttempt = z.string().regex(/^[1-9]\d{0,7}$/).parse(request.metadata?.["controllerRunAttempt"]);
       gate3Inputs = { task_kind:"gate3-content", gate3_date:date,
         controller_run_id:controllerRunId,controller_run_attempt:controllerRunAttempt };
     }
