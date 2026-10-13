@@ -1,4 +1,5 @@
 import { chromium, type BrowserContext } from "playwright-core";
+import {runGate2Prompt} from "./gate2-prompt.js";
 import { decodeBrowserSessionCapsule, resolveBrowserSessionCapsule } from "./session-capsule.js";
 import { classifySessionPage, type SessionPageSignals, type SessionPageVerdict } from "./session-verdict.js";
 import { summarizeCookieRestore, summarizeStorageRestore } from "./session-restore-diagnostics.js";
@@ -131,6 +132,10 @@ try {
 
   if (verdict !== "authenticated") {
     throw new Error(`CHATGPT_${verdict.toUpperCase()}`);
+  }
+  if(process.env["CHATGPT_BROWSER_GATE2"]==="1") {
+    const receipt=await runGate2Prompt(page,sessionEvidence.sessionConfirmed===true);
+    console.log(JSON.stringify(receipt));
   }
 } finally {
   await browser.close();

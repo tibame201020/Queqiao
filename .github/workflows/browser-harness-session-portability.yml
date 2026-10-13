@@ -10,6 +10,12 @@ on:
       - "package-lock.json"
       - "tsconfig.json"
   workflow_dispatch:
+    inputs:
+      gate2:
+        description: "After Gate 1 authenticated Composer, send exactly one synthetic UI prompt and verify actual finished answer"
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: read
@@ -110,6 +116,7 @@ jobs:
           CHATGPT_BROWSER_SESSION_CAPSULE_PART_1: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE_PART_1 }}
           CHATGPT_BROWSER_SESSION_CAPSULE_PART_2: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE_PART_2 }}
           BROWSER_CDP_URL: http://127.0.0.1:9555
+          CHATGPT_BROWSER_GATE2: ${{ inputs.gate2 && '1' || '0' }}
         run: npx tsx packages/browser-harness-runtime/src/session-acceptance.ts
 
       - name: Diagnostics on failure

@@ -93,3 +93,38 @@ while preserving the allowlisted Chrome Cookies. CI restore is unchanged.
 
 No local always-on production dependency, new developer API, challenge
 bypass or automatic signal-notes publication is introduced.
+## Gate 2 — one real synthetic ChatGPT UI task (Issue #124)
+
+Gate 1 is proved by main-only Run 38343842113: first-party authenticated
+session independently confirmed, HTTP 200, usable signed-in Composer,
+and success in a fresh GitHub-hosted Ubuntu/Xvfb/manual Chrome/CDP.
+
+On the same reviewed main workflow, workflow_dispatch input gate2=true
+is opt-in. Pull requests receive no repository Secrets and run synthetic
+tests only. The existing default manual dispatch remains Gate 1 only.
+
+Gate 2 has EXACTLY ONE prompt submission in a fresh blank / conversation:
+Calculate 17 + 28. Reply with only the decimal number. Do not repeat the question.
+
+Acceptance is fail-closed: Gate 1 real session must be confirmed first;
+usable Composer and blank start must exist; exactly one Enter submission
+(no retry after an uncertain send); the user prompt must actually appear
+in the thread; URL must become a new /c/ conversation; distinct visible
+assistant text must be exactly 45, outside user message; Stop must be
+absent, Composer usable, and the answer stable on two 1.5-second checks.
+The generated answer is NOT part of the sent prompt. If any condition
+fails or a timeout occurs, fail with only a sanitized stage code.
+
+Successful CI logs and GITHUB_STEP_SUMMARY store the run ID, booleans
+and SHA-256 of the synthetic answer only. No conversation URL, private
+content, screenshot, Cookie, token, LocalStorage or full browser dump
+may be emitted or persisted. The synthetic test conversation itself
+is an intentionally user-approved visible ChatGPT account action.
+No signal-notes article, real account data prompt, daily schedule,
+branch publication or worker lease is started by this Gate 2 slice.
+
+Verification: synthetic red/green test and entire browser-harness-runtime
+Vitest suite, typecheck, build, then PR CI. Only AFTER merge, execute a
+fresh main workflow_dispatch with gate2=true and inspect the actual run.
+A marker or printed receipt without independent observed user/assistant
+UI and finished generation does not count.
