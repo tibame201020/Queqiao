@@ -249,7 +249,7 @@ jobs:
           NODE
 
       - name: Execute authenticated MCP run on remote CI Browser Harness
-        if: env.G3_WORKER != '1'
+        if: github.event_name == 'pull_request' || !inputs.gate3_worker
         shell: bash
         run: |
           set -euo pipefail
@@ -260,7 +260,7 @@ jobs:
           export QUEQIAO_POC_WORKER_RUN_ID="$WORKER_RUN_ID"
           npx tsx apps/gateway/src/poc-browser-worker-client.ts
       - name: Execute authenticated MCP read of same-Worker G3.2 content
-        if: env.G3_WORKER == '1'
+        if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker
         shell: bash
         run: |
           set -euo pipefail
@@ -309,7 +309,7 @@ jobs:
 
 
       - name: Upload sanitized same-task G3.2 completion proof
-        if: env.G3_WORKER == '1' && success()
+        if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker && success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gate3-worker-proof-${{ github.run_id }}-${{ github.run_attempt }}
