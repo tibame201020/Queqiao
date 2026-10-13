@@ -13,8 +13,13 @@ export function normalizeAppMenuCounts(v:AppMenuCounts):AppMenuSignals{
  };
 }
 /** An unrelated button or arbitrary textual mention is not proof of App selection. */
-export function selectAppCandidateRole(v:AppMenuSignals):"option"|"menuitem"|"none"{
- if(!(v.menuVisible||v.listboxVisible||v.dialogVisible))return "none";
+export function selectAppCandidateRole(v:AppMenuSignals,differential?:{baselineGithubButtonVisible:boolean;afterGithubButtonCount:number}):"option"|"menuitem"|"button"|"none"{
+ if(!(v.menuVisible||v.listboxVisible||v.dialogVisible)){
+  // Normal UI can render a native suggestion as a button, without menu/listbox roles.
+  // A single target button must have appeared only as a result of typing @GitHub.
+  return differential && !differential.baselineGithubButtonVisible && differential.afterGithubButtonCount===1 &&
+   v.githubButtonVisible && v.githubTextVisible ? "button" : "none";
+ }
  if(v.githubOptionVisible)return "option";
  if(v.githubMenuitemVisible)return "menuitem";
  return "none";
