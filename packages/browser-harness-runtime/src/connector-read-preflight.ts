@@ -9,6 +9,7 @@ import {classifyConnectorPostsendState,type ConnectorPostsendSignals} from "./co
 import {assessConnectorUserTurn,type ConnectorUserTurnSignals} from "./connector-user-turn.js";
 import {classifyUserTurnStructure,type UserTurnStructureSignals} from "./connector-user-turn-structure.js";
 import {assessConnectorDraft,type ConnectorDraftSignals} from "./connector-presend-draft.js";
+import {classifyPostsendStructure,type PostsendStructureSignals} from "./connector-postsend-structure.js";
 
 /** Deliberately one normal ChatGPT UI send. No API impersonation, connector credentials,
  * request interception, navigation to undocumented endpoints, retry or write action.
@@ -152,6 +153,31 @@ async function observeComposerDraft(editor:Locator):Promise<ConnectorDraftSignal
  return {...details,editorEnabled:await editor.isEnabled().catch(()=>false)};
 }
 
+async function observePostsendStructure(page:Page):Promise<PostsendStructureSignals>{
+ // Content is inspected in browser process memory and reduced to booleans;
+ // never return raw DOM, text, URL, profile/session state, identities or App lists.
+ const fragments={middle:PUBLIC_MIDDLE,tail:PUBLIC_TAIL};
+ const main=page.locator("main");
+ const mainVisible=await visibleAny(main)>0;
+ const mainPublic=await main.first().evaluate((el,p)=>{
+  const t=(el.textContent??"").replace(/\s+/g," ").trim();
+  return {middle:t.includes(p.middle),tail:t.includes(p.tail)};
+ },fragments).catch(()=>({middle:false,tail:false}));
+ const bodyPublic=await page.locator("body").evaluate((el,p)=>{
+  const t=(el.innerText??"").replace(/\s+/g," ").trim();
+  return {middle:t.includes(p.middle),tail:t.includes(p.tail)};
+ },fragments).catch(()=>({middle:false,tail:false}));
+ return {
+  mainVisible,
+  visibleUserContainer:await visibleAny(page.locator('main [data-message-author-role="user"]'))>0,
+  mainHasPublicMiddle:mainPublic.middle,mainHasPublicTail:mainPublic.tail,
+  bodyHasPublicMiddle:bodyPublic.middle,bodyHasPublicTail:bodyPublic.tail,
+  assistantSurfaceVisible:await visibleAny(page.locator('main [data-message-author-role="assistant"],main .markdown'))>0,
+  dialogVisible:await visibleAny(page.getByRole("dialog"))>0,
+  challengeVisible:await visibleAny(page.getByText(/verify you are human|checking your browser|請完成驗證/i))>0,
+ };
+}
+
 type Stage="preflight"|"app_selection"|"draft_ready"|"submission"|"conversation"|"user_turn"|"tool_observation"|"response"|"validation";
 export async function runConnectorReadPreflight(page:Page,authenticated:boolean):Promise<void>{
  let stage:Stage="preflight",submitted=false,appSelected=false,toolObserved=false;
@@ -165,6 +191,8 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
  let userTurnSignals:ConnectorUserTurnSignals|undefined;
  let userTurnStructure:UserTurnStructureSignals|undefined;
  let draftSignals:ConnectorDraftSignals|undefined;
+ let postsendStructure:PostsendStructureSignals|undefined;
+ let postsendStructureDiagnostic:string|undefined;
  const runId=process.env["GITHUB_RUN_ID"]??"";
  const expectedSha=process.env["CONNECTOR_EXPECTED_SHA"]??"";
  try{
@@ -256,6 +284,10 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
     runId,stage:"validated",appSelected:true,toolObserved:true,shaMatched:true,
     status:"verified",writeAttempted:false}));
  }catch{
+  if(stage==="user_turn"||stage==="tool_observation"){
+   postsendStructure=await observePostsendStructure(page).catch(()=>undefined);
+   if(postsendStructure)postsendStructureDiagnostic=classifyPostsendStructure(postsendStructure);
+  }
   if(stage==="tool_observation"){
    toolSignals=await observeToolDiagnostics(page).catch(()=>undefined);
    if(toolSignals)toolDiagnostic=classifyConnectorToolObservation(toolSignals);
@@ -265,7 +297,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   // Neither raw answer nor error/URL/DOM/session/app list is logged.
   console.log(JSON.stringify({schema:"queqiao.gate3.connector-read-preflight.v1",
    runId:/^\d{1,20}$/.test(runId)?runId:"invalid",stage,status:"failed",
-   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),...(preflightSignals?{preflightSignals}:{}),...(toolSignals?{toolSignals,toolDiagnostic}:{}),...(postsendSignals?{postsendSignals,postsendDiagnostic}:{}),...(userTurnSignals?{userTurnSignals}:{}),...(userTurnStructure?{userTurnStructure}:{}),...(draftSignals?{draftSignals}:{}),writeAttempted:false}));
+   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),...(preflightSignals?{preflightSignals}:{}),...(toolSignals?{toolSignals,toolDiagnostic}:{}),...(postsendSignals?{postsendSignals,postsendDiagnostic}:{}),...(userTurnSignals?{userTurnSignals}:{}),...(userTurnStructure?{userTurnStructure}:{}),...(draftSignals?{draftSignals}:{}),...(postsendStructure?{postsendStructure,postsendStructureDiagnostic}:{}),writeAttempted:false}));
   throw Error("G3_CONNECTOR_READ_FAILED_AT_"+stage.toUpperCase());
  }
 }
