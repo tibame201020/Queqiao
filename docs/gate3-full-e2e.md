@@ -87,6 +87,19 @@ The App selector obstacle is narrowed, not the Connector authorization boundary 
 
 **Stop condition:** Do not keep varying keyboard/selector guesses or infer OAuth from a logged-in browser. Before another hosted App-enabled send, resolve the supported normal UI submission/tool-provenance boundary or independently demonstrate a product-supported control-plane invocation. Do not replay credentials into a denied integration route, add an independent cross-repo PAT, disable safety, log private session/transcript, or write to signal-notes. App selection, Enter, URL creation, Assistant claim or coincidental SHA are individually insufficient for G3.3 PASS. G3.4/G3.5 remain NOT PROVED.
 
+### G3.3 A/B control experiment — same CI commit, independent fresh conversations (2026-10-13)
+
+[PR #164](https://github.com/tibame201020/Queqiao/pull/164) repaired only the A1 no-App control preflight by reusing the existing bounded Composer wait and four boolean-only readiness signals. TDD RED/GREEN and all required CI PASS; Windows Adversarial Gate passed one unchanged rerun after an unrelated isolated CLI acceptance failure. Squash-merged main `1952ed34441f1593633fe8d1d03a8ba8423825f9`. A1/B1 both used that exact main commit, the same hosted workflow and independent manual dispatches (one new conversation and one send per run). No screenshots, raw transcript, session export or additional credentials.
+
+| Arm | Actual hosted run | Observed outcome | Status |
+| --- | --- | --- | --- |
+| A1 / no App, `gate2=true` | [38410057637](https://github.com/tibame201020/Queqiao/actions/runs/38410057637) | `queqiao.gate2.receipt.v1`: promptSubmittedOnce=true, userTurnObserved=true, conversationCreated=true, assistantObserved=true, generationCompleted=true; validated synthetic answer | **PASS** |
+| B1 / native GitHub App UI, `connector_read_probe=true` | [38410260833](https://github.com/tibame201020/Queqiao/actions/runs/38410260833) | Authenticated Session; selected visible GitHub App control; before Enter focused Composer contained both public prompt fragments. After Enter conversation URL created and Composer cleared, but no observed native user turn or public fragments in main/body, Assistant UI, dialog or challenge. `toolObserved=false`; `writeAttempted=false` | **FAIL CLOSED at user_turn** |
+
+**Inference boundary:** No-App ChatGPT UI submission/completion is independently proven in the current hosted runtime. The App-enabled message submission/rendering boundary is not proven. This neither establishes missing GitHub OAuth nor a real GitHub tool invocation, and does not prove that the backend received or rejected the App-enabled request. App UI selection, an Enter key press, conversation route, matching model claim or independent connector authorization in this chat are **not** interchangeable with a provider tool-execution receipt.
+
+**Stop/next:** Do not continue guessing selectors, trying alternative credential replay, bypassing environment refusal or sending duplicate prompts after uncertain sends. Obtain an explicitly product-supported App-enabled submission + tool-provenance surface/control-plane authorization. Only after an actual provider tool invocation and independently matched read-only result can G3.3 progress; only then consider G3.4 test branch/Draft PR and G3.5 correlated E2E. No new PAT or signal-notes/main/schedule changes.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
