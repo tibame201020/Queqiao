@@ -27,8 +27,9 @@ export function validateGate3Output(raw:string):Fields{
  const obj=parsed as Record<string,unknown>;
  const keys=Object.keys(obj).sort();
  if(keys.join(",")!=="concept,limitation,verification")fail();
- if(!isSafeField(obj["concept"])||!isSafeField(obj["verification"])||!isSafeField(obj["limitation"]))fail();
- return {concept:obj["concept"],verification:obj["verification"],limitation:obj["limitation"]};
+ const concept=obj["concept"],verification=obj["verification"],limitation=obj["limitation"];
+ if(!isSafeField(concept)||!isSafeField(verification)||!isSafeField(limitation))fail();
+ return {concept,verification,limitation};
 }
 export function makeGate3Artifact(input:{
  runId:string;runAttempt:string;date:string;fields:Fields;
