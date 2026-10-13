@@ -1,5 +1,5 @@
-import {assessGate3Trace} from "../../../packages/browser-harness-runtime/src/gate3-trace.js";
-import type {Gate3Receipt} from "../../../packages/browser-harness-runtime/src/gate3-content.js";
+import {assessGate3Trace} from "@queqiao/browser-harness-runtime/gate3-trace";
+import type {Gate3Receipt} from "@queqiao/browser-harness-runtime/gate3-content";
 
 type Expected={environmentId:string;workerRunId:string;controllerRunId:string;controllerAttempt:string;date:string};
 type Routed={isError?:boolean;_meta?:{"dev.queqiao/routing"?:{environmentId?:string}};
