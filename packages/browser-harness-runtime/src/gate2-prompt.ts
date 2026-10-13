@@ -1,30 +1,26 @@
-﻿import {createHash} from "node:crypto";
 import {appendFileSync} from "node:fs";
 import type {Page} from "playwright-core";
 import {assessGate2,type Gate2Observation} from "./gate2-verdict.js";
+import {createGate2Receipt,formatGate2Summary,type Gate2Receipt,type Gate2Stage} from "./gate2-receipt.js";
 
 const PROMPT="Calculate 17 + 28. Reply with only the decimal number. Do not repeat the question.";
 const ANSWER="45";
 const CONVERSATION=/^https:\/\/chatgpt\.com\/c\/[a-z0-9-]+(?:[?#].*)?$/i;
-
-type Gate2Receipt={
-  gate:"gate2";runId:string;verdict:"pass";promptSubmittedOnce:true;
-  userTurnObserved:true;assistantObserved:true;generationCompleted:true;
-  answerSha256:string;conversationCreated:true;
-};
 const sleep=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms));
 
-/** Exactly one synthetic, public prompt in a fresh conversation.
- * Never print browser content, user identifiers, URL, Cookies or LocalStorage.
- * A guest Composer, echo, timeout or interrupted stream cannot pass.
+/** Exactly one synthetic prompt in a blank conversation. Never log browser data,
+ * URLs, identities or Playwright exceptions. A failed/uncertain send is not retried.
  */
 export async function runGate2Prompt(page:Page,sessionConfirmed:boolean):Promise<Gate2Receipt>{
-  let stage="preflight";
+  let stage:Gate2Stage="preflight";
   const evidence:Gate2Observation={
     confirmedSession:sessionConfirmed,composerReady:false,blankStart:false,
     promptSubmittedOnce:false,userPromptObserved:false,conversationCreated:false,
     assistantAnswer:"",answerOutsideUserMessage:false,generationFinished:false,stableAnswer:false,
   };
+  const runId=process.env["GITHUB_RUN_ID"];
+  const runAttempt=process.env["GITHUB_RUN_ATTEMPT"];
+  const summary=process.env["GITHUB_STEP_SUMMARY"];
   try{
     evidence.blankStart=new URL(page.url()).pathname==="/";
     const editor=page.locator('[contenteditable="true"][role="textbox"]').first();
@@ -34,7 +30,7 @@ export async function runGate2Prompt(page:Page,sessionConfirmed:boolean):Promise
 
     stage="submit";
     await editor.fill(PROMPT);
-    // One send action only. Never retry when outcome is uncertain.
+    // Exactly one send action. Never retry an uncertain press.
     await editor.press("Enter");
     evidence.promptSubmittedOnce=true;
 
@@ -61,7 +57,6 @@ export async function runGate2Prompt(page:Page,sessionConfirmed:boolean):Promise
     let stable=0;
     while(Date.now()<deadline){
       await sleep(1500);
-      // A response must be the same across two observations AFTER Stop disappears.
       const current=await answer.innerText().catch(()=>"");
       const busy=await stop.first().isVisible().catch(()=>false);
       const activeComposer=await editor.isEnabled().catch(()=>false);
@@ -71,30 +66,21 @@ export async function runGate2Prompt(page:Page,sessionConfirmed:boolean):Promise
     }
     evidence.stableAnswer=stable>=2;
     evidence.generationFinished=stable>=2;
-    const verdict=assessGate2(evidence);
-    if(verdict!=="pass")throw Error("acceptance_"+verdict);
+    if(assessGate2(evidence)!=="pass")throw Error("acceptance");
 
-    const receipt:Gate2Receipt={
-      gate:"gate2",runId:process.env["GITHUB_RUN_ID"]??"local",
-      verdict:"pass",promptSubmittedOnce:true,userTurnObserved:true,
-      assistantObserved:true,generationCompleted:true,
-      answerSha256:createHash("sha256").update(ANSWER,"utf8").digest("hex"),
-      conversationCreated:true,
-    };
-    const summary=process.env["GITHUB_STEP_SUMMARY"];
-    if(summary){
-      appendFileSync(summary,[
-        "### Gate 2 — real UI prompt and completion",
-        "- Result: PASS (confirmed session, one user turn, independent assistant answer, finished generation)",
-        "- Synthetic answer SHA-256: "+receipt.answerSha256,
-        "- GitHub run ID: "+receipt.runId,
-        "- No conversation content, account data or session material recorded.",
-        "",
-      ].join("\n"),"utf8");
-    }
+    const receipt=createGate2Receipt({runId,runAttempt,stage:"completed",evidence});
+    if(receipt.status!=="completed")throw Error("receipt_validation");
+    stage="receipt";
+    if(summary)appendFileSync(summary,formatGate2Summary(receipt),"utf8");
     return receipt;
   }catch{
-    // Do not serialize Playwright/browser errors: they can include private URLs.
-    throw new Error("GATE2_FAILED_AT_"+stage);
+    // The stage and boolean-only evidence are bounded; never serialize the caught
+    // exception because Playwright errors may contain private page URLs.
+    const receipt=createGate2Receipt({runId,runAttempt,stage,evidence});
+    console.log(JSON.stringify(receipt));
+    if(summary){
+      try{appendFileSync(summary,formatGate2Summary(receipt),"utf8");}catch{/* log receipt remains durable */}
+    }
+    throw new Error(receipt.errorCode??"GATE2_FAILED_AT_RECEIPT");
   }
 }
