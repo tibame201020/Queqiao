@@ -2,6 +2,7 @@ import type {Page} from "playwright-core";
 import {assessConnectorReadProof} from "./connector-read-proof.js";
 import {normalizeAppMenuCounts,selectAppCandidateRole,type AppMenuSignals} from "./connector-app-menu.js";
 import type {Locator} from "playwright-core";
+import {assessConnectorPreflight,type ConnectorPreflightSignals} from "./connector-read-preflight-policy.js";
 
 /** Deliberately one normal ChatGPT UI send. No API impersonation, connector credentials,
  * request interception, navigation to undocumented endpoints, retry or write action.
@@ -32,13 +33,19 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
  let stage:Stage="preflight",submitted=false,appSelected=false,toolObserved=false;
  let verdict="not_observed";
  let menuSignals:AppMenuSignals|undefined;
+ let preflightSignals:ConnectorPreflightSignals|undefined;
  const runId=process.env["GITHUB_RUN_ID"]??"";
  const expectedSha=process.env["CONNECTOR_EXPECTED_SHA"]??"";
  try{
-  if(!authenticated||!/^\d{1,20}$/.test(runId)||!(/^[a-f0-9]{40}$/.test(expectedSha))||
-     new URL(page.url()).pathname!=="/")throw Error("preflight");
   const editor=page.locator('[contenteditable="true"][role="textbox"]').first();
-  if(!await editor.isVisible()||!await editor.isEnabled())throw Error("composer");
+  let blankStart=false;
+  try{blankStart=new URL(page.url()).pathname==="/";}catch{/* fail closed */}
+  preflightSignals={
+   authenticated,runIdValid:/^\\d{1,20}$/.test(runId),expectedShaValid:/^[a-f0-9]{40}$/.test(expectedSha),
+   blankStart,editorVisible:await editor.isVisible().catch(()=>false),
+   editorEnabled:await editor.isEnabled().catch(()=>false),
+  };
+  if(assessConnectorPreflight(preflightSignals)!=="ready")throw Error("preflight");
   stage="app_selection";
   // Normal user-facing @ selector. Do not send a text-only @GitHub instruction
   // if the actual app cannot be selected from an observed UI option.
@@ -93,7 +100,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   // Neither raw answer nor error/URL/DOM/session/app list is logged.
   console.log(JSON.stringify({schema:"queqiao.gate3.connector-read-preflight.v1",
    runId:/^\d{1,20}$/.test(runId)?runId:"invalid",stage,status:"failed",
-   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),writeAttempted:false}));
+   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),...(preflightSignals?{preflightSignals}:{}),writeAttempted:false}));
   throw Error("G3_CONNECTOR_READ_FAILED_AT_"+stage.toUpperCase());
  }
 }
