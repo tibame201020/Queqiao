@@ -7,6 +7,7 @@ import {observeConnectorComposer} from "./connector-read-composer.js";
 import {classifyConnectorToolObservation,type ConnectorToolSignals} from "./connector-tool-diagnostics.js";
 import {classifyConnectorPostsendState,type ConnectorPostsendSignals} from "./connector-postsend-diagnostics.js";
 import {assessConnectorUserTurn,type ConnectorUserTurnSignals} from "./connector-user-turn.js";
+import {classifyUserTurnStructure,type UserTurnStructureSignals} from "./connector-user-turn-structure.js";
 
 /** Deliberately one normal ChatGPT UI send. No API impersonation, connector credentials,
  * request interception, navigation to undocumented endpoints, retry or write action.
@@ -82,16 +83,57 @@ async function observePostsendSignals(page:Page,editor:Locator):Promise<Connecto
  };
 }
 
-async function observePublicUserEcho(page:Page):Promise<boolean>{
- const candidates=page.locator("main").getByText(PROMPT.slice(0,96),{exact:false});
- const n=Math.min(await candidates.count(),8);
+const PUBLIC_MIDDLE="current default-branch HEAD commit SHA of public tibame201020/Queqiao";
+const PUBLIC_TAIL="Reply with ONLY the exact 40 lowercase hexadecimal characters of that HEAD SHA.";
+const norm=(s:string)=>s.replace(/\s+/g," ").trim();
+async function observeNativeUserTurn(page:Page,editor:Locator):Promise<UserTurnStructureSignals>{
+ const users=page.locator('main [data-message-author-role="user"]');
+ const n=Math.min(await users.count(),8);
+ let userRoleVisible=false,middleInUserRole=false,tailInUserRole=false;
  for(let i=0;i<n;i++){
-  const c=candidates.nth(i);
-  if(!await c.isVisible().catch(()=>false))continue;
-  if(await c.evaluate(el=>!el.closest('[contenteditable="true"]') &&
-    !el.closest('[data-message-author-role="assistant"]')).catch(()=>false))return true;
+  const user=users.nth(i);
+  if(!await user.isVisible().catch(()=>false))continue;
+  userRoleVisible=true;
+  const match=await user.evaluate((el,p)=>{
+   const t=(el.textContent??"").replace(/\s+/g," ").trim();
+   return {middle:t.includes(p.middle),tail:t.includes(p.tail)};
+  },{middle:PUBLIC_MIDDLE,tail:PUBLIC_TAIL}).catch(()=>({middle:false,tail:false}));
+  if(match.middle&&match.tail){middleInUserRole=true;tailInUserRole=true;break;}
  }
- return false;
+ // The generic fragments are diagnostics only; they never substitute for native
+ // user-role ownership. Do not export, store or print any page content.
+ async function outside(fragment:string):Promise<boolean>{
+  const candidates=page.locator("main").getByText(fragment,{exact:false});
+  const k=Math.min(await candidates.count(),8);
+  for(let i=0;i<k;i++){
+   const candidate=candidates.nth(i);
+   if(!await candidate.isVisible().catch(()=>false))continue;
+   const valid=await candidate.evaluate(el=>!el.closest('[contenteditable="true"]')&&
+     !el.closest('[data-message-author-role="assistant"]')).catch(()=>false);
+   if(valid)return true;
+  }
+  return false;
+ }
+ const assistant=page.locator('main [data-message-author-role="assistant"]');
+ const assistantOwnedFragment=await (async()=>{
+  const m=Math.min(await assistant.count(),8);
+  for(let i=0;i<m;i++){
+   const item=assistant.nth(i);
+   if(!await item.isVisible().catch(()=>false))continue;
+   if(await item.evaluate((el,p)=>{
+    const t=(el.textContent??"").replace(/\s+/g," ").trim();
+    return t.includes(p.middle)||t.includes(p.tail);
+   },{middle:PUBLIC_MIDDLE,tail:PUBLIC_TAIL}).catch(()=>false))return true;
+  }
+  return false;
+ })();
+ const composerRetainsTail=await editor.innerText().then(t=>norm(t).includes(PUBLIC_TAIL)).catch(()=>true);
+ return {
+  conversationCreated:true,userRoleVisible,middleInUserRole,tailInUserRole,
+  middleOutsideEditor:await outside(PUBLIC_MIDDLE),
+  tailOutsideEditor:await outside(PUBLIC_TAIL),
+  assistantOwnedFragment,composerRetainsTail,
+ };
 }
 
 type Stage="preflight"|"app_selection"|"submission"|"conversation"|"user_turn"|"tool_observation"|"response"|"validation";
@@ -105,6 +147,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
  let postsendSignals:ConnectorPostsendSignals|undefined;
  let postsendDiagnostic:string|undefined;
  let userTurnSignals:ConnectorUserTurnSignals|undefined;
+ let userTurnStructure:UserTurnStructureSignals|undefined;
  const runId=process.env["GITHUB_RUN_ID"]??"";
  const expectedSha=process.env["CONNECTOR_EXPECTED_SHA"]??"";
  try{
@@ -141,18 +184,23 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   submitted=true;
   stage="conversation";
   await page.waitForURL(/^https:\/\/chatgpt\.com\/c\/[a-z0-9-]+(?:[?#].*)?$/i,{timeout:30000});
-  // A successful Enter is NOT evidence of a completed UI submission.
-  // Observe the unique public prompt outside Composer, then confirm Composer cleared.
+  // A key press is NOT proof of delivery. Mention chips may split the prefix:
+  // match two independent public fragments in the same native user-owned turn.
   stage="user_turn";
-  let promptEchoOutsideEditor=false;
+  let verdictUserTurn:"user_turn_confirmed"|"unconfirmed"="unconfirmed";
   for(let i=0;i<20;i++){
-   promptEchoOutsideEditor=await observePublicUserEcho(page);
-   if(promptEchoOutsideEditor)break;
+   userTurnStructure=await observeNativeUserTurn(page,editor);
+   verdictUserTurn=classifyUserTurnStructure(userTurnStructure);
+   if(verdictUserTurn==="user_turn_confirmed")break;
    await sleep(1000);
   }
-  const promptStillInEditor=await editor.innerText().then(v=>v.includes(PROMPT.slice(0,96))).catch(()=>true);
-  userTurnSignals={conversationCreated:true,promptEchoOutsideEditor,promptStillInEditor};
-  if(assessConnectorUserTurn(userTurnSignals)!=="confirmed")throw Error("user_turn_unconfirmed");
+  userTurnSignals={
+   conversationCreated:true,
+   promptEchoOutsideEditor:Boolean(userTurnStructure?.middleInUserRole&&userTurnStructure?.tailInUserRole),
+   promptStillInEditor:userTurnStructure?.composerRetainsTail??true,
+  };
+  if(verdictUserTurn!=="user_turn_confirmed"||
+    assessConnectorUserTurn(userTurnSignals)!=="confirmed")throw Error("user_turn_unconfirmed");
   stage="tool_observation";
   // A tool card must be visible in the normal UI, not a claim in generated prose
   // or a mention chip in the user turn.
@@ -194,7 +242,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   // Neither raw answer nor error/URL/DOM/session/app list is logged.
   console.log(JSON.stringify({schema:"queqiao.gate3.connector-read-preflight.v1",
    runId:/^\d{1,20}$/.test(runId)?runId:"invalid",stage,status:"failed",
-   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),...(preflightSignals?{preflightSignals}:{}),...(toolSignals?{toolSignals,toolDiagnostic}:{}),...(postsendSignals?{postsendSignals,postsendDiagnostic}:{}),...(userTurnSignals?{userTurnSignals}:{}),writeAttempted:false}));
+   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),...(preflightSignals?{preflightSignals}:{}),...(toolSignals?{toolSignals,toolDiagnostic}:{}),...(postsendSignals?{postsendSignals,postsendDiagnostic}:{}),...(userTurnSignals?{userTurnSignals}:{}),...(userTurnStructure?{userTurnStructure}:{}),writeAttempted:false}));
   throw Error("G3_CONNECTOR_READ_FAILED_AT_"+stage.toUpperCase());
  }
 }
