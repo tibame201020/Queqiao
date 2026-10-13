@@ -2,6 +2,7 @@ import {appendFileSync,mkdirSync,writeFileSync} from "node:fs";
 import {join} from "node:path";
 import type {Page} from "playwright-core";
 import {makeGate3Artifact,validateGate3Output,type Gate3Receipt} from "./gate3-content.js";
+import {assessGate3Preflight,type Gate3PreflightSignals,type Gate3PreflightVerdict} from "./gate3-preflight.js";
 
 const PROMPT=[
  "This is one harmless synthetic publishing pipeline test, not a request for news or personal context.",
@@ -19,14 +20,22 @@ const safeId=(v:string|undefined,d:string)=>v&&/^\d{1,20}$/.test(v)?v:d;
 export async function runGate3Prompt(page:Page,sessionConfirmed:boolean):Promise<Gate3Receipt>{
  let stage:Stage="preflight";
  let submitted=false,userTurn=false,assistantTurn=false,finished=false;
+ let preflightSignals:Gate3PreflightSignals|undefined;
+ let preflightVerdict:Gate3PreflightVerdict|"not_checked"="not_checked";
  const runId=safeId(process.env["GITHUB_RUN_ID"],"local");
  const attempt=safeId(process.env["GITHUB_RUN_ATTEMPT"],"1");
  const taskId=`gate3-${runId}-${attempt}`;
  const summary=process.env["GITHUB_STEP_SUMMARY"];
  try{
   const editor=page.locator('[contenteditable="true"][role="textbox"]').first();
-  if(!sessionConfirmed||new URL(page.url()).pathname!=="/"||!(await editor.isVisible())||!(await editor.isEnabled()))
-   throw Error("preflight");
+  preflightSignals={
+   sessionConfirmed,
+   blankStart:new URL(page.url()).pathname==="/",
+   editorVisible:await editor.isVisible().catch(()=>false),
+   editorEnabled:await editor.isEnabled().catch(()=>false),
+  };
+  preflightVerdict=assessGate3Preflight(preflightSignals);
+  if(preflightVerdict!=="ready")throw Error("preflight");
   stage="submit";
   await editor.fill(PROMPT);
   await editor.press("Enter"); // Exactly one send; uncertain submission must fail closed.
@@ -79,7 +88,8 @@ export async function runGate3Prompt(page:Page,sessionConfirmed:boolean):Promise
  }catch{
   // Never log raw Playwright errors, browser URL or model response.
   const receipt={schema:"queqiao.gate3.receipt.v1",runId,taskId,status:"failed",stage,
-   completed:false,submitted,userTurn,assistantTurn,finished,errorCode:"GATE3_FAILED_AT_"+stage.toUpperCase()};
+   completed:false,submitted,userTurn,assistantTurn,finished,errorCode:"GATE3_FAILED_AT_"+stage.toUpperCase(),
+   ...(stage==="preflight"&&preflightSignals?{preflightVerdict,preflightSignals}:{}),};
   console.log(JSON.stringify(receipt));
   if(summary){try{appendFileSync(summary,[
    "### Gate 3 — failed", "- Task ID: "+taskId,"- Error: "+receipt.errorCode,""
