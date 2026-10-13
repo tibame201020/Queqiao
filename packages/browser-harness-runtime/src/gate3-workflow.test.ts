@@ -21,6 +21,15 @@ describe("Gate 3 CI-only synthetic acceptance policy",()=>{
   expect(workflow).not.toMatch(/\\bschedule:/);
   expect(workflow).toContain("gate3-out/gate3-artifact.json");
  });
+ it("rechecks exact run/attempt and immutable content lineage before uploading any artifact",()=>{
+  expect(workflow).toContain("Verify immutable Gate 3 provenance before artifact upload");
+  expect(workflow).toContain("GATE3_EXPECTED_RUN_ID: ${{ github.run_id }}");
+  expect(workflow).toContain("GATE3_EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}");
+  expect(workflow).toContain("gate3-trace-verify.ts");
+  expect(workflow.indexOf("Verify immutable Gate 3 provenance before artifact upload"))
+   .toBeLessThan(workflow.indexOf("Upload only validated public synthetic draft and receipt"));
+  expect(workflow).not.toContain("CHATGPT_BROWSER_SESSION_CAPSULE_PART_1: ${{ env.");
+ });
  it("uploads only a validated public synthetic result on success",()=>{
   expect(workflow).toMatch(/if: inputs\.gate3 && success\(\)/);
   expect(workflow).toContain("gate3-out/gate3-artifact.json");
