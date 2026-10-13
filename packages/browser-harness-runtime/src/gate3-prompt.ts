@@ -4,6 +4,7 @@ import type {Page} from "playwright-core";
 import {makeGate3Artifact,validateGate3Output,type Gate3Receipt} from "./gate3-content.js";
 import {assessGate3Preflight,type Gate3PreflightSignals,type Gate3PreflightVerdict} from "./gate3-preflight.js";
 import {observeGate3Composer} from "./gate3-composer.js";
+import {isGate3AssistantCandidate,assessGate3AssistantSignals} from "./gate3-assistant-observation.js";
 
 const PROMPT=[
  "This is one harmless synthetic publishing pipeline test, not a request for news or personal context.",
@@ -53,23 +54,35 @@ export async function runGate3Prompt(page:Page,sessionConfirmed:boolean):Promise
   stage="conversation";
   await page.waitForURL(CONVERSATION,{timeout:30000});
   stage="assistant";
-  const answer=page.locator('main [data-message-author-role="assistant"]').last();
+  // Identify the generated JSON response semantically, without assuming an
+  // undocumented Assistant role attribute. The request contains no JSON pairs.
+  const answer=page.locator("main").getByText(/"(?:concept|verification|limitation)"\s*:/).last();
   await answer.waitFor({state:"visible",timeout:90000});
+  const userOwned=await answer.evaluate(el=>Boolean(el.closest(
+   '[data-message-author-role="user"],[class*="user-message"]'
+  ))).catch(()=>true);
+  let candidate=(await answer.innerText()).trim();
+  if(!isGate3AssistantCandidate({text:candidate,prompt:PROMPT,isUserTurn:userOwned}))
+   throw Error("not_assistant_candidate");
   assistantTurn=true;
   stage="completion";
   const stop=page.getByRole("button",{name:/^(Stop|停止|停止生成)$/i});
   const deadline=Date.now()+60000;
-  let candidate="",stable=0;
+  let stable=0;
   while(Date.now()<deadline){
    await sleep(1500);
    const current=(await answer.innerText().catch(()=>"")).trim();
    const busy=await stop.first().isVisible().catch(()=>false);
    const composerReady=await editor.isEnabled().catch(()=>false);
-   if(current&&current===candidate&&!busy&&composerReady)stable++;else stable=0;
+   if(isGate3AssistantCandidate({text:current,prompt:PROMPT,isUserTurn:userOwned}) &&
+      current===candidate)stable++;else stable=0;
    candidate=current;
-   if(stable>=2)break;
+   if(assessGate3AssistantSignals({
+    candidateObserved:true,stable:stable>=2,stopVisible:busy,composerReady,
+   })==="completed")break;
   }
-  finished=stable>=2;
+  finished=stable>=2 && await stop.first().isVisible().then(v=>!v).catch(()=>false)
+    && await editor.isEnabled().catch(()=>false);
   if(!finished)throw Error("unfinished");
   stage="validation";
   const fields=validateGate3Output(candidate);
