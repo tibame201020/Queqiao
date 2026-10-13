@@ -1,0 +1,89 @@
+import {appendFileSync,mkdirSync,writeFileSync} from "node:fs";
+import {join} from "node:path";
+import type {Page} from "playwright-core";
+import {makeGate3Artifact,validateGate3Output,type Gate3Receipt} from "./gate3-content.js";
+
+const PROMPT=[
+ "This is one harmless synthetic publishing pipeline test, not a request for news or personal context.",
+ "Respond with ONLY one single-line JSON object. Exactly three keys: concept, verification, limitation.",
+ "Each value must be an original Traditional Chinese sentence between 25 and 90 characters, consisting only of Chinese characters and Chinese punctuation, with no newlines, English, digits, names, URLs or personal information.",
+ "Explain test-driven development: concept = what it is; verification = how to validate red/green/refactor; limitation = why this synthetic sample is not research or a production article.",
+ "Do not use Markdown, code fences or text outside JSON. Do not quote this prompt."
+].join(" ");
+const sleep=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms));
+const CONVERSATION=/^https:\/\/chatgpt\.com\/c\/[a-z0-9-]+(?:[?#].*)?$/i;
+type Stage="preflight"|"submit"|"user_turn"|"conversation"|"assistant"|"completion"|"validation"|"artifact";
+const safeId=(v:string|undefined,d:string)=>v&&/^\d{1,20}$/.test(v)?v:d;
+
+/** A single synthetic UI task. Never retries after Enter, follows challenges, or logs raw page data. */
+export async function runGate3Prompt(page:Page,sessionConfirmed:boolean):Promise<Gate3Receipt>{
+ let stage:Stage="preflight";
+ let submitted=false,userTurn=false,assistantTurn=false,finished=false;
+ const runId=safeId(process.env["GITHUB_RUN_ID"],"local");
+ const attempt=safeId(process.env["GITHUB_RUN_ATTEMPT"],"1");
+ const taskId=`gate3-${runId}-${attempt}`;
+ const summary=process.env["GITHUB_STEP_SUMMARY"];
+ try{
+  const editor=page.locator('[contenteditable="true"][role="textbox"]').first();
+  if(!sessionConfirmed||new URL(page.url()).pathname!=="/"||!(await editor.isVisible())||!(await editor.isEnabled()))
+   throw Error("preflight");
+  stage="submit";
+  await editor.fill(PROMPT);
+  await editor.press("Enter"); // Exactly one send; uncertain submission must fail closed.
+  submitted=true;
+  stage="user_turn";
+  await page.locator("main").getByText(PROMPT,{exact:true}).first().waitFor({state:"visible",timeout:20000});
+  userTurn=true;
+  stage="conversation";
+  await page.waitForURL(CONVERSATION,{timeout:30000});
+  stage="assistant";
+  const answer=page.locator('main [data-message-author-role="assistant"]').last();
+  await answer.waitFor({state:"visible",timeout:90000});
+  assistantTurn=true;
+  stage="completion";
+  const stop=page.getByRole("button",{name:/^(Stop|停止|停止生成)$/i});
+  const deadline=Date.now()+60000;
+  let candidate="",stable=0;
+  while(Date.now()<deadline){
+   await sleep(1500);
+   const current=(await answer.innerText().catch(()=>"")).trim();
+   const busy=await stop.first().isVisible().catch(()=>false);
+   const composerReady=await editor.isEnabled().catch(()=>false);
+   if(current&&current===candidate&&!busy&&composerReady)stable++;else stable=0;
+   candidate=current;
+   if(stable>=2)break;
+  }
+  finished=stable>=2;
+  if(!finished)throw Error("unfinished");
+  stage="validation";
+  const fields=validateGate3Output(candidate);
+  const date=process.env["GATE3_DATE"]??"";
+  const artifact=makeGate3Artifact({
+   runId,runAttempt:attempt,date,fields,authenticated:sessionConfirmed,
+   userTurn,assistantTurn,generationFinished:finished,
+  });
+  stage="artifact";
+  const dir=process.env["GATE3_OUTPUT_DIR"];
+  if(!dir)throw Error("missing_output");
+  mkdirSync(dir,{recursive:true,mode:0o700});
+  // The only durable content is the narrowly validated public synthetic post.
+  writeFileSync(join(dir,"gate3-artifact.json"),JSON.stringify(artifact)+"\n",{encoding:"utf8",mode:0o600,flag:"wx"});
+  if(summary)appendFileSync(summary,[
+   "### Gate 3 — synthetic draft artifact",
+   "- Run ID: "+runId,"- Task ID: "+taskId,
+   "- Stage: validated; generated content observed after real completed Assistant turn",
+   "- Article SHA-256: "+artifact.receipt.articleSha256,
+   "- Draft only; signal-notes publication is not implied.",""
+  ].join("\n"),"utf8");
+  return artifact.receipt;
+ }catch{
+  // Never log raw Playwright errors, browser URL or model response.
+  const receipt={schema:"queqiao.gate3.receipt.v1",runId,taskId,status:"failed",stage,
+   completed:false,submitted,userTurn,assistantTurn,finished,errorCode:"GATE3_FAILED_AT_"+stage.toUpperCase()};
+  console.log(JSON.stringify(receipt));
+  if(summary){try{appendFileSync(summary,[
+   "### Gate 3 — failed", "- Task ID: "+taskId,"- Error: "+receipt.errorCode,""
+  ].join("\n"),"utf8");}catch{/* bounded failure log already emitted */}}
+  throw Error(receipt.errorCode);
+ }
+}
