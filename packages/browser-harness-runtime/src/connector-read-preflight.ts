@@ -8,6 +8,7 @@ import {classifyConnectorToolObservation,type ConnectorToolSignals} from "./conn
 import {classifyConnectorPostsendState,type ConnectorPostsendSignals} from "./connector-postsend-diagnostics.js";
 import {assessConnectorUserTurn,type ConnectorUserTurnSignals} from "./connector-user-turn.js";
 import {classifyUserTurnStructure,type UserTurnStructureSignals} from "./connector-user-turn-structure.js";
+import {assessConnectorDraft,type ConnectorDraftSignals} from "./connector-presend-draft.js";
 
 /** Deliberately one normal ChatGPT UI send. No API impersonation, connector credentials,
  * request interception, navigation to undocumented endpoints, retry or write action.
@@ -136,7 +137,22 @@ async function observeNativeUserTurn(page:Page,editor:Locator):Promise<UserTurnS
  };
 }
 
-type Stage="preflight"|"app_selection"|"submission"|"conversation"|"user_turn"|"tool_observation"|"response"|"validation";
+async function observeComposerDraft(editor:Locator):Promise<ConnectorDraftSignals>{
+ const details=await editor.evaluate((el,p)=>{
+  const doc=el.ownerDocument;
+  const active=doc.activeElement;
+  const text=(el.textContent??"").replace(/\s+/g," ").trim();
+  return {
+   editorFocused:active===el||Boolean(active&&el.contains(active)),
+   middleInEditor:text.includes(p.middle),tailInEditor:text.includes(p.tail),
+  };
+ },{middle:PUBLIC_MIDDLE,tail:PUBLIC_TAIL}).catch(()=>({
+  editorFocused:false,middleInEditor:false,tailInEditor:false,
+ }));
+ return {...details,editorEnabled:await editor.isEnabled().catch(()=>false)};
+}
+
+type Stage="preflight"|"app_selection"|"draft_ready"|"submission"|"conversation"|"user_turn"|"tool_observation"|"response"|"validation";
 export async function runConnectorReadPreflight(page:Page,authenticated:boolean):Promise<void>{
  let stage:Stage="preflight",submitted=false,appSelected=false,toolObserved=false;
  let verdict="not_observed";
@@ -148,6 +164,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
  let postsendDiagnostic:string|undefined;
  let userTurnSignals:ConnectorUserTurnSignals|undefined;
  let userTurnStructure:UserTurnStructureSignals|undefined;
+ let draftSignals:ConnectorDraftSignals|undefined;
  const runId=process.env["GITHUB_RUN_ID"]??"";
  const expectedSha=process.env["CONNECTOR_EXPECTED_SHA"]??"";
  try{
@@ -180,6 +197,12 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   await editor.press("End");
   await editor.press("Space");
   await page.keyboard.insertText(PROMPT);
+  // A selected App control is not proof that subsequent keyboard input reached
+  // the normal Composer. Check focus and two public fragments BEFORE any Enter.
+  stage="draft_ready";
+  draftSignals=await observeComposerDraft(editor);
+  if(assessConnectorDraft(draftSignals)!=="ready")throw Error("draft_unconfirmed");
+  stage="submission";
   await editor.press("Enter"); // exactly one send, never retry on uncertain send
   submitted=true;
   stage="conversation";
@@ -242,7 +265,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   // Neither raw answer nor error/URL/DOM/session/app list is logged.
   console.log(JSON.stringify({schema:"queqiao.gate3.connector-read-preflight.v1",
    runId:/^\d{1,20}$/.test(runId)?runId:"invalid",stage,status:"failed",
-   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),...(preflightSignals?{preflightSignals}:{}),...(toolSignals?{toolSignals,toolDiagnostic}:{}),...(postsendSignals?{postsendSignals,postsendDiagnostic}:{}),...(userTurnSignals?{userTurnSignals}:{}),...(userTurnStructure?{userTurnStructure}:{}),writeAttempted:false}));
+   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),...(preflightSignals?{preflightSignals}:{}),...(toolSignals?{toolSignals,toolDiagnostic}:{}),...(postsendSignals?{postsendSignals,postsendDiagnostic}:{}),...(userTurnSignals?{userTurnSignals}:{}),...(userTurnStructure?{userTurnStructure}:{}),...(draftSignals?{draftSignals}:{}),writeAttempted:false}));
   throw Error("G3_CONNECTOR_READ_FAILED_AT_"+stage.toUpperCase());
  }
 }
