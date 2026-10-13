@@ -117,7 +117,7 @@ jobs:
             }]
           };
           // Only the synthetic-browser POC branch permits this exact Node command.
-          if (process.env.GITHUB_REF_NAME === "feat/124-actions-worker-browser") {
+          if ((process.env.GITHUB_REF_NAME === "main" || process.env.GITHUB_REF_NAME === "feat/124-actions-worker-browser")) {
             config.workspaces[0].commands.exact.push({
               executable: "node",
               args: ["packages/browser-harness-runtime/dist/public-browser-acceptance.js"],
@@ -133,7 +133,7 @@ jobs:
           echo "QUEQIAO_CONFIG_FILE=$runtime_dir/config.json" >> "$GITHUB_ENV"
 
       - name: Start CI-only Chrome for Browser Harness task
-        if: github.ref_name == 'feat/124-actions-worker-browser'
+        if: github.ref_name == 'main' || github.ref_name == 'feat/124-actions-worker-browser'
         shell: bash
         run: |
           set -euo pipefail

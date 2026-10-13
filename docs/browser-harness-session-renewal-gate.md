@@ -207,3 +207,28 @@ and includes them only on preflight failure as sanitized evidence. No URL,
 DOM content, browser exception or user state is logged. This is diagnostic
 hardening, not a selector change or automated send retry. A later reviewed-main
 run must independently prove real completion before Gate 3 can pass.
+
+## Issue #124 — reviewed-main Gateway/Worker synthetic Browser integration
+
+`runtime-provider-browser-controller.yml` now permits a **manual workflow_dispatch
+on reviewed main** for the existing public-only remote Browser Harness task. The
+legacy same-repository POC PR gate remains isolated. The separate
+`runtime-provider-poc-worker.yml` accepts the same exact Node command on main
+and legacy POC branch only. There is no generic shell expansion, new Session
+Secret, GitHub Connector invocation or cross-repository write permission.
+
+Acceptance requires a real controller Run and distinct dispatched Worker Run,
+OIDC claim, reverse WebSocket ready lease, routed authenticated MCP `run`
+executing `public-browser-acceptance.js` on the Worker, independently read
+`ci-browser-receipt.json` bound to the Worker Run ID, then a `disposed` lease
+and provider Worker Run `cancelled`. Printed markers, a worker-ready count,
+or a controller workflow success alone are insufficient evidence. On any failure
+the controller must attempt disposal; report the actual failing stage, never a
+synthetic successful receipt. The controller uses a public synthetic page and
+ephemeral CI Chrome only.
+
+This verifies the independent Gateway/Worker/Browser substrate; it does not
+combine that substrate with the separate authenticated Gate 3 content-generation
+Run, nor prove unattended access to ChatGPT's already connected GitHub
+Connector. Keep #124 open until an approved integration and independent
+PC-off acceptance exist. No signal-notes/main change or daily schedule switch.

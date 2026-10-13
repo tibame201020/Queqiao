@@ -9,11 +9,12 @@ const controllerWorkflow=parse(controller) as Record<string,any>;
 const workerWorkflow=parse(worker) as Record<string,any>;
 
 describe("remote CI Browser Harness Phase 3 POC topology",()=>{
- it("restricts test to same-repo PR and no public production schedule",()=>{
+ it("restricts PR to same-repo legacy branch and main to manual dispatch, with no schedule",()=>{
   expect(controller).toContain("github.head_ref == 'feat/124-actions-worker-browser'");
   expect(controller).toContain("head.repo.full_name == github.repository");
   expect(controllerWorkflow.on.schedule).toBeUndefined();
-  expect(controller).not.toContain("github.ref == 'refs/heads/main'");
+  expect(controller).toContain("github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'");
+  expect(controller).not.toContain("pull_request_target:");
  });
  it("requires real Gateway+Worker registration before triggering browser through MCP",()=>{
   expect(controller).toContain("Provision ephemeral Worker through Runtime Provider");
@@ -21,11 +22,12 @@ describe("remote CI Browser Harness Phase 3 POC topology",()=>{
   expect(controller).toContain("poc-browser-worker-client.ts");
   expect(controller).toContain("QUEQIAO_POC_WORKER_RUN_ID");
  });
- it("allows only fixed synthetic CDP task, and only for the POC Worker branch",()=>{
+ it("allows only fixed synthetic CDP task on reviewed main or legacy POC Worker branch",()=>{
   const steps=workerWorkflow.jobs["runtime-worker"].steps as Array<{name?:string;run?:string;if?:string}>;
+  expect(worker).toContain('GITHUB_REF_NAME === "main"');
   expect(worker).toContain('GITHUB_REF_NAME === "feat/124-actions-worker-browser"');
   expect(worker).toContain('packages/browser-harness-runtime/dist/public-browser-acceptance.js');
-  expect(steps.some(s=>s.name==="Start CI-only Chrome for Browser Harness task" && s.if?.includes("feat/124-actions-worker-browser"))).toBe(true);
+  expect(steps.some(s=>s.name==="Start CI-only Chrome for Browser Harness task" && s.if?.includes("feat/124-actions-worker-browser") && s.if?.includes("main"))).toBe(true);
   expect(worker).not.toContain("CHATGPT_BROWSER_SESSION_CAPSULE");
   expect(worker).toContain('ci-browser-metadata.json');
   expect(worker).toContain('GITHUB_RUN_ID');
