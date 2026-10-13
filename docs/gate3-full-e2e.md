@@ -35,6 +35,8 @@ or extra fields, a mismatched hash/path, wrong run, or any fabricated
 downstream stage stop the job. No raw browser state or secret enters the
 trace or PR CI.
 
+The manual Gate 3 dispatch requires `gate3_date=YYYY-MM-DD` when `gate3=true`. GitHub persists that input across reruns; CI validates the date before restoring the session. A rerun after midnight must not silently switch the target date. There is no enabled production schedule.
+
 `logicalKey=gate3/synthetic-YYYY-MM-DD` is stable across reruns, whereas
 `taskId=gate3-<run_id>-<run_attempt>` distinguishes attempts. The pure
 `assessGate3Target` rejects a known duplicate logical target; it is **not**
