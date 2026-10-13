@@ -232,3 +232,23 @@ combine that substrate with the separate authenticated Gate 3 content-generation
 Run, nor prove unattended access to ChatGPT's already connected GitHub
 Connector. Keep #124 open until an approved integration and independent
 PC-off acceptance exist. No signal-notes/main change or daily schedule switch.
+
+### Actual reviewed-main acceptance (2026-10-13)
+
+- Source PR #143: all 13 required CI checks passed; merged SHA
+  `e9737a4d00c517b1be9709a92f05de3ab5f3bb1c`.
+- Controller hosted Run [38357477604](https://github.com/tibame201020/Queqiao/actions/runs/38357477604): SUCCESS.
+- Separate ephemeral Worker hosted Run [38357516610](https://github.com/tibame201020/Queqiao/actions/runs/38357516610): OIDC/reverse WebSocket enrollment succeeded; provider cancellation yielded final `cancelled`.
+- Controller verified authenticated, environment-routed MCP `run`, followed by
+  `read_file` for the real Worker Run ID: `38357516610`. The public synthetic
+  receipt had `origin=https://example.com`,
+  `interactiveMarker=QUEQIAO_CI_BROWSER_HARNESS_OK`, `clicks=1`, and
+  `headless=true`.
+- Lease `6af72833-1126-44f8-84b9-85e2523e7a65` was verified `disposed`;
+  Worker conclusion was independently observed `cancelled`.
+- This is **PASS for the independent public Browser substrate only**. It is not
+  evidence of a single integrated authenticated ChatGPT Gate 3 workload,
+  unattended GitHub Connector invocation, or physically witnessed PC-off
+  execution. The automated Session-to-Connector write integration remains
+  blocked by execution-environment safety controls. No workarounds or extra
+  user/cross-repo credentials were added. Keep Issue #124 OPEN.
