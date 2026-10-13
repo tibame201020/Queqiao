@@ -11,7 +11,7 @@ describe("Gate 3 assistant semantic observation",()=>{
   expect(isGate3AssistantCandidate({text:prompt,prompt,isUserTurn:false})).toBe(false);
   expect(isGate3AssistantCandidate({text:generated,prompt,isUserTurn:true})).toBe(false);
   expect(isGate3AssistantCandidate({text:"Loading...",prompt,isUserTurn:false})).toBe(false);
-  expect(isGate3AssistantCandidate({text:generated.repeat(10),prompt,isUserTurn:false})).toBe(false);
+  expect(isGate3AssistantCandidate({text:generated.repeat(30),prompt,isUserTurn:false})).toBe(false);
  });
  it("separates absent response from candidate and completed answer",()=>{
   expect(assessGate3AssistantSignals({candidateObserved:false,stable:false,stopVisible:false,composerReady:true})).toBe("not_observed");
