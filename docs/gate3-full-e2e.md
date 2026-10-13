@@ -71,6 +71,14 @@ of replayed-session-based automated Connector writing remains in force.
 
 The App selector obstacle is narrowed, not the Connector authorization boundary itself. The existing narrow tool-card selector may not match normal ChatGPT UI, or no tool invocation may have occurred. Do not infer which without actual evidence. Next bounded experiment may diagnose sanitized user-visible tool/assistant/refusal semantics, but an Assistant claim or matching SHA alone is never proof of actual GitHub App tool invocation. No credential replay, direct GitHub API fallback, challenge bypass, raw response, screenshots, app inventory or cross-repository write. G3.3, G3.4 and G3.5 remain NOT PASSED; signal-notes/main and the daily scheduler are unchanged.
 
+### G3.3 hosted tool and user-turn findings — 2026-10-13 (NOT PASSED)
+
+- [PR #156](https://github.com/tibame201020/Queqiao/pull/156) merged as `9a7b7db4acc1bb7052410fd63749a01db7bfffcb` after all required CI PASS. Its real [Run 38391032937](https://github.com/tibame201020/Queqiao/actions/runs/38391032937) observed native App UI selection and one Enter; no known GitHub tool card, Assistant SHA, or `UNAVAILABLE` answer. Diagnostic: `no_observed_reply`. This alone proves no Connector invocation.
+- [PR #157](https://github.com/tibame201020/Queqiao/pull/157) merged as `881d68d9938c332ee268fea334d80d5a1167ad34` after all required CI PASS. Its real [Run 38392200632](https://github.com/tibame201020/Queqiao/actions/runs/38392200632) recorded `userTurnVisible=false`, `assistantSurfaceVisible=false`, `stopVisible=false`, `composerEnabled=true`, `dialogVisible=false`; a successful Enter was not an independently confirmed user turn.
+- [PR #158](https://github.com/tibame201020/Queqiao/pull/158) added a fail-closed visible user-turn gate (TDD RED/GREEN, all required CI PASS, merged `e0c3c1094b692b48ff1e24ef8338594f573fa72f`). Its real [Run 38393395432](https://github.com/tibame201020/Queqiao/actions/runs/38393395432) FAILED at `user_turn` with `conversationCreated=true`, `promptEchoOutsideEditor=false`, `promptStillInEditor=false`. This does **not** establish whether submission failed or the mention-augmented message was rendered in a way the substring locator missed.
+
+`submitted=true` in older receipts meant **one Enter key press**, not confirmed delivery. Do not infer absent Connector authorization from a missing Assistant/tool response where the user turn itself is unconfirmed. No second send, Session/cookie export, undocumented API fallback, credential replay, GitHub write, cross-repository publication or scheduler change is allowed. G3.3 remains NOT PASSED; future supported semantic UI evidence must independently establish the displayed user turn, selected App and real tool result. Issue #124 retains exact run-specific receipts.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
