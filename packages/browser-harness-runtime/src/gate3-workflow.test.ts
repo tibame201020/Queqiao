@@ -21,6 +21,13 @@ describe("Gate 3 CI-only synthetic acceptance policy",()=>{
   expect(workflow).not.toMatch(/\\bschedule:/);
   expect(workflow).toContain("gate3-out/gate3-artifact.json");
  });
+ it("pins the logical publication date in persisted workflow_dispatch inputs for midnight-crossing reruns",()=>{
+  expect(workflow).toContain("gate3_date:");
+  expect(workflow).toContain("REQUESTED_DATE: ${{ inputs.gate3_date }}");
+  expect(workflow).toContain("Pin isolated Gate 3 Taipei date across reruns");
+  expect(workflow).toContain('echo "GATE3_DATE=$REQUESTED_DATE" >> "$GITHUB_ENV"');
+  expect(workflow).not.toContain("TZ=Asia/Taipei date +%F");
+ });
  it("rechecks exact run/attempt and immutable content lineage before uploading any artifact",()=>{
   expect(workflow).toContain("Verify immutable Gate 3 provenance before artifact upload");
   expect(workflow).toContain("GATE3_EXPECTED_RUN_ID: ${{ github.run_id }}");
