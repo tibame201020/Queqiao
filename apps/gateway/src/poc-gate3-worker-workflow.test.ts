@@ -10,7 +10,7 @@ describe("#124 G3.2 same-controller -> ephemeral Worker -> authenticated synthet
   expect(controller).toContain("gate3_worker:");
   expect(controller).toContain("gate3_date:");
   expect(controller).toContain("GATE3_WORKER");
-  expect(controller).toContain("SOURCE_REVISION");
+  expect(controller).toContain("sourceRevision:process.env.GITHUB_SHA");
   expect(controller).toContain("sourceRevision");
   expect(c.on).not.toHaveProperty("schedule");
   expect(controller).not.toContain("SIGNAL_NOTES_GATE3_TOKEN");
@@ -18,7 +18,7 @@ describe("#124 G3.2 same-controller -> ephemeral Worker -> authenticated synthet
  });
  it("requires provider-correlated non-secret inputs to worker, with no session passing via runtime metadata",()=>{
   for(const name of ["task_kind","gate3_date","controller_run_id","controller_run_attempt"])expect(w.on.workflow_dispatch.inputs).toHaveProperty(name);
-  expect(controller).toContain('"taskKind":"gate3-content"');
+  expect(controller).toContain('taskKind:"gate3-content"');
   expect(worker).not.toContain("secrets.CHATGPT_BROWSER_SESSION_CAPSULE }}\n          LEASE_ID:");
  });
  it("starts manual CI Chrome, authenticates and verifies inside the worker only for approved task_kind on main",()=>{
