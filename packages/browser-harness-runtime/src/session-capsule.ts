@@ -105,7 +105,7 @@ export function resolveBrowserSessionCapsule(input:{
  legacy?:string|undefined;part1?:string|undefined;part2?:string|undefined;
 }):string{
   try{
-    if(input.part1!==undefined || input.part2!==undefined){
+    if(Boolean(input.part1) || Boolean(input.part2)){
       if(!input.part1 || !input.part2)throw Error("incomplete");
       const p1=/^qc1:([a-f0-9]{64}):1\/2:([A-Za-z0-9+/=]+)$/.exec(input.part1);
       const p2=/^qc1:([a-f0-9]{64}):2\/2:([A-Za-z0-9+/=]+)$/.exec(input.part2);

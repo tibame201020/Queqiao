@@ -34,6 +34,7 @@ describe("two-part session secret transport",()=>{
  });
  it("preserves the legacy one-secret path without partial updates",()=>{
   expect(resolveBrowserSessionCapsule({legacy:valid})).toBe(valid);
+  expect(resolveBrowserSessionCapsule({legacy:valid,part1:"",part2:""})).toBe(valid);
   expect(()=>resolveBrowserSessionCapsule({legacy:valid,part1:"partial"})).toThrow(/Invalid session secret transport/);
   expect(()=>resolveBrowserSessionCapsule({legacy:valid,part2:"partial"})).toThrow(/Invalid session secret transport/);
   expect(()=>resolveBrowserSessionCapsule({})).toThrow(/Invalid session secret transport/);
