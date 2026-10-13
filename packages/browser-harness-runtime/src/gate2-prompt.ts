@@ -2,6 +2,8 @@ import {appendFileSync} from "node:fs";
 import type {Page} from "playwright-core";
 import {assessGate2,type Gate2Observation} from "./gate2-verdict.js";
 import {createGate2Receipt,formatGate2Summary,type Gate2Receipt,type Gate2Stage} from "./gate2-receipt.js";
+import {observeGate3Composer} from "./gate3-composer.js";
+import {assessAbControlPreflight,type AbControlPreflightSignals} from "./ab-control-preflight.js";
 
 const PROMPT="Calculate 17 + 28. Reply with only the decimal number. Do not repeat the question.";
 const ANSWER="45";
@@ -18,15 +20,24 @@ export async function runGate2Prompt(page:Page,sessionConfirmed:boolean):Promise
     promptSubmittedOnce:false,userPromptObserved:false,conversationCreated:false,
     assistantAnswer:"",answerOutsideUserMessage:false,generationFinished:false,stableAnswer:false,
   };
+  let preflightSignals:AbControlPreflightSignals|undefined;
   const runId=process.env["GITHUB_RUN_ID"];
   const runAttempt=process.env["GITHUB_RUN_ATTEMPT"];
   const summary=process.env["GITHUB_STEP_SUMMARY"];
   try{
     evidence.blankStart=new URL(page.url()).pathname==="/";
     const editor=page.locator('[contenteditable="true"][role="textbox"]').first();
-    evidence.composerReady=await editor.isVisible() && await editor.isEnabled();
-    if(!sessionConfirmed || !evidence.blankStart || !evidence.composerReady)
-      throw Error("preflight");
+    const composer=await observeGate3Composer({
+      waitForVisible:()=>editor.waitFor({state:"visible",timeout:15_000}),
+      isVisible:()=>editor.isVisible(),
+      isEnabled:()=>editor.isEnabled(),
+    });
+    preflightSignals={
+      authenticated:sessionConfirmed,blankStart:evidence.blankStart,
+      editorVisible:composer.editorVisible,editorEnabled:composer.editorEnabled,
+    };
+    evidence.composerReady=composer.editorVisible&&composer.editorEnabled;
+    if(assessAbControlPreflight(preflightSignals)!=="ready")throw Error("preflight");
 
     stage="submit";
     await editor.fill(PROMPT);
@@ -77,7 +88,7 @@ export async function runGate2Prompt(page:Page,sessionConfirmed:boolean):Promise
     // The stage and boolean-only evidence are bounded; never serialize the caught
     // exception because Playwright errors may contain private page URLs.
     const receipt=createGate2Receipt({runId,runAttempt,stage,evidence});
-    console.log(JSON.stringify(receipt));
+    console.log(JSON.stringify({...receipt,...(stage==="preflight"&&preflightSignals?{preflightSignals}:{} )}));
     if(summary){
       try{appendFileSync(summary,formatGate2Summary(receipt),"utf8");}catch{/* log receipt remains durable */}
     }
