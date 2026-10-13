@@ -5,6 +5,7 @@ import type {Locator} from "playwright-core";
 import {assessConnectorPreflight,type ConnectorPreflightSignals} from "./connector-read-preflight-policy.js";
 import {observeConnectorComposer} from "./connector-read-composer.js";
 import {classifyConnectorToolObservation,type ConnectorToolSignals} from "./connector-tool-diagnostics.js";
+import {classifyConnectorPostsendState,type ConnectorPostsendSignals} from "./connector-postsend-diagnostics.js";
 
 /** Deliberately one normal ChatGPT UI send. No API impersonation, connector credentials,
  * request interception, navigation to undocumented endpoints, retry or write action.
@@ -58,6 +59,28 @@ async function observeToolDiagnostics(page:Page):Promise<ConnectorToolSignals>{
  };
 }
 
+async function observePostsendSignals(page:Page,editor:Locator):Promise<ConnectorPostsendSignals>{
+ const promptEcho=page.locator("main").getByText(PROMPT,{exact:false});
+ const n=Math.min(await promptEcho.count(),8);
+ let userTurnVisible=false;
+ for(let i=0;i<n;i++){
+  const item=promptEcho.nth(i);
+  if(!await item.isVisible().catch(()=>false))continue;
+  const outsideComposer=await item.evaluate(el=>!el.closest('[contenteditable="true"]')&&
+    !el.closest('[data-message-author-role="assistant"]')).catch(()=>false);
+  if(outsideComposer){userTurnVisible=true;break;}
+ }
+ const assistant=page.locator('main [data-message-author-role="assistant"],main .markdown');
+ const stop=page.getByRole("button",{name:/^(Stop|停止|停止生成)$/i});
+ return {
+  userTurnVisible,
+  assistantSurfaceVisible:await visibleAny(assistant)>0,
+  stopVisible:await visibleAny(stop)>0,
+  composerEnabled:await editor.isEnabled().catch(()=>false),
+  dialogVisible:await visibleAny(page.getByRole("dialog"))>0,
+ };
+}
+
 type Stage="preflight"|"app_selection"|"submission"|"conversation"|"tool_observation"|"response"|"validation";
 export async function runConnectorReadPreflight(page:Page,authenticated:boolean):Promise<void>{
  let stage:Stage="preflight",submitted=false,appSelected=false,toolObserved=false;
@@ -66,6 +89,8 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
  let preflightSignals:ConnectorPreflightSignals|undefined;
  let toolSignals:ConnectorToolSignals|undefined;
  let toolDiagnostic:string|undefined;
+ let postsendSignals:ConnectorPostsendSignals|undefined;
+ let postsendDiagnostic:string|undefined;
  const runId=process.env["GITHUB_RUN_ID"]??"";
  const expectedSha=process.env["CONNECTOR_EXPECTED_SHA"]??"";
  try{
@@ -137,11 +162,13 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   if(stage==="tool_observation"){
    toolSignals=await observeToolDiagnostics(page).catch(()=>undefined);
    if(toolSignals)toolDiagnostic=classifyConnectorToolObservation(toolSignals);
+   postsendSignals=await observePostsendSignals(page,page.locator('[contenteditable="true"][role="textbox"]').first()).catch(()=>undefined);
+   if(postsendSignals)postsendDiagnostic=classifyConnectorPostsendState(postsendSignals);
   }
   // Neither raw answer nor error/URL/DOM/session/app list is logged.
   console.log(JSON.stringify({schema:"queqiao.gate3.connector-read-preflight.v1",
    runId:/^\d{1,20}$/.test(runId)?runId:"invalid",stage,status:"failed",
-   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),...(preflightSignals?{preflightSignals}:{}),...(toolSignals?{toolSignals,toolDiagnostic}:{}),writeAttempted:false}));
+   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),...(preflightSignals?{preflightSignals}:{}),...(toolSignals?{toolSignals,toolDiagnostic}:{}),...(postsendSignals?{postsendSignals,postsendDiagnostic}:{}),writeAttempted:false}));
   throw Error("G3_CONNECTOR_READ_FAILED_AT_"+stage.toUpperCase());
  }
 }
