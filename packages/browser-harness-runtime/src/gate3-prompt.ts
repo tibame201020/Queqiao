@@ -3,6 +3,7 @@ import {join} from "node:path";
 import type {Page} from "playwright-core";
 import {makeGate3Artifact,validateGate3Output,type Gate3Receipt} from "./gate3-content.js";
 import {assessGate3Preflight,type Gate3PreflightSignals,type Gate3PreflightVerdict} from "./gate3-preflight.js";
+import {observeGate3Composer} from "./gate3-composer.js";
 
 const PROMPT=[
  "This is one harmless synthetic publishing pipeline test, not a request for news or personal context.",
@@ -28,11 +29,17 @@ export async function runGate3Prompt(page:Page,sessionConfirmed:boolean):Promise
  const summary=process.env["GITHUB_STEP_SUMMARY"];
  try{
   const editor=page.locator('[contenteditable="true"][role="textbox"]').first();
+  // Wait only for the existing Composer to become visible; this precedes any send.
+  // A timeout is a failed preflight, never a reason to try another selector or submit.
+  const composer=await observeGate3Composer({
+   waitForVisible:()=>editor.waitFor({state:"visible",timeout:15_000}),
+   isVisible:()=>editor.isVisible(),
+   isEnabled:()=>editor.isEnabled(),
+  });
   preflightSignals={
    sessionConfirmed,
    blankStart:new URL(page.url()).pathname==="/",
-   editorVisible:await editor.isVisible().catch(()=>false),
-   editorEnabled:await editor.isEnabled().catch(()=>false),
+   ...composer,
   };
   preflightVerdict=assessGate3Preflight(preflightSignals);
   if(preflightVerdict!=="ready")throw Error("preflight");
