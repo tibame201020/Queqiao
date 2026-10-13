@@ -46,6 +46,22 @@ complete G3.3 on its own: a supported, approved same-controller control-plane
 invocation and actual result correlation remain to be demonstrated. It does
 not change the G3.2 PASS evidence or enable G3.4/G3.5.
 
+### Actual read-only hosted observation — 2026-10-13
+
+[Run 38376419572](https://github.com/tibame201020/Queqiao/actions/runs/38376419572)
+on reviewed main `a4432706eb2d006330c3ed05472964f4065b2700` had successful
+unit-tests and a FAILED live Session/Connector preflight. The sanitized
+`queqiao.gate3.connector-read-preflight.v1` reported
+`stage=app_selection`, `appSelected=false`, `toolObserved=false`,
+`submitted=false` and `writeAttempted=false`. Normal `@GitHub` App
+selection was not observed by this bounded UI probe; no prompt was
+submitted, and no GitHub tool call or write was made. This result
+**does not establish absent Connector OAuth nor permanent CI App
+unavailability**: the selector/menu semantics must be independently
+diagnosed in a further read-only slice. G3.3 remains NOT PASSED.
+Issue #124 records the evidence; the previous separate safety rejection
+of replayed-session-based automated Connector writing remains in force.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
