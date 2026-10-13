@@ -56,12 +56,85 @@ describe("Security Baseline v1 adversarial gate", () => {
     const client = await register();
     const valid = await authorize(client.client_id);
     const authorizationPage = await request(app).get("/oauth/authorize").query(valid.authorization).expect(200);
-    expect(authorizationPage.headers["content-security-policy"]).toContain("form-action 'self' https://chatgpt.com");
+    expect(authorizationPage.headers["content-security-policy"]).toContain("form-action 'self'");
+    expect(authorizationPage.headers["content-security-policy"]).toContain("https://queqiao.example");
+    expect(authorizationPage.headers["content-security-policy"]).toContain("https://chatgpt.com");
     expect(authorizationPage.headers["content-security-policy"]).not.toContain("attacker.example");
     await request(app).get("/oauth/authorize").query({ ...valid.authorization, code_challenge_method: "plain" }).expect(400);
     await request(app).get("/oauth/authorize").query({ ...valid.authorization, code_challenge: "short" }).expect(400);
     await request(app).get("/oauth/authorize").query({ ...valid.authorization, resource: "https://attacker.example/mcp" }).expect(400);
     await request(app).post("/oauth/authorize").type("form").send({ ...valid.authorization, approval_secret: "wrong" }).expect(403);
+  });
+
+  it("keeps existing and newly registered ChatGPT Connector grants independent from a standalone loopback client", async () => {
+    // These are synthetic OAuth clients. Actual ChatGPT-stored grants are not inspected.
+    const futureChatgptRedirect = "https://chatgpt.com/connector/oauth/callback-next";
+    const workstationRedirect = "http://127.0.0.1:3873/queqiao/callback";
+    const registered = async (name: string, redirect: string) =>
+      (await request(app).post("/oauth/register").send({
+        client_name: name, redirect_uris: [redirect], token_endpoint_auth_method: "none",
+        scope: "queqiao:access",
+      }).expect(201)).body as { client_id: string; redirect_uris: string[] };
+    const authorizeAndExchange = async (clientId: string, redirect: string) => {
+      const verifier = randomBytes(40).toString("base64url");
+      const authorization = {
+        client_id: clientId, redirect_uri: redirect, response_type: "code",
+        code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+        code_challenge_method: "S256", scope: "queqiao:access",
+        resource: new URL("mcp", publicBaseUrl).href, state: randomBytes(16).toString("base64url"),
+      };
+      const page = await request(app).get("/oauth/authorize").query(authorization).expect(200);
+      const csp = String(page.headers["content-security-policy"]);
+      expect(csp).toContain(publicBaseUrl.origin);
+      expect(csp).toContain(new URL(redirect).origin);
+      const approved = await request(app).post("/oauth/authorize").type("form")
+        .send({ ...authorization, approval_secret: "correct horse battery staple" }).expect(303);
+      expect(new URL(approved.headers.location).origin).toBe(new URL(redirect).origin);
+      expect(String(approved.headers["content-security-policy"])).toContain(new URL(redirect).origin);
+      const token = (await request(app).post("/oauth/token").type("form")
+        .send({ grant_type: "authorization_code", code: new URL(approved.headers.location).searchParams.get("code"),
+          redirect_uri: redirect, client_id: clientId, code_verifier: verifier, resource: authorization.resource })
+        .expect(200)).body as { access_token: string; refresh_token: string; scope: string };
+      expect(token.scope).toBe("queqiao:access");
+      return { csp, token };
+    };
+    const existing = await registered("Existing ChatGPT Connector", redirectUri);
+    const oldGrant = await authorizeAndExchange(existing.client_id, redirectUri);
+    // A newly created ChatGPT connector has its own client_id and remains accepted by
+    // registration + consent without editing a hard-coded callback list.
+    const future = await registered("New ChatGPT Connector", futureChatgptRedirect);
+    const nextGrant = await authorizeAndExchange(future.client_id, futureChatgptRedirect);
+    const workstation = await registered("Standalone Workstation", workstationRedirect);
+    const desktopGrant = await authorizeAndExchange(workstation.client_id, workstationRedirect);
+    expect(new Set([existing.client_id, future.client_id, workstation.client_id]).size).toBe(3);
+    expect(oldGrant.csp).not.toContain("http://127.0.0.1:3873");
+    expect(nextGrant.csp).not.toContain("http://127.0.0.1:3873");
+    expect(desktopGrant.csp).toContain("http://127.0.0.1:3873");
+    // Adding or authorizing the desktop client must not revoke either ChatGPT grant.
+    const refresh = async (clientId: string, refreshToken: string) =>
+      (await request(app).post("/oauth/token").type("form")
+        .send({ grant_type: "refresh_token", client_id: clientId, refresh_token: refreshToken })
+        .expect(200)).body as { access_token: string; refresh_token: string; scope: string };
+    const oldRotated = await refresh(existing.client_id, oldGrant.token.refresh_token);
+    const newRotated = await refresh(future.client_id, nextGrant.token.refresh_token);
+    const desktopRotated = await refresh(workstation.client_id, desktopGrant.token.refresh_token);
+    expect(oldRotated.scope).toBe("queqiao:access");
+    expect(newRotated.scope).toBe("queqiao:access");
+    expect(desktopRotated.scope).toBe("queqiao:access");
+    expect(new Set([oldRotated.refresh_token, newRotated.refresh_token, desktopRotated.refresh_token]).size).toBe(3);
+    const persistedClients: Array<{ client_id: string; authorized_at?: number; current_refresh_token_id?: string }> =
+      JSON.parse(await readFile(path.join(temporary, "state", "oauth-clients.json"), "utf8"));
+    expect(persistedClients).toHaveLength(3);
+    for (const id of [existing.client_id, future.client_id, workstation.client_id]) {
+      expect(persistedClients.find((client) => client.client_id === id)).toMatchObject({
+        authorized_at: expect.any(Number), current_refresh_token_id: expect.any(String),
+      });
+    }
+    // A newly registered arbitrary off-allowlist domain is still refused.
+    await request(app).post("/oauth/register").send({
+      client_name: "Untrusted", redirect_uris: ["https://untrusted.example/oauth/callback"],
+      scope: "queqiao:access",
+    }).expect(400);
   });
 
   it("allows arbitrary ports only for explicitly allowed loopback redirect origins", async () => {
