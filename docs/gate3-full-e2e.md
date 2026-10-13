@@ -19,7 +19,7 @@ PAT, production daily schedule, or merge to signal-notes/main.
 | Slice | Deliverable | Pass condition | Status |
 | --- | --- | --- | --- |
 | G3.1 | Immutable public `gate3.trace.v1`, deterministic date logical target, run-attempt identity, and pre-upload verification | Unit tests, PR CI and real hosted artifact with matching run ID, hash and explicit unobserved downstream stages | **PASS: PR #145; Run 38359475732** |
-| G3.2 | Same-task Worker-to-content task bridge | A **single** Controller Run records Worker Run ID, authenticated content result and hash-bound receipt; no simulated or stitched Run IDs | PR #147 implementation; live hosted acceptance pending |
+| G3.2 | Same-task Worker-to-content task bridge | A **single** Controller Run records Worker Run ID, authenticated content result and hash-bound receipt; no simulated or stitched Run IDs | **PASS: PR #147; Controller 38365316946 / Worker 38365362251** |
 | G3.3 | Supported Connector invocation boundary | Explicitly supported authorization and real tool invocation from the approved control plane; an observed ChatGPT reply or authenticated browser alone is insufficient | Blocked: earlier replayed-session-to-Connector automated write was rejected by execution-environment safety check; do not route around it |
 | G3.4 | Restricted test publication and true idempotency | One date-specific test branch, one draft PR, exact article hash, independently verified commit and CI. Atomic target claim/remote conflict handling prevents retries from creating duplicate publication | Not proved |
 | G3.5 | Unattended full E2E/PC independence | One run links task, Worker, content, Connector, commit, CI and disposed lease, with failure cleanup and no user PC dependency | Not proved |
@@ -55,6 +55,39 @@ proof are still required before marking G3.2 PASS.
 Legacy public-only Browser tests remain separate. Pull requests do not run
 the live G3.2 mode. There is no automatic Connector write, signal-notes
 publication or production schedule change.
+
+## G3.2 actual same-task hosted acceptance — 2026-10-13
+
+PR #147 merged to reviewed main `9d57a47fa0295dae10aadd073f5d1921a8da2330`
+after **15 required CI checks SUCCESS**. Manual
+[Controller Run 38365316946](https://github.com/tibame201020/Queqiao/actions/runs/38365316946)
+SUCCESS dispatched its own distinct
+[Worker Run 38365362251](https://github.com/tibame201020/Queqiao/actions/runs/38365362251)
+at the same commit, then observed OIDC/reverse WebSocket enrollment.
+The Worker itself completed a real authenticated ChatGPT synthetic UI task
+(`authenticated`, user/assistant turns and generationCompleted all true).
+Its locally verified public artifact had task
+`gate3-38365362251-1`, logical target
+`gate3/synthetic-2026-10-13`, pinned date and article SHA-256
+`6f3c999b0d11db0744f9febe80072ed2a29cbfe7aeb5d14441a65f0018bd4d60`.
+
+The same Controller used authenticated, correctly routed MCP `read_file`
+to inspect the actual Worker artifact and independently verify the exact
+Worker Run, task, date, path, hash and unchanged downstream `not_observed`
+states. It then verified Lease
+`ee9f4f43-777b-4578-8fce-e7a4de693898` as `disposed` and the
+Worker GitHub conclusion as `cancelled` (expected provider disposal).
+Controller SUCCESS uploaded the sanitized, public
+`gate3-worker-proof-38365316946-1` (artifact ID `11796806963`).
+The artifact was independently downloaded and its exact shape and all
+critical correlation fields were checked against the two Run logs.
+No article body, Session Secret, browser profile or account data was
+uploaded as proof.
+
+**G3.2 PASS applies to this one correlated hosted content execution only.**
+GitHub Connector and target content CI remain `not_observed`; this was not
+a cross-repo publication or full Gate 3 completion. The runtime was hosted,
+but physical PC-off was not independently witnessed. Keep #124 OPEN.
 
 ## G3.1 actual acceptance — 2026-10-13
 
