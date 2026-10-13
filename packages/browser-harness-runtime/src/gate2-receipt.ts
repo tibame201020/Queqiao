@@ -15,7 +15,7 @@ const safeId=(value:string|undefined,fallback:string)=>
 
 /** Accept only pre-validated synthetic metadata; never persist browser data or raw text. */
 export function createGate2Receipt({runId,runAttempt,stage,evidence}:{
-  runId?:string;runAttempt?:string;stage:Gate2Stage;evidence:Gate2Observation;
+  runId?:string|undefined;runAttempt?:string|undefined;stage:Gate2Stage;evidence:Gate2Observation;
 }):Gate2Receipt{
   const id=safeId(runId,"local");
   const attempt=safeId(runAttempt,"1");
