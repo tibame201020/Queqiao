@@ -128,3 +128,23 @@ Vitest suite, typecheck, build, then PR CI. Only AFTER merge, execute a
 fresh main workflow_dispatch with gate2=true and inspect the actual run.
 A marker or printed receipt without independent observed user/assistant
 UI and finished generation does not count.
+
+### Gate 2 durable receipt v1
+
+Successful real first-party UI acceptance is already demonstrated by main Run
+38345287596 (PR #136). A later receipt-only hardening change does not replace
+that run with a synthetic unit test, and a PR never receives Session Secrets.
+
+For each attempt the sanitized receipt includes a deterministic
+`gate2-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>` task ID, run ID, status
+(`completed` or `failed`), semantic stage, completed boolean, observed
+submission/user turn/conversation/assistant/generation flags. Only a completed
+and fully validated assistant response has the synthetic answer SHA-256.
+Any failed stage emits only `GATE2_FAILED_AT_<STAGE>`; original browser
+exceptions, browser URL, session data and raw answer never enter the receipt.
+The receipt is printed in job logs and written to the GitHub Step Summary
+when available. If the summary itself is unavailable, the sanitized failure
+receipt still appears in the job log and the workflow fails. No retry is
+performed after uncertain submission. Re-running a GitHub workflow is a
+different attempt and produces a distinct task ID; this is not yet an
+across-runs deduplication guarantee for scheduled content publication.
