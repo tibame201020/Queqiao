@@ -19,10 +19,42 @@ PAT, production daily schedule, or merge to signal-notes/main.
 | Slice | Deliverable | Pass condition | Status |
 | --- | --- | --- | --- |
 | G3.1 | Immutable public `gate3.trace.v1`, deterministic date logical target, run-attempt identity, and pre-upload verification | Unit tests, PR CI and real hosted artifact with matching run ID, hash and explicit unobserved downstream stages | **PASS: PR #145; Run 38359475732** |
-| G3.2 | Same-task Worker-to-content task bridge | A **single** Controller Run records Worker Run ID, authenticated content result and hash-bound receipt; no simulated or stitched Run IDs | Not proved |
+| G3.2 | Same-task Worker-to-content task bridge | A **single** Controller Run records Worker Run ID, authenticated content result and hash-bound receipt; no simulated or stitched Run IDs | PR #147 implementation; live hosted acceptance pending |
 | G3.3 | Supported Connector invocation boundary | Explicitly supported authorization and real tool invocation from the approved control plane; an observed ChatGPT reply or authenticated browser alone is insufficient | Blocked: earlier replayed-session-to-Connector automated write was rejected by execution-environment safety check; do not route around it |
 | G3.4 | Restricted test publication and true idempotency | One date-specific test branch, one draft PR, exact article hash, independently verified commit and CI. Atomic target claim/remote conflict handling prevents retries from creating duplicate publication | Not proved |
 | G3.5 | Unattended full E2E/PC independence | One run links task, Worker, content, Connector, commit, CI and disposed lease, with failure cleanup and no user PC dependency | Not proved |
+
+## G3.2 implementation contract (PR #147; acceptance pending)
+
+A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
+accepts `gate3_worker=true` and a pinned `gate3_date`. The Controller
+supplies only an allowlisted non-secret Provider task profile, immutable
+source SHA, Controller Run ID/attempt and date to the new ephemeral Worker.
+The Provider rejects incomplete/malformed task metadata before dispatch,
+and OIDC binds the new Worker Run and reverse WebSocket to the Lease.
+
+The Worker reads the pre-existing two-part ChatGPT Session Secrets only
+within its main-only isolated content step, and runs the existing synthetic
+`session-acceptance.ts` and `gate3-trace-verify.ts` directly inside the
+Worker. No Session data is passed via Controller, Gateway, Worker inputs,
+repository, MCP tools, logs, artifact or profile export. Checkout uses
+`persist-credentials: false`. This executes **content generation only**;
+it does not invoke ChatGPT's GitHub Connector or perform a cross-repo write.
+
+After real Worker registration, the Controller polls only
+`read_file(gate3-artifact.json)` through the authenticated routed MCP
+membership. It recomputes the public article/trace validation and requires
+the **actual dispatched Worker Run ID**, pinned date and immutable hash.
+Malformed results fail closed. Only after this does it complete the Lease,
+observe provider Worker cancellation, and emit a sanitized
+`queqiao.gate3.controller-complete.v1` receipt tying Controller Run/attempt,
+Worker Run, Task ID, logical date key, SHA, environment and disposed Lease.
+A real successful hosted Controller/Worker pair and independently downloaded
+proof are still required before marking G3.2 PASS.
+
+Legacy public-only Browser tests remain separate. Pull requests do not run
+the live G3.2 mode. There is no automatic Connector write, signal-notes
+publication or production schedule change.
 
 ## G3.1 actual acceptance — 2026-10-13
 
