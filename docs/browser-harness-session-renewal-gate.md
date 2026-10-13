@@ -178,3 +178,14 @@ main. Never auto-merge the PR or update the live schedule. A duplicate branch
 is a stop condition rather than an implicit overwrite. Production publication,
 PC-off scheduling and integrated Gateway/Worker lease acceptance remain separate
 open milestones until proven in real hosted runs.
+
+### Gate 3 preflight diagnostic failure
+
+Run 38349664418 independently confirmed the first-party authenticated Session
+and aggregate Composer presence, but no prompt was submitted because Gate 3
+preflight failed closed. The preflight now classifies four independent bounded
+booleans (confirmed Session, blank conversation, editor visible, editor enabled)
+and includes them only on preflight failure as sanitized evidence. No URL,
+DOM content, browser exception or user state is logged. This is diagnostic
+hardening, not a selector change or automated send retry. A later reviewed-main
+run must independently prove real completion before Gate 3 can pass.
