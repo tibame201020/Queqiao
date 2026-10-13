@@ -62,6 +62,15 @@ diagnosed in a further read-only slice. G3.3 remains NOT PASSED.
 Issue #124 records the evidence; the previous separate safety rejection
 of replayed-session-based automated Connector writing remains in force.
 
+### G3.3 read-only native App diagnostics — 2026-10-13 (NOT PASSED)
+
+- [PR #151](https://github.com/tibame201020/Queqiao/pull/151) added a seven-boolean native UI selector diagnosis (15 required CI PASS). Actual [Run 38380049699](https://github.com/tibame201020/Queqiao/actions/runs/38380049699) failed preflight; App selection not reached.
+- [PR #152](https://github.com/tibame201020/Queqiao/pull/152) added a six-boolean fail-closed preflight diagnosis (required CI PASS). Actual [Run 38381085070](https://github.com/tibame201020/Queqiao/actions/runs/38381085070) observed authenticated=true, valid run/SHA=true, blankStart=true, editorEnabled=true, but editorVisible=false.
+- [PR #153](https://github.com/tibame201020/Queqiao/pull/153) added one bounded normal Composer visibility wait (required CI PASS). Actual [Run 38381895492](https://github.com/tibame201020/Queqiao/actions/runs/38381895492) passed all six preflight signals. After normal @GitHub input, the visible native UI exposed a GitHub button/text, but no menu/listbox/dialog, option or menuitem.
+- [PR #154](https://github.com/tibame201020/Queqiao/pull/154) accepted only a **unique** GitHub button absent before @GitHub and appearing after input (TDD RED/GREEN; required CI PASS, Windows Full Test PASS on one unchanged rerun). Reviewed main `fdc13942eb05a029a97bd69de7222db202ee22e5`, actual [Run 38383435702](https://github.com/tibame201020/Queqiao/actions/runs/38383435702): six preflight signals true; `appSelected=true`; `submitted=true`; `toolObserved=false`; `writeAttempted=false`. Failed at `tool_observation`, so **no independently observed GitHub tool result and no SHA-verified read**.
+
+The App selector obstacle is narrowed, not the Connector authorization boundary itself. The existing narrow tool-card selector may not match normal ChatGPT UI, or no tool invocation may have occurred. Do not infer which without actual evidence. Next bounded experiment may diagnose sanitized user-visible tool/assistant/refusal semantics, but an Assistant claim or matching SHA alone is never proof of actual GitHub App tool invocation. No credential replay, direct GitHub API fallback, challenge bypass, raw response, screenshots, app inventory or cross-repository write. G3.3, G3.4 and G3.5 remain NOT PASSED; signal-notes/main and the daily scheduler are unchanged.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
