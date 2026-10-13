@@ -2,6 +2,17 @@ name: Phase 3 Actions Worker Browser Harness E2E
 
 on:
   workflow_dispatch:
+    inputs:
+      gate3_worker:
+        description: "Manual same-Worker authenticated Gate 3 synthetic content only"
+        type: boolean
+        default: false
+        required: false
+      gate3_date:
+        description: "Pinned YYYY-MM-DD synthetic date, required for gate3_worker"
+        type: string
+        default: ""
+        required: false
   pull_request:
     branches: [main]
     paths:
@@ -24,7 +35,7 @@ jobs:
   phase3-e2e:
     if: (github.event_name == 'pull_request' && github.head_ref == 'feat/124-actions-worker-browser' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 22
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -37,6 +48,27 @@ jobs:
       - run: npm ci --ignore-scripts
 
       - run: npm run build
+
+      - name: Validate G3.2 requested task and fixed date
+        shell: bash
+        env:
+          GATE3_WORKER: ${{ inputs.gate3_worker && '1' || '0' }}
+          REQUESTED_DATE: ${{ inputs.gate3_date }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const enabled=process.env.GATE3_WORKER==="1",d=process.env.REQUESTED_DATE||"";
+          if(!enabled && d)process.exit(1);
+          if(enabled && (process.env.GITHUB_EVENT_NAME!=="workflow_dispatch" ||
+             process.env.GITHUB_REF!=="refs/heads/main" ||
+             !/^\d{4}-\d{2}-\d{2}$/.test(d) ||
+             Number.isNaN(Date.parse(d)) || new Date(d).toISOString().slice(0,10)!==d))
+             process.exit(1);
+          NODE
+          echo "G3_WORKER=$GATE3_WORKER" >> "$GITHUB_ENV"
+          if [ "$GATE3_WORKER" = "1" ]; then
+            echo "G3_DATE=$REQUESTED_DATE" >> "$GITHUB_ENV"
+          fi
 
       - name: Start temporary public tunnel
         shell: bash
@@ -149,7 +181,20 @@ jobs:
           management_secret="$(cat "$POC_RUNTIME_DIR/state/management.secret")"
           echo "::add-mask::$management_secret"
 
-          response="$(curl -fsS             -H 'content-type: application/json'             -H "x-queqiao-management-secret: $management_secret"             -d '{"ttlSeconds":180,"metadata":{"poc":"phase3-e2e"}}'             http://127.0.0.1:7574/runtimes/github-actions)"
+          request_json="$(node <<'NODE'
+          const g3=process.env.G3_WORKER==="1";
+          const metadata={poc:"phase3-e2e"};
+          if(g3){
+            Object.assign(metadata,{taskKind:"gate3-content",gate3Date:process.env.G3_DATE,
+              controllerRunId:process.env.GITHUB_RUN_ID,controllerRunAttempt:process.env.GITHUB_RUN_ATTEMPT,
+              sourceRevision:process.env.GITHUB_SHA});
+          }
+          process.stdout.write(JSON.stringify({ttlSeconds:g3?720:180,metadata}));
+          NODE
+          )"
+          response="$(curl -fsS -H 'content-type: application/json' \
+            -H "x-queqiao-management-secret: $management_secret" \
+            -d "$request_json" http://127.0.0.1:7574/runtimes/github-actions)"
 
           lease_id="$(printf '%s' "$response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).leaseId))")"
           worker_run_id="$(printf '%s' "$response" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).providerMetadata?.runId||''))")"
@@ -204,6 +249,7 @@ jobs:
           NODE
 
       - name: Execute authenticated MCP run on remote CI Browser Harness
+        if: github.event_name == 'pull_request' || !inputs.gate3_worker
         shell: bash
         run: |
           set -euo pipefail
@@ -213,6 +259,22 @@ jobs:
           export QUEQIAO_POC_ENVIRONMENT_ID="$EXPECTED_ENVIRONMENT_ID"
           export QUEQIAO_POC_WORKER_RUN_ID="$WORKER_RUN_ID"
           npx tsx apps/gateway/src/poc-browser-worker-client.ts
+      - name: Execute authenticated MCP read of same-Worker G3.2 content
+        if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          export QUEQIAO_POC_PUBLIC_URL="$PUBLIC_URL"
+          export QUEQIAO_POC_LOCAL_URL="http://127.0.0.1:7575"
+          export QUEQIAO_POC_APPROVAL_SECRET_FILE="$POC_RUNTIME_DIR/approval.secret"
+          export QUEQIAO_POC_ENVIRONMENT_ID="$EXPECTED_ENVIRONMENT_ID"
+          export QUEQIAO_POC_WORKER_RUN_ID="$WORKER_RUN_ID"
+          export QUEQIAO_POC_CONTROLLER_RUN_ID="$GITHUB_RUN_ID"
+          export QUEQIAO_POC_CONTROLLER_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT"
+          export QUEQIAO_POC_GATE3_DATE="$G3_DATE"
+          export QUEQIAO_POC_G3_PROOF_PATH="$RUNNER_TEMP/gate3-worker-proof.json"
+          npx tsx apps/gateway/src/poc-gate3-worker-client.ts
+
       - name: Complete lease and verify provider cancellation
         shell: bash
         env:
@@ -233,6 +295,27 @@ jobs:
           done
           test "$conclusion" = "cancelled"
           printf '{"leaseId":"%s","workerRunId":"%s","environmentId":"%s","leaseState":"disposed","workerConclusion":"cancelled"}\n'             "$LEASE_ID" "$WORKER_RUN_ID" "$EXPECTED_ENVIRONMENT_ID"
+          if [ "${G3_WORKER:-0}" = "1" ]; then
+            export G3_PROOF_PATH="$RUNNER_TEMP/gate3-worker-proof.json"
+            export G3_FINAL_PROOF_PATH="$RUNNER_TEMP/gate3-controller-complete.json"
+            export G3_VERIFIED_LEASE_STATE="$final_state"
+            export G3_VERIFIED_WORKER_CONCLUSION="$conclusion"
+            export G3_EXPECTED_WORKER_RUN_ID="$WORKER_RUN_ID"
+            export G3_EXPECTED_LEASE_ID="$LEASE_ID"
+            export G3_EXPECTED_ENVIRONMENT_ID="$EXPECTED_ENVIRONMENT_ID"
+            export G3_EXPECTED_DATE="$G3_DATE"
+            npx tsx apps/gateway/src/poc-gate3-worker-finalize.ts
+          fi
+
+
+      - name: Upload sanitized same-task G3.2 completion proof
+        if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker && success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate3-worker-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gate3-controller-complete.json
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Diagnostics on failure
         if: failure()

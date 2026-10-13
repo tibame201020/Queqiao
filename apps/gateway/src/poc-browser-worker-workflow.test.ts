@@ -28,7 +28,12 @@ describe("remote CI Browser Harness Phase 3 POC topology",()=>{
   expect(worker).toContain('GITHUB_REF_NAME === "feat/124-actions-worker-browser"');
   expect(worker).toContain('packages/browser-harness-runtime/dist/public-browser-acceptance.js');
   expect(steps.some(s=>s.name==="Start CI-only Chrome for Browser Harness task" && s.if?.includes("feat/124-actions-worker-browser") && s.if?.includes("main"))).toBe(true);
-  expect(worker).not.toContain("CHATGPT_BROWSER_SESSION_CAPSULE");
+  const generation=steps.find(s=>s.name==="Generate and validate G3.2 content on ephemeral Worker");
+  expect(generation?.if).toContain("github.ref_name == 'main'");
+  expect(generation?.if).toContain("inputs.task_kind == 'gate3-content'");
+  const secretSteps=steps.filter(s=>Object.keys((s as {env?:Record<string,unknown>}).env??{}).some(k=>k.startsWith("CHATGPT_BROWSER_SESSION_CAPSULE")));
+  expect(secretSteps.map(s=>s.name)).toEqual(["Generate and validate G3.2 content on ephemeral Worker"]);
+  expect(steps.find(s=>s.name==="Bootstrap Worker")?.run).not.toContain("CHATGPT_BROWSER_SESSION_CAPSULE");
   expect(worker).toContain('ci-browser-metadata.json');
   expect(worker).toContain('GITHUB_RUN_ID');
  });
