@@ -9,6 +9,7 @@
     "@modelcontextprotocol/node": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
     "@queqiao/audit": "0.1.0",
+    "@queqiao/browser-harness-runtime": "0.1.0",
     "@queqiao/config": "0.1.0",
     "@queqiao/contracts": "0.1.0",
     "@queqiao/core-manifest": "0.1.0",
