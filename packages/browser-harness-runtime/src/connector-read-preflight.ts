@@ -21,7 +21,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   stage="app_selection";
   // Normal user-facing @ selector. Do not send a text-only @GitHub instruction
   // if the actual app cannot be selected from an observed UI option.
-  await editor.fill("@");
+  await editor.fill("@GitHub");
   const option=page.getByRole("option",{name:/^GitHub(?:\b|$)/i})
     .or(page.getByRole("menuitem",{name:/^GitHub(?:\b|$)/i})).first();
   await option.waitFor({state:"visible",timeout:8000});
