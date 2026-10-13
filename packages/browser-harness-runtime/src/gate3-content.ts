@@ -28,7 +28,9 @@ export function validateGate3Output(raw:string):Fields{
  const keys=Object.keys(obj).sort();
  if(keys.join(",")!=="concept,limitation,verification")fail();
  const concept=obj["concept"],verification=obj["verification"],limitation=obj["limitation"];
- if(!isSafeField(concept)||!isSafeField(verification)||!isSafeField(limitation))fail();
+ if(!isSafeField(concept))return fail();
+ if(!isSafeField(verification))return fail();
+ if(!isSafeField(limitation))return fail();
  return {concept,verification,limitation};
 }
 export function makeGate3Artifact(input:{
