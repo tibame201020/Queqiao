@@ -209,8 +209,14 @@ jobs:
           set -euo pipefail
           date_value="$(TZ=Asia/Taipei date +%F)"
           branch="gate3/synthetic-${date_value}"
-          if git -C signal-notes-target ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then
+          rc=0
+          git -C signal-notes-target ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null || rc=$?
+          if [ "$rc" -eq 0 ]; then
             echo "::error::GATE3_DUPLICATE_BRANCH"
+            exit 1
+          fi
+          if [ "$rc" -ne 2 ]; then
+            echo "::error::GATE3_REMOTE_BRANCH_CHECK_FAILED"
             exit 1
           fi
           echo "GATE3_EXPECTED_DATE=$date_value" >> "$GITHUB_ENV"
