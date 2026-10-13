@@ -71,16 +71,19 @@ export function makeGate3Artifact(input:{
  };
  return {article,path,receipt};
 }
-export function assessGate3Publication(input:{
- receipt:Gate3Receipt;article:string;branch:string;exists:boolean;hasWriteCredential:boolean;
-}):"publish"|"not_complete"|"forbidden_branch"|"duplicate"|"missing_credential"|"hash_mismatch"{
- const {receipt,article,branch,exists,hasWriteCredential}=input;
- if(receipt.schema!=="queqiao.gate3.receipt.v1"||receipt.status!=="completed"||!receipt.completed||receipt.stage!=="validated"||
-  !receipt.authenticated||!receipt.userTurnObserved||!receipt.assistantObserved||!receipt.generationCompleted)return "not_complete";
- if(branch!==`gate3/synthetic-${receipt.date}`||!validDate(receipt.date)||
-    receipt.path!==`src/content/posts/${SLUG+receipt.date}/index.md`)return "forbidden_branch";
- if(exists)return "duplicate";
- if(!hasWriteCredential)return "missing_credential";
- if(hash(article)!==receipt.articleSha256 || !article.includes("draft: true"))return "hash_mismatch";
- return "publish";
+/** Pure handoff contract: this does not publish or assert tool availability in CI. */
+export function assessGate3Handoff(input:{receipt:Gate3Receipt;article:string;path:string}):
+ "ready_for_connector"|"not_complete"|"wrong_target"|"hash_mismatch"{
+ const {receipt,article,path}=input;
+ if(receipt.schema!=="queqiao.gate3.receipt.v1"||receipt.status!=="completed"||
+    !receipt.completed||receipt.stage!=="validated"||!receipt.authenticated||
+    !receipt.userTurnObserved||!receipt.assistantObserved||!receipt.generationCompleted||
+    !/^\d{1,20}$/.test(receipt.runId)||!/^gate3-\d{1,20}-\d{1,8}$/.test(receipt.taskId))
+  return "not_complete";
+ if(!validDate(receipt.date)||path!==`src/content/posts/${SLUG+receipt.date}/index.md`||
+    receipt.path!==path)return "wrong_target";
+ if(hash(article)!==receipt.articleSha256||!/^draft: true$/m.test(article)||
+    !article.includes("## 概念")||!article.includes("## 驗證步驟")||!article.includes("## 限制"))
+  return "hash_mismatch";
+ return "ready_for_connector";
 }
