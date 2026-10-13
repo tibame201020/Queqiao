@@ -56,7 +56,7 @@ export async function runGate3Prompt(page:Page,sessionConfirmed:boolean):Promise
   stage="assistant";
   // Identify the generated JSON response semantically, without assuming an
   // undocumented Assistant role attribute. The request contains no JSON pairs.
-  const answer=page.locator("main").getByText(/"(?:concept|verification|limitation)"\\s*:/).last();
+  const answer=page.locator("main").getByText(/"(?:concept|verification|limitation)"\s*:/).last();
   await answer.waitFor({state:"visible",timeout:90000});
   const userOwned=await answer.evaluate(el=>Boolean(el.closest(
    '[data-message-author-role="user"],[class*="user-message"]'
