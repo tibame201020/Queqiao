@@ -24,6 +24,22 @@ on:
         description: Optional immutable repository SHA selected by the trusted task catalog
         required: false
         type: string
+      task_kind:
+        description: Trusted task profile; empty defaults to public-only Browser
+        required: false
+        type: string
+      gate3_date:
+        description: Pinned synthetic date, public metadata only
+        required: false
+        type: string
+      controller_run_id:
+        description: Parent Controller GitHub Run ID
+        required: false
+        type: string
+      controller_run_attempt:
+        description: Parent Controller attempt
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -32,11 +48,12 @@ permissions:
 jobs:
   runtime-worker:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.source_revision || github.sha }}
+          persist-credentials: false
 
       - name: Verify source revision
         shell: bash
@@ -48,6 +65,34 @@ jobs:
             [[ "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid pinned source revision"; exit 1; }
             [[ "$(git rev-parse HEAD)" == "$SOURCE_REVISION" ]] || { echo "Checkout SHA does not match the authorized task"; exit 1; }
           fi
+
+      - name: Validate G3.2 trusted Worker task selection
+        shell: bash
+        env:
+          TASK_KIND: ${{ inputs.task_kind }}
+          GATE3_DATE: ${{ inputs.gate3_date }}
+          CONTROLLER_RUN_ID: ${{ inputs.controller_run_id }}
+          CONTROLLER_RUN_ATTEMPT: ${{ inputs.controller_run_attempt }}
+          PINNED_SHA: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const kind=process.env.TASK_KIND||"public-browser";
+          if(!["public-browser","gate3-content"].includes(kind))process.exit(1);
+          const metadata=[process.env.GATE3_DATE,process.env.CONTROLLER_RUN_ID,process.env.CONTROLLER_RUN_ATTEMPT];
+          if(kind!=="gate3-content") {
+            if(metadata.some(Boolean))process.exit(1);
+          } else {
+            const d=process.env.GATE3_DATE||"";
+            if(process.env.GITHUB_REF_NAME!=="main" ||
+               !/^[0-9a-f]{40}$/.test(process.env.PINNED_SHA||"") ||
+               !/^\\d{4}-\\d{2}-\\d{2}$/.test(d) ||
+               Number.isNaN(Date.parse(d)) || new Date(d).toISOString().slice(0,10)!==d ||
+               !/^[1-9]\\d{0,19}$/.test(process.env.CONTROLLER_RUN_ID||"") ||
+               !/^[1-9]\\d{0,7}$/.test(process.env.CONTROLLER_RUN_ATTEMPT||""))
+              process.exit(1);
+          }
+          NODE
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -133,7 +178,7 @@ jobs:
           echo "QUEQIAO_CONFIG_FILE=$runtime_dir/config.json" >> "$GITHUB_ENV"
 
       - name: Start CI-only Chrome for Browser Harness task
-        if: github.ref_name == 'main' || github.ref_name == 'feat/124-actions-worker-browser'
+        if: (github.ref_name == 'main' || github.ref_name == 'feat/124-actions-worker-browser') && inputs.task_kind != 'gate3-content'
         shell: bash
         run: |
           set -euo pipefail
@@ -205,6 +250,50 @@ jobs:
           test "$state" = "ready"
           printf '{"leaseId":"%s","workerId":"%s","environmentId":"%s","state":"%s","runId":"%s"}\n' "$LEASE_ID" "$WORKER_ID" "$ENVIRONMENT_ID" "$state" "$GITHUB_RUN_ID"
 
+      - name: Start G3.2 isolated authenticated Chrome
+        if: github.ref_name == 'main' && inputs.task_kind == 'gate3-content'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v Xvfb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          test -n "$chrome"
+          Xvfb :99 -screen 0 1280x1024x24 > "$RUNNER_TEMP/queqiao-gate3-xvfb.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/queqiao-gate3-xvfb.pid"
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+          profile="$RUNNER_TEMP/queqiao-worker-browser-profile"
+          mkdir -p "$profile"
+          DISPLAY=:99 "$chrome" --user-data-dir="$profile" --profile-directory=Default --remote-debugging-address=127.0.0.1 --remote-debugging-port=9555 --remote-allow-origins=* --no-first-run --no-default-browser-check --disable-default-apps --no-sandbox --disable-dev-shm-usage about:blank > "$RUNNER_TEMP/queqiao-worker-browser.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/queqiao-worker-browser.pid"
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:9555/json/version >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "::error::G3.2 Chrome did not start"
+          exit 1
+
+      - name: Generate and validate G3.2 content on ephemeral Worker
+        if: github.ref_name == 'main' && inputs.task_kind == 'gate3-content'
+        env:
+          CHATGPT_BROWSER_SESSION_CAPSULE: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE }}
+          CHATGPT_BROWSER_SESSION_CAPSULE_PART_1: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE_PART_1 }}
+          CHATGPT_BROWSER_SESSION_CAPSULE_PART_2: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE_PART_2 }}
+          BROWSER_CDP_URL: http://127.0.0.1:9555
+          CHATGPT_BROWSER_GATE2: '0'
+          CHATGPT_BROWSER_GATE3: '1'
+          GATE3_DATE: ${{ inputs.gate3_date }}
+          GATE3_OUTPUT_DIR: ${{ github.workspace }}
+          GATE3_EXPECTED_RUN_ID: ${{ github.run_id }}
+          GATE3_EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx tsx packages/browser-harness-runtime/src/session-acceptance.ts
+          npx tsx packages/browser-harness-runtime/src/gate3-trace-verify.ts "$GITHUB_WORKSPACE/gate3-artifact.json"
+
       - name: Keep runtime alive
         shell: bash
         env:
@@ -222,6 +311,9 @@ jobs:
           fi
           if [ -f "$RUNNER_TEMP/queqiao-worker-browser.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/queqiao-worker-browser.pid")" 2>/dev/null || true
+          fi
+          if [ -f "$RUNNER_TEMP/queqiao-gate3-xvfb.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/queqiao-gate3-xvfb.pid")" 2>/dev/null || true
           fi
           if [ -d "$RUNNER_TEMP/queqiao-worker-browser-profile" ]; then
             for attempt in {1..15}; do
