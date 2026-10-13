@@ -50,15 +50,22 @@ jobs:
         shell: bash
         env:
           CHATGPT_BROWSER_SESSION_CAPSULE: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE }}
+          CHATGPT_BROWSER_SESSION_CAPSULE_PART_1: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE_PART_1 }}
+          CHATGPT_BROWSER_SESSION_CAPSULE_PART_2: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE_PART_2 }}
         run: |
           set -euo pipefail
-          # Repository secrets are captured when a NEW workflow run is queued.
-          if [ -z "$CHATGPT_BROWSER_SESSION_CAPSULE" ]; then
-            echo "::error::CHATGPT_BROWSER_SESSION_CAPSULE is not available to this run"
-            exit 1
-          fi
-          if [ "${#CHATGPT_BROWSER_SESSION_CAPSULE}" -ge 48000 ]; then
-            echo "::error::Session capsule exceeds the workflow size limit"
+          # Never echo secrets. Partial update fails closed rather than using old capsule.
+          if [ -n "$CHATGPT_BROWSER_SESSION_CAPSULE_PART_1" ] || [ -n "$CHATGPT_BROWSER_SESSION_CAPSULE_PART_2" ]; then
+            if [ -z "$CHATGPT_BROWSER_SESSION_CAPSULE_PART_1" ] || [ -z "$CHATGPT_BROWSER_SESSION_CAPSULE_PART_2" ]; then
+              echo "::error::Incomplete two-part session secret"
+              exit 1
+            fi
+            if [ "${#CHATGPT_BROWSER_SESSION_CAPSULE_PART_1}" -ge 48000 ] || [ "${#CHATGPT_BROWSER_SESSION_CAPSULE_PART_2}" -ge 48000 ]; then
+              echo "::error::Session secret part exceeds the workflow size limit"
+              exit 1
+            fi
+          elif [ -z "$CHATGPT_BROWSER_SESSION_CAPSULE" ] || [ "${#CHATGPT_BROWSER_SESSION_CAPSULE}" -ge 48000 ]; then
+            echo "::error::Session secret missing or exceeds the single-part workflow size limit"
             exit 1
           fi
 
@@ -100,6 +107,8 @@ jobs:
       - name: Restore ChatGPT session into fresh Browser Harness
         env:
           CHATGPT_BROWSER_SESSION_CAPSULE: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE }}
+          CHATGPT_BROWSER_SESSION_CAPSULE_PART_1: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE_PART_1 }}
+          CHATGPT_BROWSER_SESSION_CAPSULE_PART_2: ${{ secrets.CHATGPT_BROWSER_SESSION_CAPSULE_PART_2 }}
           BROWSER_CDP_URL: http://127.0.0.1:9555
         run: npx tsx packages/browser-harness-runtime/src/session-acceptance.ts
 

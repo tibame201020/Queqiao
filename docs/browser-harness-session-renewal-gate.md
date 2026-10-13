@@ -50,3 +50,46 @@ identity. P4 prompt-and-answer testing stays disabled until P3 passes.
 
 Nothing here switches to OpenAI API, enables signal-notes daily production
 publishing, adds a local always-on Worker, or exposes user data.
+## Two-part Session Capsule transport (Issue #101 P3 size regression)
+
+The attended, already authenticated Chrome 155 Jeff profile supplied
+aggregate diagnostics only: 52 eligible Cookies, 51 ChatGPT LocalStorage
+entries and 60,044 ASCII bytes of gzip/base64 capsule. The export
+correctly stopped BEFORE overwriting the old GitHub Secret.
+
+Do not discard arbitrary Cookies or LocalStorage to make the payload
+fit; they can be necessary for portability. The reviewed main-only CI
+gate now accepts two repository secrets:
+
+- CHATGPT_BROWSER_SESSION_CAPSULE_PART_1
+- CHATGPT_BROWSER_SESSION_CAPSULE_PART_2
+
+For a valid gzip/base64 capsule (decoder max 65,536 chars), split the
+original bytes in half, first half rounding up. Each Secret is a literal
+ASCII string: qc1:<sha256-of-complete-capsule>:1/2:<first-half>
+or qc1:<same-sha256>:2/2:<second-half>. Each part MUST be fewer than
+48,000 characters. CI confirms both part indices, identical SHA-256,
+complete reconstructed SHA-256 and original gzip/schema validation
+BEFORE connecting to Chrome. Never log or upload Secret contents.
+One missing part, mixed generations, wrong index or tampering fails
+closed; NEVER fall back to old single-Secret value for partial update.
+Original CHATGPT_BROWSER_SESSION_CAPSULE is used ONLY when both new
+secrets are absent. This preserves backwards compatibility.
+
+Only a NEW reviewed main workflow_dispatch receives the bearer-equivalent
+Secrets; pull_request runs synthetic unit tests only. The account holder
+must update both parts via an approved, local, in-memory, attended
+provisioning operation. No Cookie, storage, capsule, part or profile
+belongs in repo, PR, chat, command line args, shell history, issues, logs
+or artifacts. Do not store plaintext parts in temporary files.
+Successful update is NOT login proof; a fresh GitHub-hosted Chrome must
+produce a separately confirmed first-party web session AND Composer.
+
+Live-profile Chrome CDP may return zero context.storageState().origins
+despite the verified first-party ChatGPT page having LocalStorage. For
+attended provisioning, obtain that allowlisted ChatGPT origin directly
+in the already verified first-party page (without logging entries),
+while preserving the allowlisted Chrome Cookies. CI restore is unchanged.
+
+No local always-on production dependency, new developer API, challenge
+bypass or automatic signal-notes publication is introduced.

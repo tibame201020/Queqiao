@@ -1,4 +1,5 @@
 import { gunzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 
 export type BrowserSessionCookie = {
   name: string;
@@ -80,4 +81,43 @@ export function decodeBrowserSessionCapsule(capsule: string): BrowserSessionStat
   } catch {
     throw new Error("Invalid browser session capsule");
   }
+}
+
+/** Bearer-equivalent capsule transport for the approved main-only Actions job.
+ * Parts carry a shared SHA-256 and index; incomplete/mixed updates fail closed.
+ * Do not log returned strings or place them in files/artifacts.
+ */
+export function splitBrowserSessionCapsule(
+  capsule:string,maxPartLength=48_000,
+):readonly [string,string]{
+  try{
+    decodeBrowserSessionCapsule(capsule);
+    const sha=createHash("sha256").update(capsule,"ascii").digest("hex");
+    const middle=Math.ceil(capsule.length/2);
+    const first="qc1:"+sha+":1/2:"+capsule.slice(0,middle);
+    const second="qc1:"+sha+":2/2:"+capsule.slice(middle);
+    if(first.length>=maxPartLength || second.length>=maxPartLength)throw Error("size");
+    return [first,second] as const;
+  }catch{throw new Error("Invalid session secret transport");}
+}
+
+export function resolveBrowserSessionCapsule(input:{
+ legacy?:string|undefined;part1?:string|undefined;part2?:string|undefined;
+}):string{
+  try{
+    if(Boolean(input.part1) || Boolean(input.part2)){
+      if(!input.part1 || !input.part2)throw Error("incomplete");
+      const p1=/^qc1:([a-f0-9]{64}):1\/2:([A-Za-z0-9+/=]+)$/.exec(input.part1);
+      const p2=/^qc1:([a-f0-9]{64}):2\/2:([A-Za-z0-9+/=]+)$/.exec(input.part2);
+      if(!p1 || !p2 || p1[1]!==p2[1] || input.part1.length>=48_000 || input.part2.length>=48_000)
+        throw Error("part_mismatch");
+      const capsule=p1[2]!+p2[2]!;
+      if(createHash("sha256").update(capsule,"ascii").digest("hex")!==p1[1])throw Error("digest");
+      decodeBrowserSessionCapsule(capsule);
+      return capsule;
+    }
+    if(!input.legacy || input.legacy.length>=48_000)throw Error("no_legacy");
+    decodeBrowserSessionCapsule(input.legacy);
+    return input.legacy;
+  }catch{throw new Error("Invalid session secret transport");}
 }
