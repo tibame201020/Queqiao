@@ -78,7 +78,7 @@ export function assessGate3Handoff(input:{receipt:Gate3Receipt;article:string;pa
  if(receipt.schema!=="queqiao.gate3.receipt.v1"||receipt.status!=="completed"||
     !receipt.completed||receipt.stage!=="validated"||!receipt.authenticated||
     !receipt.userTurnObserved||!receipt.assistantObserved||!receipt.generationCompleted||
-    !/^\\d{1,20}$/.test(receipt.runId)||!/^gate3-\\d{1,20}-\\d{1,8}$/.test(receipt.taskId))
+    !/^\d{1,20}$/.test(receipt.runId)||!/^gate3-\d{1,20}-\d{1,8}$/.test(receipt.taskId))
   return "not_complete";
  if(!validDate(receipt.date)||path!==`src/content/posts/${SLUG+receipt.date}/index.md`||
     receipt.path!==path)return "wrong_target";
