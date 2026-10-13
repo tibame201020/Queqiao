@@ -148,3 +148,33 @@ receipt still appears in the job log and the workflow fails. No retry is
 performed after uncertain submission. Re-running a GitHub workflow is a
 different attempt and produces a distinct task ID; this is not yet an
 across-runs deduplication guarantee for scheduled content publication.
+
+## Gate 3 — synthetic content artifact and draft-only publication (#124)
+
+Gate 3 is opt-in with manual `workflow_dispatch gate3=true` on reviewed
+Queqiao main. It reuses the independent Gate 1 authentication in the same new
+ephemeral CI Chrome; Gate 2 and Gate 3 cannot be selected together. It submits
+one synthetic test-driven-development prompt, observes the real user turn and
+independent assistant turn, waits for stable completed generation, then validates
+only a three-key Traditional Chinese JSON answer. No retry after uncertain send.
+Any challenge, timeout, extra fields, link/email, Markdown/HTML, missing data,
+unsupported characters or incomplete generation fails closed. No raw Playwright
+exception, private transcript, session material or browser URL is persisted.
+
+The public synthetic article is deliberately `draft: true` with a fixed
+`gate3-synthetic-YYYY-MM-DD` slug, static frontmatter and bounded validated
+content. CI uploads `gate3-artifact.json` (article, intended path, sanitized
+receipt and SHA-256) for seven days only after validation succeeds. It is not
+proof of a signal-notes commit or a Gateway/Worker lease.
+
+Optional `gate3_publish=true` additionally requires a dedicated scoped
+`SIGNAL_NOTES_GATE3_TOKEN` Queqiao Actions Secret granting signal-notes
+Contents/PR writes. As of initial implementation this credential is NOT
+provisioned. Its absence fails closed. The publish job verifies receipt
+provenance, run ID, hash, date-specific test branch, and absence of any existing
+destination. It runs signal-notes tests, validation and build before it pushes
+one draft post to `gate3/synthetic-YYYY-MM-DD` and opens a draft PR targeting
+main. Never auto-merge the PR or update the live schedule. A duplicate branch
+is a stop condition rather than an implicit overwrite. Production publication,
+PC-off scheduling and integrated Gateway/Worker lease acceptance remain separate
+open milestones until proven in real hosted runs.
