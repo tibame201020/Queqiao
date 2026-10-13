@@ -1,5 +1,7 @@
 import type {Page} from "playwright-core";
 import {assessConnectorReadProof} from "./connector-read-proof.js";
+import {normalizeAppMenuCounts,selectAppCandidateRole,type AppMenuSignals} from "./connector-app-menu.js";
+import type {Locator} from "playwright-core";
 
 /** Deliberately one normal ChatGPT UI send. No API impersonation, connector credentials,
  * request interception, navigation to undocumented endpoints, retry or write action.
@@ -7,10 +9,29 @@ import {assessConnectorReadProof} from "./connector-read-proof.js";
  */
 const PROMPT="Using the connected GitHub App only, READ the current default-branch HEAD commit SHA of public tibame201020/Queqiao. Do not use web search. Do not modify, create, publish, delete or approve anything. If the GitHub App is unavailable, say UNAVAILABLE. Reply with ONLY the exact 40 lowercase hexadecimal characters of that HEAD SHA.";
 const sleep=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
+async function visibleAny(loc:Locator):Promise<number>{
+ const n=Math.min(await loc.count(),8);
+ for(let i=0;i<n;i++)if(await loc.nth(i).isVisible().catch(()=>false))return 1;
+ return 0;
+}
+async function observeAppMenu(page:Page):Promise<{signals:AppMenuSignals;option:Locator;menuitem:Locator}>{
+ const menu=page.getByRole("menu"),listbox=page.getByRole("listbox"),dialog=page.getByRole("dialog");
+ const [m,l,d]=await Promise.all([visibleAny(menu),visibleAny(listbox),visibleAny(dialog)]);
+ const scope=l?listbox.first():m?menu.first():d?dialog.first():page.locator("body");
+ const option=scope.getByRole("option",{name:/^GitHub(?:\b|$)/i});
+ const menuitem=scope.getByRole("menuitem",{name:/^GitHub(?:\b|$)/i});
+ const counts={
+  menu:m,listbox:l,dialog:d,option:await visibleAny(option),menuitem:await visibleAny(menuitem),
+  button:await visibleAny(scope.getByRole("button",{name:/^GitHub(?:\b|$)/i})),
+  text:await visibleAny(page.getByText("GitHub",{exact:true})),
+ };
+ return {signals:normalizeAppMenuCounts(counts),option,menuitem};
+}
 type Stage="preflight"|"app_selection"|"submission"|"conversation"|"tool_observation"|"response"|"validation";
 export async function runConnectorReadPreflight(page:Page,authenticated:boolean):Promise<void>{
  let stage:Stage="preflight",submitted=false,appSelected=false,toolObserved=false;
  let verdict="not_observed";
+ let menuSignals:AppMenuSignals|undefined;
  const runId=process.env["GITHUB_RUN_ID"]??"";
  const expectedSha=process.env["CONNECTOR_EXPECTED_SHA"]??"";
  try{
@@ -22,10 +43,12 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   // Normal user-facing @ selector. Do not send a text-only @GitHub instruction
   // if the actual app cannot be selected from an observed UI option.
   await editor.fill("@GitHub");
-  const option=page.getByRole("option",{name:/^GitHub(?:\b|$)/i})
-    .or(page.getByRole("menuitem",{name:/^GitHub(?:\b|$)/i})).first();
-  await option.waitFor({state:"visible",timeout:8000});
-  await option.click();
+  await sleep(1000); // Only one normal UI observation; do not retry or route around rejection.
+  const observation=await observeAppMenu(page);
+  menuSignals=observation.signals;
+  const role=selectAppCandidateRole(menuSignals);
+  if(role==="none")throw Error("native_app_option_not_observed");
+  await (role==="option"?observation.option:observation.menuitem).first().click();
   appSelected=true;
   stage="submission";
   await editor.press("End");
@@ -70,7 +93,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   // Neither raw answer nor error/URL/DOM/session/app list is logged.
   console.log(JSON.stringify({schema:"queqiao.gate3.connector-read-preflight.v1",
    runId:/^\d{1,20}$/.test(runId)?runId:"invalid",stage,status:"failed",
-   appSelected,toolObserved,submitted,verdict,writeAttempted:false}));
+   appSelected,toolObserved,submitted,verdict,...(menuSignals?{menuSignals}:{}),writeAttempted:false}));
   throw Error("G3_CONNECTOR_READ_FAILED_AT_"+stage.toUpperCase());
  }
 }
