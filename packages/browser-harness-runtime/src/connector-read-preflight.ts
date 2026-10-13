@@ -16,19 +16,26 @@ async function visibleAny(loc:Locator):Promise<number>{
  for(let i=0;i<n;i++)if(await loc.nth(i).isVisible().catch(()=>false))return 1;
  return 0;
 }
-async function observeAppMenu(page:Page):Promise<{signals:AppMenuSignals;option:Locator;menuitem:Locator}>{
+async function visibleCountAtMostTwo(loc:Locator):Promise<number>{
+ const n=Math.min(await loc.count(),8);let visible=0;
+ for(let i=0;i<n;i++)if(await loc.nth(i).isVisible().catch(()=>false)){visible++;if(visible>1)return 2;}
+ return visible;
+}
+async function observeAppMenu(page:Page):Promise<{signals:AppMenuSignals;option:Locator;menuitem:Locator;button:Locator;buttonCount:number}>{
  const menu=page.getByRole("menu"),listbox=page.getByRole("listbox"),dialog=page.getByRole("dialog");
  const [m,l,d]=await Promise.all([visibleAny(menu),visibleAny(listbox),visibleAny(dialog)]);
  const scope=l?listbox.first():m?menu.first():d?dialog.first():page.locator("body");
  const option=scope.getByRole("option",{name:/^GitHub(?:\b|$)/i});
  const menuitem=scope.getByRole("menuitem",{name:/^GitHub(?:\b|$)/i});
+ const button=scope.getByRole("button",{name:/^GitHub(?:\b|$)/i});
+ const buttonCount=await visibleCountAtMostTwo(button);
  const counts={
   menu:m,listbox:l,dialog:d,option:await visibleAny(option),menuitem:await visibleAny(menuitem),
-  button:await visibleAny(scope.getByRole("button",{name:/^GitHub(?:\b|$)/i})),
-  text:await visibleAny(page.getByText("GitHub",{exact:true})),
+  button:buttonCount,text:await visibleAny(page.getByText("GitHub",{exact:true})),
  };
- return {signals:normalizeAppMenuCounts(counts),option,menuitem};
+ return {signals:normalizeAppMenuCounts(counts),option,menuitem,button,buttonCount};
 }
+
 type Stage="preflight"|"app_selection"|"submission"|"conversation"|"tool_observation"|"response"|"validation";
 export async function runConnectorReadPreflight(page:Page,authenticated:boolean):Promise<void>{
  let stage:Stage="preflight",submitted=false,appSelected=false,toolObserved=false;
@@ -54,13 +61,14 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   stage="app_selection";
   // Normal user-facing @ selector. Do not send a text-only @GitHub instruction
   // if the actual app cannot be selected from an observed UI option.
+  const baselineGithubButtonVisible=await visibleAny(page.getByRole("button",{name:/^GitHub(?:\b|$)/i}))>0;
   await editor.fill("@GitHub");
   await sleep(1000); // Only one normal UI observation; do not retry or route around rejection.
   const observation=await observeAppMenu(page);
   menuSignals=observation.signals;
-  const role=selectAppCandidateRole(menuSignals);
+  const role=selectAppCandidateRole(menuSignals,{baselineGithubButtonVisible,afterGithubButtonCount:observation.buttonCount});
   if(role==="none")throw Error("native_app_option_not_observed");
-  await (role==="option"?observation.option:observation.menuitem).first().click();
+  await (role==="option"?observation.option:role==="menuitem"?observation.menuitem:observation.button).first().click();
   appSelected=true;
   stage="submission";
   await editor.press("End");

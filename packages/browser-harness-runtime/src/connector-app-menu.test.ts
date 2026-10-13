@@ -14,5 +14,12 @@ describe("bounded non-identifying native App selector diagnostics",()=>{
   expect(selectAppCandidateRole({menuVisible:true,listboxVisible:false,dialogVisible:false,githubOptionVisible:false,githubMenuitemVisible:true,githubButtonVisible:false,githubTextVisible:true})).toBe("menuitem");
   expect(selectAppCandidateRole({menuVisible:false,listboxVisible:false,dialogVisible:false,githubOptionVisible:true,githubMenuitemVisible:false,githubButtonVisible:false,githubTextVisible:true})).toBe("none");
   expect(selectAppCandidateRole({menuVisible:true,listboxVisible:false,dialogVisible:false,githubOptionVisible:false,githubMenuitemVisible:false,githubButtonVisible:true,githubTextVisible:true})).toBe("none");
+  const buttonOnly={menuVisible:false,listboxVisible:false,dialogVisible:false,githubOptionVisible:false,
+   githubMenuitemVisible:false,githubButtonVisible:true,githubTextVisible:true};
+  expect(selectAppCandidateRole(buttonOnly,{baselineGithubButtonVisible:false,afterGithubButtonCount:1})).toBe("button");
+  expect(selectAppCandidateRole(buttonOnly,{baselineGithubButtonVisible:true,afterGithubButtonCount:1})).toBe("none");
+  expect(selectAppCandidateRole(buttonOnly,{baselineGithubButtonVisible:false,afterGithubButtonCount:2})).toBe("none");
+  expect(selectAppCandidateRole({...buttonOnly,githubTextVisible:false},{baselineGithubButtonVisible:false,afterGithubButtonCount:1})).toBe("none");
+
  });
 });
