@@ -3,7 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": "./dist/session-capsule.js",
+  "exports": {
+    ".": {
+      "types": "./dist/session-capsule.d.ts",
+      "import": "./dist/session-capsule.js",
+      "default": "./dist/session-capsule.js"
+    },
+    "./gate3-trace": {
+      "types": "./dist/gate3-trace.d.ts",
+      "import": "./dist/gate3-trace.js",
+      "default": "./dist/gate3-trace.js"
+    },
+    "./gate3-content": {
+      "types": "./dist/gate3-content.d.ts",
+      "import": "./dist/gate3-content.js",
+      "default": "./dist/gate3-content.js"
+    }
+  },
   "types": "./dist/session-capsule.d.ts",
   "dependencies": {
     "playwright-core": "1.55.0"
