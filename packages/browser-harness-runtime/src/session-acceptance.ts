@@ -1,5 +1,5 @@
 import { chromium, type BrowserContext } from "playwright-core";
-import { decodeBrowserSessionCapsule } from "./session-capsule.js";
+import { decodeBrowserSessionCapsule, resolveBrowserSessionCapsule } from "./session-capsule.js";
 import { classifySessionPage, type SessionPageSignals, type SessionPageVerdict } from "./session-verdict.js";
 import { summarizeCookieRestore, summarizeStorageRestore } from "./session-restore-diagnostics.js";
 import { assessSessionComparison, probeUnauthenticatedControl } from "./session-control.js";
@@ -7,8 +7,12 @@ import { readSessionEvidence, type SessionEvidence } from "./session-auth-eviden
 import {createHttpDiagnostics,failedNavigation,summarizeNavigation,summarizeCookieExpiry,type NavigationSummary} from "./session-http-diagnostics.js";
 import {compareRestoredContexts,probeRestoredContext,type RestoredContextProbe} from "./session-restored-control.js";
 
-const capsule = process.env["CHATGPT_BROWSER_SESSION_CAPSULE"];
-if (!capsule) throw new Error("CHATGPT_BROWSER_SESSION_CAPSULE is required");
+const capsule = resolveBrowserSessionCapsule({
+  legacy: process.env["CHATGPT_BROWSER_SESSION_CAPSULE"],
+  part1: process.env["CHATGPT_BROWSER_SESSION_CAPSULE_PART_1"],
+  part2: process.env["CHATGPT_BROWSER_SESSION_CAPSULE_PART_2"],
+});
+
 
 const cdpUrl = process.env["BROWSER_CDP_URL"] ?? "http://127.0.0.1:9555";
 const state = decodeBrowserSessionCapsule(capsule);

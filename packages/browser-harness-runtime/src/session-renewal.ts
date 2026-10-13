@@ -17,7 +17,7 @@ export function assertAttendedLogin(
     throw new Error("Attended ChatGPT login has not been independently verified");
 }
 export function prepareRenewedCapsule(
-  snapshot:BrowserSnapshot,nowMs:number,maxChars=48000,
+  snapshot:BrowserSnapshot,nowMs:number,maxChars=65_536,
 ):{capsule:string;summary:RenewalSummary}{
   const allowedCookies=snapshot.cookies.filter(c=>domains.test(c.domain));
   const allowedOrigins=snapshot.origins.filter(o=>origins.has(o.origin));
