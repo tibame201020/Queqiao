@@ -128,7 +128,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node -e 'const d=process.env.REQUESTED_DATE||""; if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(d)||Number.isNaN(Date.parse(d))||new Date(d).toISOString().slice(0,10)!==d) process.exit(1);'
+          node -e 'const d=process.env.REQUESTED_DATE||""; if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||Number.isNaN(Date.parse(d))||new Date(d).toISOString().slice(0,10)!==d) process.exit(1);'
           echo "GATE3_DATE=$REQUESTED_DATE" >> "$GITHUB_ENV"
 
       - name: Restore ChatGPT session into fresh Browser Harness
