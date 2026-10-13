@@ -3,6 +3,7 @@ import {assessConnectorReadProof} from "./connector-read-proof.js";
 import {normalizeAppMenuCounts,selectAppCandidateRole,type AppMenuSignals} from "./connector-app-menu.js";
 import type {Locator} from "playwright-core";
 import {assessConnectorPreflight,type ConnectorPreflightSignals} from "./connector-read-preflight-policy.js";
+import {observeConnectorComposer} from "./connector-read-composer.js";
 
 /** Deliberately one normal ChatGPT UI send. No API impersonation, connector credentials,
  * request interception, navigation to undocumented endpoints, retry or write action.
@@ -40,10 +41,14 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   const editor=page.locator('[contenteditable="true"][role="textbox"]').first();
   let blankStart=false;
   try{blankStart=new URL(page.url()).pathname==="/";}catch{/* fail closed */}
+  const composer=await observeConnectorComposer({
+   waitForVisible:()=>editor.waitFor({state:"visible",timeout:15_000}),
+   isVisible:()=>editor.isVisible(),
+   isEnabled:()=>editor.isEnabled(),
+  });
   preflightSignals={
    authenticated,runIdValid:/^\d{1,20}$/.test(runId),expectedShaValid:/^[a-f0-9]{40}$/.test(expectedSha),
-   blankStart,editorVisible:await editor.isVisible().catch(()=>false),
-   editorEnabled:await editor.isEnabled().catch(()=>false),
+   blankStart,...composer,
   };
   if(assessConnectorPreflight(preflightSignals)!=="ready")throw Error("preflight");
   stage="app_selection";
