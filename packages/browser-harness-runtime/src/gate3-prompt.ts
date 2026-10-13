@@ -3,6 +3,7 @@ import {join} from "node:path";
 import type {Page} from "playwright-core";
 import {makeGate3Artifact,validateGate3Output,assessGate3Handoff,type Gate3Receipt} from "./gate3-content.js";
 import {assessGate3Preflight,type Gate3PreflightSignals,type Gate3PreflightVerdict} from "./gate3-preflight.js";
+import {createGate3Trace} from "./gate3-trace.js";
 import {observeGate3Composer} from "./gate3-composer.js";
 import {isGate3AssistantCandidate,assessGate3AssistantSignals} from "./gate3-assistant-observation.js";
 
@@ -96,8 +97,10 @@ export async function runGate3Prompt(page:Page,sessionConfirmed:boolean):Promise
   const dir=process.env["GATE3_OUTPUT_DIR"];
   if(!dir)throw Error("missing_output");
   mkdirSync(dir,{recursive:true,mode:0o700});
-  // The only durable content is the narrowly validated public synthetic post.
-  writeFileSync(join(dir,"gate3-artifact.json"),JSON.stringify(artifact)+"\n",{encoding:"utf8",mode:0o600,flag:"wx"});
+  // The only durable content is the narrowly validated public synthetic post
+  // and immutable provenance. Unobserved Worker/Connector/CI/Lease remain explicit.
+  const persisted={...artifact,trace:createGate3Trace(artifact)};
+  writeFileSync(join(dir,"gate3-artifact.json"),JSON.stringify(persisted)+"\n",{encoding:"utf8",mode:0o600,flag:"wx"});
   if(summary)appendFileSync(summary,[
    "### Gate 3 — synthetic draft artifact",
    "- Run ID: "+runId,"- Task ID: "+taskId,

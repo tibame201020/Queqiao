@@ -16,6 +16,11 @@ on:
         type: boolean
         default: false
         required: false
+      gate3_date:
+        description: "Pinned Taipei synthetic content date (YYYY-MM-DD); required with gate3=true, stable on reruns"
+        type: string
+        default: ""
+        required: false
 
 permissions:
   contents: read
@@ -116,9 +121,15 @@ jobs:
           cat "$RUNNER_TEMP/chrome.log"
           exit 1
 
-      - name: Set isolated Gate 3 Taipei date
+      - name: Pin isolated Gate 3 Taipei date across reruns
         if: inputs.gate3
-        run: echo "GATE3_DATE=$(TZ=Asia/Taipei date +%F)" >> "$GITHUB_ENV"
+        env:
+          REQUESTED_DATE: ${{ inputs.gate3_date }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'const d=process.env.REQUESTED_DATE||""; if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||Number.isNaN(Date.parse(d))||new Date(d).toISOString().slice(0,10)!==d) process.exit(1);'
+          echo "GATE3_DATE=$REQUESTED_DATE" >> "$GITHUB_ENV"
 
       - name: Restore ChatGPT session into fresh Browser Harness
         env:
@@ -130,6 +141,13 @@ jobs:
           CHATGPT_BROWSER_GATE3: ${{ inputs.gate3 && '1' || '0' }}
           GATE3_OUTPUT_DIR: ${{ runner.temp }}/gate3-out
         run: npx tsx packages/browser-harness-runtime/src/session-acceptance.ts
+
+      - name: Verify immutable Gate 3 provenance before artifact upload
+        if: inputs.gate3 && success()
+        env:
+          GATE3_EXPECTED_RUN_ID: ${{ github.run_id }}
+          GATE3_EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: npx tsx packages/browser-harness-runtime/src/gate3-trace-verify.ts "$RUNNER_TEMP/gate3-out/gate3-artifact.json"
 
       - name: Upload only validated public synthetic draft and receipt
         if: inputs.gate3 && success()
