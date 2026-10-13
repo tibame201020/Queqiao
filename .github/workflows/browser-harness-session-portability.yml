@@ -57,6 +57,18 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
+      - name: Reject ambiguous manual probe mode
+        env:
+          GATE2: ${{ inputs.gate2 && '1' || '0' }}
+          CONNECTOR_READ: ${{ inputs.connector_read_probe && '1' || '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GATE2" = "1" ] && [ "$CONNECTOR_READ" = "1" ]; then
+            echo "::error::Only one ChatGPT browser task per dispatch"
+            exit 1
+          fi
+
       - name: Validate session capsule secret
         shell: bash
         env:
