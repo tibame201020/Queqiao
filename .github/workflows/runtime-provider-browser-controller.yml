@@ -61,7 +61,7 @@ jobs:
           if(!enabled && d)process.exit(1);
           if(enabled && (process.env.GITHUB_EVENT_NAME!=="workflow_dispatch" ||
              process.env.GITHUB_REF!=="refs/heads/main" ||
-             !/^\\d{4}-\\d{2}-\\d{2}$/.test(d) ||
+             !/^\d{4}-\d{2}-\d{2}$/.test(d) ||
              Number.isNaN(Date.parse(d)) || new Date(d).toISOString().slice(0,10)!==d))
              process.exit(1);
           NODE
