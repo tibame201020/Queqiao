@@ -131,6 +131,13 @@ jobs:
           GATE3_OUTPUT_DIR: ${{ runner.temp }}/gate3-out
         run: npx tsx packages/browser-harness-runtime/src/session-acceptance.ts
 
+      - name: Verify immutable Gate 3 provenance before artifact upload
+        if: inputs.gate3 && success()
+        env:
+          GATE3_EXPECTED_RUN_ID: ${{ github.run_id }}
+          GATE3_EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: npx tsx packages/browser-harness-runtime/src/gate3-trace-verify.ts "$RUNNER_TEMP/gate3-out/gate3-artifact.json"
+
       - name: Upload only validated public synthetic draft and receipt
         if: inputs.gate3 && success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
