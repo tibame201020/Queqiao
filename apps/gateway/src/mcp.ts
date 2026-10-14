@@ -10,6 +10,7 @@ import { QUEQIAO_WORKER_PROTOCOL_VERSION } from "@queqiao/worker-protocol";
 import type { McpCancellationRegistry } from "./cancellation-registry.js";
 import type { ActionsMcpPoc } from "./actions-mcp-poc.js";
 import type { ShortTaskService } from "./short-task-runtime.js";
+import type { Gate3McpAuditRead } from "./poc-gate3-audit-read.js";
 import { z } from "zod";
 import { toQueqiaoErrorEnvelope } from "./errors.js";
 
@@ -61,7 +62,7 @@ export function createGatewayToolRuntime(): ToolRuntime<GatewayToolContext> {
   return runtime.seal();
 }
 
-export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = [], actionsMcpPoc?: ActionsMcpPoc, shortTasks?: ShortTaskService): McpServer {
+export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = [], actionsMcpPoc?: ActionsMcpPoc, shortTasks?: ShortTaskService, gate3Read?: Gate3McpAuditRead): McpServer {
   const server = new McpServer({ name: "queqiao-mcp", version: "0.1.0" }, { supportedProtocolVersions: [...QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS] });
   const runtime = createGatewayToolRuntime();
   const diagnostics = buildOperationsDiagnostics({
@@ -155,6 +156,20 @@ export function createMcpServer(workers: WorkerRegistry, scopes: readonly string
     register("actions_worker_status", "Gate C POC only: check readiness of your GitHub Actions Worker.", () => actionsMcpPoc.status(principal), true);
     register("actions_worker_read_marker", "Gate C POC only: read runtime/poc-marker.txt from your Worker, validate routing, and dispose the lease.", () => actionsMcpPoc.readMarker(principal), false);
     register("actions_worker_cancel", "Gate C POC only: cancel your active GitHub Actions Worker and dispose its lease.", () => actionsMcpPoc.cancel(principal), false);
+  }
+  // G3.3 Route B: injected only by an authorized Controller. Not a public default tool.
+  if(gate3Read){
+    server.registerTool("gate3_read_artifact",{
+      description:"Gate 3 read-only POC: verify one server-bound ephemeral Worker artifact and audit the actual execution.",
+      inputSchema:z.object({}).shape,
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+    },async()=>{
+      try{
+        const principal=cancellation?.principalId;
+        if(!principal||!scopes.includes("queqiao:access"))throw Error("Authenticated Queqiao OAuth client required");
+        return result(await gate3Read.execute(principal));
+      }catch(error){return failure(error);}
+    });
   }
   if (shortTasks) {
     const principal = cancellation?.principalId ?? "";
