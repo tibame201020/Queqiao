@@ -13,6 +13,7 @@ import { WorkerGrpcSessionServer } from "./grpc-worker-session-server.js";
 import { WorkerWebSocketSessionServer } from "./websocket-worker-session-server.js";
 import { createConfiguredGitHubActionsRuntime, startGitHubActionsRuntimeExpiryMonitor } from "./github-actions-runtime.js";
 import { acquireGatewayStateOwner } from "./gateway-state-owner.js";
+import {createHostedGate3ReadService} from "./poc-gate3-hosted-binding.js";
 
 const config = loadGatewayConfigFile(requireRuntimeConfigFile());
 // Acquire exclusive local state ownership BEFORE runtime lease recovery.
@@ -31,7 +32,20 @@ const workerSessionTarget = config.workerSessionTls
   ? await workerSessionServer.listenTls(config.workerSessionHost, config.workerSessionPort, config.workerSessionTls.cert, config.workerSessionTls.key)
   : await workerSessionServer.listenLoopback(config.workerSessionPort);
 console.log(`Queqiao Worker gRPC session listener: ${workerSessionTarget}${config.workerSessionTls ? " (TLS)" : " (loopback-only)"}`);
-const app = await createGatewayApp(config, enrollment, sessions, audit, githubActionsRuntime);
+// Public POC metadata only. No model-provided lease/controller selection, no extra token.
+const g3Enabled=process.env["QUEQIAO_G3_MCP_AUDIT_PROBE"]==="1";
+if(g3Enabled && (process.env["GITHUB_EVENT_NAME"]!=="workflow_dispatch"||
+ process.env["GITHUB_REF"]!=="refs/heads/main"||process.env["G3_WORKER"]!=="1"||
+ !githubActionsRuntime))throw Error("G3_HOSTED_OPT_IN_INVALID");
+const gate3ReadFactory=g3Enabled ? (source:import("./worker-membership-registry.js").MembershipWorkerRegistry)=>
+ createHostedGate3ReadService({
+  controllerRunId:process.env["GITHUB_RUN_ID"]??"",
+  controllerAttempt:process.env["GITHUB_RUN_ATTEMPT"]??"",
+  date:process.env["G3_DATE"]??"",
+  repository:process.env["GITHUB_REPOSITORY"]??"",
+  sourceRevision:process.env["GITHUB_SHA"]??"",
+ },githubActionsRuntime!,()=>source.current(),audit) : undefined;
+const app = await createGatewayApp(config, enrollment, sessions, audit, githubActionsRuntime, gate3ReadFactory);
 const host = config.host ?? "127.0.0.1";
 const gatewayServer = listenGateway(app, config, () => { console.log(`Queqiao Gateway listening on http://${host}:${config.port}`); console.log(`Public MCP URL: ${config.resourceUrl}`); });
 const workerWebSocketSessionServer = new WorkerWebSocketSessionServer({ sessions, authenticate: (hello, credential) => enrollment.authenticateWorkerSession(hello, credential), audit });
