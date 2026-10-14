@@ -91,7 +91,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   reply:"",replyOutsideUserAndComposer:false,replyStable:false,expectedSha,
   toolUiObserved:false,providerReceiptVerified:false,
  });
- let replySeen=false,markerSeen=false,replyStable=false,toolUiObserved=false;
+ let replySeen=false,markerSeen=false,replyStable=false,toolUiObserved=false,receiptEmitted=false;
  try{
   const editor=page.locator('[contenteditable="true"][role="textbox"]').first();
   const blankStart=(()=>{try{return new URL(page.url()).pathname==="/";}catch{return false;}})();
@@ -170,15 +170,17 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
    runId,attempt,status,stage,appSelected,submitted,reloaded,markerSeen,replySeen,replyStable,
    l1:layers.l1,l2:layers.l2,l3:layers.l3,toolUiObserved:layers.toolUiObserved,
    providerReceiptVerified:false,writeAttempted:false}));
+  receiptEmitted=true;
   if(status!=="ui_verified")throw Error("G3_CONNECTOR_OBSERVER_UNCONFIRMED");
   // UI POC only. Provider tool provenance is explicitly NOT PROVED.
  }catch{
-  if(stage!=="observation"||!submitted){
+  if(!receiptEmitted){
    console.log(JSON.stringify({schema:"queqiao.gate3.connector-layered.v1",
     runId:/^\d{1,20}$/.test(runId)?runId:"invalid",attempt:/^\d{1,20}$/.test(attempt)?attempt:"invalid",
     status:"observer_unconfirmed",stage,appSelected,submitted,reloaded,
     ...(menuSignals?{menuSignals}:{}),...(preflightSignals?{preflightSignals}:{}),
-    ...(draftSignals?{draftSignals}:{}),l1:"unconfirmed",l2:"unconfirmed",l3:"not_proved",
+    ...(draftSignals?{draftSignals}:{}),markerSeen,replySeen,replyStable,
+    l1:layers.l1,l2:layers.l2,l3:layers.l3,
     providerReceiptVerified:false,writeAttempted:false}));
   }
   // Do not expose Playwright errors: they can contain private URLs or page content.
