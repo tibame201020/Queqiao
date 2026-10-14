@@ -5,7 +5,7 @@ const sha="e0c3c1094b692b48ff1e24ef8338594f573fa72f";
 const good={
  appSelected:true,conversationCreated:true,markerOutsideComposer:true,composerCleared:true,
  reply:sha,replyOutsideUserAndComposer:true,replyStable:true,expectedSha:sha,
- toolUiObserved:false,providerReceiptVerified:false,
+ toolUiObserved:false,
 };
 describe("G3.3 layered read-only POC",()=>{
  it("creates a public run-specific marker without changing SHA-only reply contract",()=>{
@@ -28,8 +28,8 @@ describe("G3.3 layered read-only POC",()=>{
   expect(assessReadLayers({...good,reply:"UNAVAILABLE"})).toMatchObject({l2:"unconfirmed"});
   expect(assessReadLayers({...good,replyStable:false})).toMatchObject({l2:"unconfirmed"});
  });
- it("a provider proof is necessary but not sufficient unless L1 and L2 also pass",()=>{
-  expect(assessReadLayers({...good,providerReceiptVerified:true})).toMatchObject({l3:"verified"});
+ it("does not let an injected providerReceiptVerified boolean promote browser-only UI proof to L3",()=>{
+  expect(assessReadLayers({...good,providerReceiptVerified:true})).toMatchObject({l3:"not_proved"});
   expect(assessReadLayers({...good,markerOutsideComposer:false,providerReceiptVerified:true})).toMatchObject({l3:"not_proved"});
  });
  it("allows only one normal conversation reload when settled and same URL, never a resend",()=>{
