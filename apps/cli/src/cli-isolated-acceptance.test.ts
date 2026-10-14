@@ -174,8 +174,11 @@ describe.sequential("isolated packaged CLI acceptance", () => {
       });
       return { stdout, stderr };
     } catch(error) {
-      // Never expose raw child stderr, full argv, temp/user paths or secrets in CI.
-      throw new Error(describePackagedCliFailure(args,error));
+      // Only the observed failing command gets a bounded diagnostic.
+      // Keep other CLI error shapes unchanged for existing acceptance assertions.
+      if(args.length===2 && args[0]==="restart" && args[1]==="--json")
+        throw new Error(describePackagedCliFailure(args,error));
+      throw error;
     }
   }
 
