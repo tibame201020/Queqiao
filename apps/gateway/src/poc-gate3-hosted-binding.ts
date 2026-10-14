@@ -3,7 +3,7 @@ import type {WorkerRegistry} from "./worker-registry.js";
 import type {GitHubActionsRuntimeCoordinator} from "@queqiao/runtime-provider-github-actions";
 import {Gate3McpAuditRead,type Gate3McpBinding} from "./poc-gate3-audit-read.js";
 
-export type HostedGate3Target={controllerRunId:string;controllerAttempt:string;date:string;repository:string};
+export type HostedGate3Target={controllerRunId:string;controllerAttempt:string;date:string;repository:string;sourceRevision:string};
 type Candidate={providerId:string;leaseId:string;state:string;expiresAt:string;
  worker?:{workerId:string;environmentId:string};metadata:Record<string,string>;
  providerMetadata?:Record<string,string>};
