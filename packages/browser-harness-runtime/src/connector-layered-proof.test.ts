@@ -29,8 +29,9 @@ describe("G3.3 layered read-only POC",()=>{
   expect(assessReadLayers({...good,replyStable:false})).toMatchObject({l2:"unconfirmed"});
  });
  it("does not let an injected providerReceiptVerified boolean promote browser-only UI proof to L3",()=>{
-  expect(assessReadLayers({...good,providerReceiptVerified:true})).toMatchObject({l3:"not_proved"});
-  expect(assessReadLayers({...good,markerOutsideComposer:false,providerReceiptVerified:true})).toMatchObject({l3:"not_proved"});
+  const forged={...good,providerReceiptVerified:true};
+  expect(assessReadLayers(forged)).toMatchObject({l3:"not_proved"});
+  expect(assessReadLayers({...forged,markerOutsideComposer:false})).toMatchObject({l3:"not_proved"});
  });
  it("allows only one normal conversation reload when settled and same URL, never a resend",()=>{
   const base={conversationCreated:true,reloaded:false,generating:false,composerReady:true,sameConversationUrl:true};
