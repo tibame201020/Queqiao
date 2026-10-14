@@ -180,7 +180,7 @@ Source archive: `gate3-audit-evidence-38569718518-1`, Actions artifact ID `11897
 
 **Acceptance:** the actual Route B synthetic Worker-read + same-run Gateway audit + independently archived/re-fetched witness sub-gate is PASS. **Full G3.3 NOT PASSED**: this tool only read the synthetic Worker content and the accepted GitHub default-branch HEAD **target read remains not observed**. No custom MCP result retroactively proves the native GitHub App call. The legacy G3.2 completion receipt retains `connector:not_observed`; do not silently upgrade that schema. The next TDD slice must implement a separately auditable, same-Controller read-only GitHub target tool and independently verify its result, before reconsidering G3.3. G3.4/G3.5 remain NOT PROVED.
 
-### G3.3 Route B — read-only GitHub HEAD target (TDD implementation; hosted acceptance pending)
+### G3.3 Route B — read-only GitHub HEAD target (PR #177 implementation contract)
 
 The next opt-in tool is `gate3_read_public_head`. It is registered only together with
 the existing `gate3_mcp_audit` main-only Controller enablement. Its empty MCP input
@@ -203,9 +203,23 @@ content SHA, event IDs and tamper resistance. Failure or uncertain execution is
 one-shot; there is no replay.
 
 The earlier actual Run 38569718518 proves only Worker synthetic content read,
-not this new GitHub target tool. Local TDD/PR CI is distinct from a new reviewed-main
-manual Hosted run. **G3.3 remains NOT PASSED until real Hosted execution and
-independently re-fetched original evidence pass; G3.4/G3.5 remain NOT PROVED.**
+not this new GitHub target tool. At PR implementation time, G3.3 remained pending a
+separate reviewed-main manual Hosted Run and independently re-fetched original
+evidence. The next section records that actual acceptance; G3.4/G3.5 are separate gates.
+
+### G3.3 Route B — Hosted public GitHub HEAD audit E2E accepted (2026-10-14)
+
+[PR #177](https://github.com/tibame201020/Queqiao/pull/177) merged via squash at `fc9d54b871b01cbd476a8338f39e5f57a060a8a7` after **13 required CI SUCCESS, 4 expected skipped, 0 failed**, including Windows Full Test and #170's Windows Adversarial gate. [Main-only manual Hosted Run 38585809542](https://github.com/tibame201020/Queqiao/actions/runs/38585809542), attempt 1, used exactly that immutable source SHA, with `gate3_worker=true` and `gate3_mcp_audit=true`. Both `phase3-e2e` and the independent, no-Session `gate3-audit-recheck` jobs completed **SUCCESS**.
+
+The actual ephemeral Worker Run was `38585898277`, environment `gha_066d8f7019504fd0b8a71eb7`, Lease `066d8f70-1950-4fd0-b8a7-1eb7f4282347`. Verified synthetic content SHA-256: `88ddae222643536aa6df235eed2ae6b3933984cef328a1cbcd4d620cf09b9faa`. The same authorized MCP Client first executed `gate3_read_artifact`, then the distinct, opt-in `gate3_read_public_head` against one fixed public GET `https://api.github.com/repos/tibame201020/Queqiao/branches/main`; the observed HEAD matched the pinned `fc9d54b871b01cbd476a8338f39e5f57a060a8a7`. Request SHA-256: `648ae84a29d03cc93cbf25025d0e5bdc4d82d5a50a67006d530d4c5ebb4d2f30`; result SHA-256: `8830c80e22b0abe716fe700704f319bd6a5663e09bf739ef91abfc4c1117c111`.
+
+The two original Gateway event IDs are **distinct**: Worker-read `048dec1a-9bef-402c-8af9-396f5d5ba0ec` and public HEAD-read `da6e695b-a8f2-4a51-a761-847c05dd4d8d`. Reopened Gateway audit, receipts and independently archived events matched Controller Run/attempt, Worker Run/attempt, Lease/environment, task/logical key, request/result hashes and the **same non-identifying OAuth principal digest**, without revealing the principal. Lease ended `disposed`; Worker ended `cancelled` as expected. No GitHub or signal-notes write was attempted.
+
+GitHub Actions retained seven-day sanitized artifacts: Worker completion `gate3-worker-proof-38585809542-1` (ID `11905097866`); original Worker-read audit `gate3-audit-evidence-38585809542-1` (ID `11905132560`); original GitHub HEAD audit `gate3-github-evidence-38585809542-1` (ID `11904858109`). The separate job fetched both event archives and emitted `queqiao.gate3.github-archive-recheck.v1` with `archivedEventVerified=true`, `githubTargetRead=verified`, `provider=queqiao_custom_mcp`, `verdict=candidate_for_independent_review`, `writeAttempted=false`. The original Worker-only archive correctly retains `githubTargetRead=not_observed`; it was **not** modified or retroactively promoted.
+
+A third, separately initiated post-Run download of both archived JSON files, after Controller/Worker termination, re-ran both independent validators successfully. Exact downloaded JSON SHA-256: Worker audit `af7d6d35f90a2ab91e0821146780059b6f4f32f936fcc9791932c275cb2fa45f`; GitHub audit `7781f58ce6250dab07d564b623404be5ea46adfd1b1c8d015b48d0d841141be5`.
+
+**Acceptance: G3.3 Route B hosted read-only Controller/Worker + public GitHub HEAD + independently retained Gateway execution provenance = PASS for the expressly approved CI OAuth MCP scope.** This is **not** original/native ChatGPT GitHub App L3, proof of a separately signed product attestation, or proof of an end-user in-ChatGPT custom-app click. It authorizes no PAT, GitHub publishing permission, production scheduling switch or signal-notes mutation. Gate 3 as a whole is **not complete**: G3.4/G3.5 remain NOT STARTED; Issue #124 stays open for their separate gates. Keep G3.2's legacy `connector:not_observed` receipt unchanged.
 
 ## G3.2 implementation contract (PR #147; acceptance pending)
 

@@ -13,4 +13,17 @@ describe("Issue #124 real Route B hosted audit ledger",()=>{
    }
   expect(doc).not.toContain("G3.3 COMPLETE");
  });
+ it("pins the later independent public GitHub HEAD acceptance without promoting native GitHub App L3",()=>{
+  for(const value of [
+   "38585809542","38585898277","fc9d54b871b01cbd476a8338f39e5f57a060a8a7",
+   "11905097866","11905132560","11904858109",
+   "048dec1a-9bef-402c-8af9-396f5d5ba0ec","da6e695b-a8f2-4a51-a761-847c05dd4d8d",
+   "af7d6d35f90a2ab91e0821146780059b6f4f32f936fcc9791932c275cb2fa45f",
+   "7781f58ce6250dab07d564b623404be5ea46adfd1b1c8d015b48d0d841141be5",
+   "archivedEventVerified=true","githubTargetRead=verified","writeAttempted=false",
+   "G3.3 Route B hosted read-only Controller/Worker + public GitHub HEAD",
+   "G3.4/G3.5 remain NOT STARTED","not** original/native ChatGPT GitHub App L3",
+  ])expect(doc).toContain(value);
+  expect(doc.indexOf("38569718518")).toBeLessThan(doc.lastIndexOf("38585809542"));
+ });
 });
