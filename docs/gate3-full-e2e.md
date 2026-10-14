@@ -162,6 +162,14 @@ The service requires an OAuth principal with `queqiao:access`; a fresh, ready/ru
 
 TDD includes malformed/expired lease, wrong route, denied/failed Worker read, audit append failure, duplicate invocation, missing OAuth principal, opt-in tool exposure and real MCP Client `tools/call` propagation. Full G3.3 still needs actual hosted Controller/Worker injection plus independently retained and re-fetched source evidence, without publishing to signal-notes or adding credentials. The historical native GitHub App L1/L2 Run 38515396065 remains separate.
 
+### G3.3 Route B hosted original audit candidate (new opt-in; acceptance pending)
+
+The normal `runtime-provider-browser-controller.yml` now has a separate, disabled-by-default `gate3_mcp_audit` input, only valid together with `gate3_worker` on manually dispatched main. The Gateway boot process enables `gate3_read_artifact` only with that explicit Controller opt-in and checks the local GitHub Actions event/ref. A deferred, single-use service derives the **unique** ready Worker Lease from the actual `GitHubActionsRuntimeCoordinator.list()`, matching original Controller run/attempt/date and immutable `GITHUB_SHA`; model tool input is empty and cannot choose a Lease. It refuses ambiguous/expired/wrong-worker records. OAuth, real routed Worker read and server-side audit append remain mandatory.
+
+After the original same-Worker G3.2 synthetic artifact becomes available, the Controller makes **one** audited MCP tools/call, checks the response against the independently validated G3.2 proof, then reopens Gateway's original audit JSONL in another process. A sanitized `queqiao.gate3.hosted-audit.v1` record (only public run/commit identifiers, synthetic proof, original redacted event and SHA-256, ephemeral non-identifying principal digest) is archived in a seven-day immutable GitHub Actions artifact. A separate `gate3-audit-recheck` job with `actions:read`, no session/approval secret and no publishing permission downloads and rechecks that exact same-run artifact.
+
+**Boundary:** this proves only an auditable Queqiao MCP read of the *synthetic Worker artifact* if a real hosted run succeeds. Even `candidate_for_independent_review` is not native-App provenance, not a separately signed product receipt, and not a GitHub HEAD read or `signal-notes` write. Do not mark G3.3 complete or G3.4/G3.5 passed until the accepted target GitHub operation and associated hosted evidence are implemented and checked independently. No PAT, personal conversation, Browser Session, raw model text or user identity enters the repo/artifact. Standard PR CI never restores a live Browser Session.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch

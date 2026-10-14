@@ -13,6 +13,11 @@ on:
         type: string
         default: ""
         required: false
+      gate3_mcp_audit:
+        description: "Manual main-only: opt in to one audited Queqiao MCP synthetic Worker read"
+        type: boolean
+        default: false
+        required: false
   pull_request:
     branches: [main]
     paths:
@@ -54,11 +59,13 @@ jobs:
         env:
           GATE3_WORKER: ${{ inputs.gate3_worker && '1' || '0' }}
           REQUESTED_DATE: ${{ inputs.gate3_date }}
+          REQUESTED_AUDIT: ${{ inputs.gate3_mcp_audit && '1' || '0' }}
         run: |
           set -euo pipefail
           node <<'NODE'
           const enabled=process.env.GATE3_WORKER==="1",d=process.env.REQUESTED_DATE||"";
           if(!enabled && d)process.exit(1);
+          if(process.env.REQUESTED_AUDIT==="1" && !enabled)process.exit(1);
           if(enabled && (process.env.GITHUB_EVENT_NAME!=="workflow_dispatch" ||
              process.env.GITHUB_REF!=="refs/heads/main" ||
              !/^\d{4}-\d{2}-\d{2}$/.test(d) ||
@@ -66,6 +73,7 @@ jobs:
              process.exit(1);
           NODE
           echo "G3_WORKER=$GATE3_WORKER" >> "$GITHUB_ENV"
+          echo "G3_MCP_AUDIT=$REQUESTED_AUDIT" >> "$GITHUB_ENV"
           if [ "$GATE3_WORKER" = "1" ]; then
             echo "G3_DATE=$REQUESTED_DATE" >> "$GITHUB_ENV"
           fi
@@ -146,6 +154,8 @@ jobs:
 
       - name: Start Gateway
         shell: bash
+        env:
+          QUEQIAO_G3_MCP_AUDIT_PROBE: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.gate3_worker && inputs.gate3_mcp_audit && '1' || '0' }}
         run: |
           set -euo pipefail
           nohup npx tsx apps/gateway/src/index.ts > "$RUNNER_TEMP/queqiao-gateway.log" 2>&1 &
@@ -273,7 +283,22 @@ jobs:
           export QUEQIAO_POC_CONTROLLER_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT"
           export QUEQIAO_POC_GATE3_DATE="$G3_DATE"
           export QUEQIAO_POC_G3_PROOF_PATH="$RUNNER_TEMP/gate3-worker-proof.json"
+          if [ "${G3_MCP_AUDIT:-0}" = "1" ]; then
+            export QUEQIAO_POC_LEASE_ID="$LEASE_ID"
+            export QUEQIAO_POC_G3_MCP_RECEIPT_PATH="$RUNNER_TEMP/gate3-mcp-receipt.json"
+          fi
           npx tsx apps/gateway/src/poc-gate3-worker-client.ts
+
+      - name: Verify independent original Gateway L3 audit evidence
+        if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker && inputs.gate3_mcp_audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          export G3_PROOF_PATH="$RUNNER_TEMP/gate3-worker-proof.json"
+          export G3_MCP_RECEIPT_PATH="$RUNNER_TEMP/gate3-mcp-receipt.json"
+          export G3_GATEWAY_STATE_DIR="$POC_RUNTIME_DIR/state"
+          export G3_AUDIT_PROOF_PATH="$RUNNER_TEMP/gate3-audit-evidence.json"
+          npx tsx apps/gateway/src/poc-gate3-audit-finalize.ts
 
       - name: Complete lease and verify provider cancellation
         shell: bash
@@ -317,6 +342,15 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      - name: Upload sanitized same-task G3.3 Gateway audit evidence
+        if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker && inputs.gate3_mcp_audit && success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate3-audit-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gate3-audit-evidence.json
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Diagnostics on failure
         if: failure()
         shell: bash
@@ -345,3 +379,29 @@ jobs:
           if [ -f "$RUNNER_TEMP/cloudflared.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/cloudflared.pid")" 2>/dev/null || true
           fi
+
+  gate3-audit-recheck:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.gate3_worker && inputs.gate3_mcp_audit
+    needs: phase3-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Independently download original sanitized Gateway event artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate3-audit-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gate3-audit-recheck
+      - name: Independently recheck same-run Gateway audit archive
+        env:
+          G3_AUDIT_ARTIFACT_PATH: ${{ runner.temp }}/gate3-audit-recheck/gate3-audit-evidence.json
+        run: npx tsx apps/gateway/src/poc-gate3-audit-artifact.ts

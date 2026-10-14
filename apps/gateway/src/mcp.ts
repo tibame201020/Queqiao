@@ -62,7 +62,7 @@ export function createGatewayToolRuntime(): ToolRuntime<GatewayToolContext> {
   return runtime.seal();
 }
 
-export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = [], actionsMcpPoc?: ActionsMcpPoc, shortTasks?: ShortTaskService, gate3Read?: Gate3McpAuditRead): McpServer {
+export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = [], actionsMcpPoc?: ActionsMcpPoc, shortTasks?: ShortTaskService, gate3Read?: Pick<Gate3McpAuditRead,"execute">): McpServer {
   const server = new McpServer({ name: "queqiao-mcp", version: "0.1.0" }, { supportedProtocolVersions: [...QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS] });
   const runtime = createGatewayToolRuntime();
   const diagnostics = buildOperationsDiagnostics({
