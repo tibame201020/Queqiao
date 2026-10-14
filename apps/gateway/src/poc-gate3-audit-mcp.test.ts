@@ -33,7 +33,7 @@ describe("G3.3 custom MCP opt-in tools/call boundary",()=>{
  });
  it("routes one read-only request to the server service with the authenticated OAuth principal, no user-controlled binding",async()=>{
   let principal="",calls=0;
-  const service={execute:async(p:string)=>{principal=p;calls++;return {serverOriginated:true};}} as Gate3McpAuditRead;
+  const service={execute:async(p:string)=>{principal=p;calls++;return {serverOriginated:true};}} as unknown as Gate3McpAuditRead;
   await withClient(service,"authorized-client",async(client)=>{
    const tool=(await client.listTools()).tools.find(t=>t.name==="gate3_read_artifact");
    expect(tool?.annotations?.readOnlyHint).toBe(true);
