@@ -20,7 +20,7 @@ describe("server-origin Gate3 custom MCP read-only audit",()=>{
   expect(fetchImpl).toHaveBeenCalledTimes(1);
   const [url,opts]=fetchImpl.mock.calls[0]!;
   expect(url).toBe("https://api.github.com/repos/tibame201020/Queqiao/branches/main");
-  expect(opts.method).toBe("GET");
+  expect(opts?.method).toBe("GET");
   expect(result).toMatchObject({schema:"queqiao.gate3.custom-mcp-read.v1",provider:"queqiao_custom_mcp",
    controllerRunId:"123456",workerRunId:"123457",taskId:"gate3-123457-1",resultSha:"a".repeat(40),verified:true});
   expect(events).toHaveLength(1);
