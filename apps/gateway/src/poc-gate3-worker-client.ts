@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { verifyRoutedGate3Content } from "./poc-gate3-worker-receipt.js";
 import { writeFile } from "node:fs/promises";
+import {validateCustomMcpExecutionReceipt} from "./poc-gate3-connector-execution.js";
+import {gate3ReadRequestHash,type Gate3McpBinding} from "./poc-gate3-audit-read.js";
 
 // This acceptance client is only run inside a manually approved GitHub Actions
 // controller. Do not put OAuth artifacts or approval credentials into logs.
@@ -114,6 +116,29 @@ try {
   }
   if(!verified)throw Error("G3_WORKER_ARTIFACT_NOT_OBSERVED");
   await writeFile(output,JSON.stringify(verified)+"\n",{flag:"wx",mode:0o600});
+  if(process.env["G3_MCP_AUDIT"]==="1"){
+    const receiptPath=process.env["QUEQIAO_POC_G3_MCP_RECEIPT_PATH"];
+    const leaseId=process.env["QUEQIAO_POC_LEASE_ID"];
+    const repository=process.env["GITHUB_REPOSITORY"]??"";
+    if(!receiptPath||!leaseId||!repository)throw Error("G3_MCP_ACCEPTANCE_INPUT_MISSING");
+    const b:Gate3McpBinding={controllerRunId,controllerAttempt,
+      workerRunId,workerAttempt:"1",environmentId,leaseId,date,repository};
+    // Exactly one normal MCP tools/call. Do not retry a possibly executed operation.
+    const called=await client.callTool({name:"gate3_read_artifact",arguments:{}},{timeout:40_000});
+    if(called.isError)throw Error("G3_MCP_SERVER_READ_FAILED");
+    const raw=called.content?.find(x=>x.type==="text")?.text;
+    let receipt:unknown;
+    try{receipt=JSON.parse(typeof raw==="string"?raw:"");}
+    catch{throw Error("G3_MCP_RECEIPT_FORMAT_INVALID");}
+    const hash=(value:string)=>createHash("sha256").update(value).digest("hex");
+    const expected={controllerRunId,controllerAttempt,workerRunId,workerAttempt:"1",
+      environmentId,leaseId,taskId:verified.taskId,logicalKey:verified.logicalKey,
+      repository,action:"read_gate3_artifact",requestSha256:gate3ReadRequestHash(b),
+      resultSha256:hash(JSON.stringify(verified))};
+    if(validateCustomMcpExecutionReceipt(receipt,expected,null)!=="witness_missing")
+      throw Error("G3_MCP_RECEIPT_MISMATCH");
+    await writeFile(receiptPath,JSON.stringify(receipt)+"\n",{flag:"wx",mode:0o600});
+  }
   console.log(JSON.stringify(verified));
 }finally{
   await client.close();
