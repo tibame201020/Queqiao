@@ -23,7 +23,7 @@ export function resolveHostedGate3Binding(leases:readonly Candidate[],t:HostedGa
   !!l.worker?.workerId&&/^gha_[a-z0-9_]{4,64}$/.test(l.worker.environmentId)&&
   l.providerMetadata?.environmentId===l.worker.environmentId&&
   ID.test(l.providerMetadata.runId??"")&&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(l.leaseId));
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(l.leaseId));
  if(matched.length!==1)return fail();
  const lease=matched[0]!;
  // A second lease with the matching controller/date (even malformed) is ambiguous.
