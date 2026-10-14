@@ -52,7 +52,7 @@ export function createMcpNodeAdapter(
   extensions: readonly InstalledExtensionConfig[] = [],
   actionsMcpPoc?: ActionsMcpPoc,
   shortTasks?: ShortTaskService,
-  gate3Read?: Gate3McpAuditRead,
+  gate3Read?: Pick<Gate3McpAuditRead,"execute">,
 ): McpNodeAdapter {
   const factory = () => createMcpServer(workers, scopes, cancellation, extensions, actionsMcpPoc, shortTasks, gate3Read);
   const modern = createMcpHandler(factory, {
