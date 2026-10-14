@@ -140,6 +140,12 @@ Official product references:
 - https://help.openai.com/en/articles/11509118-admin-controls-security-and-compliance-for-plugins-and-apps
 - https://help.openai.com/en/articles/9261474-compliance-api-%20forenterprise-customers
 
+### G3.3 next provider decision (Proposed ADR-0016; no scope change yet)
+
+Official product guidance confirms app calls are part of OpenAI Compliance Logs, but the platform requires an eligible Enterprise/Edu workspace and authorized access; per-App activity record coverage and correlation fields must be verified independently. No supported original native GitHub App activity log producer is connected to this POC. Separately, Queqiao has an OAuth MCP Gateway and a rotating redacted audit store, but no independently retained, same-task GitHub tool-execution receipt. Neither a correct Browser answer nor existing generic audit events completes G3.3.
+
+[ADR-0016](adr/0016-gate3-provider-provenance.md) is **Accepted: Route B, Queqiao custom MCP**, by explicit owner approval on 2026-10-14. The native GitHub App L1/L2 PASS remains historical UI evidence only; it cannot satisfy custom MCP tool execution. The new L3 requires an authenticated, server-originated and independently verified same-task receipt. #170 Windows Adversarial must be repaired first, with full CI; this provider selection does not enable a write tool, grant new credentials, or mark G3.3 complete. G3.4/G3.5 NOT PROVED.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
