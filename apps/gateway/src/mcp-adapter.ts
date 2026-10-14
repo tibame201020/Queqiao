@@ -16,6 +16,7 @@ import {
 import type { WorkerRegistry } from "./worker-registry.js";
 import type { ActionsMcpPoc } from "./actions-mcp-poc.js";
 import type { ShortTaskService } from "./short-task-runtime.js";
+import type { Gate3McpAuditRead } from "./poc-gate3-audit-read.js";
 import type { InstalledExtensionConfig } from "@queqiao/config";
 
 export type McpNodeAdapter = {
@@ -51,8 +52,9 @@ export function createMcpNodeAdapter(
   extensions: readonly InstalledExtensionConfig[] = [],
   actionsMcpPoc?: ActionsMcpPoc,
   shortTasks?: ShortTaskService,
+  gate3Read?: Gate3McpAuditRead,
 ): McpNodeAdapter {
-  const factory = () => createMcpServer(workers, scopes, cancellation, extensions, actionsMcpPoc, shortTasks);
+  const factory = () => createMcpServer(workers, scopes, cancellation, extensions, actionsMcpPoc, shortTasks, gate3Read);
   const modern = createMcpHandler(factory, {
     legacy: "reject",
     responseMode: "auto",
