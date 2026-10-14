@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {resolveHostedGate3Binding,createHostedGate3ReadService} from "./poc-gate3-hosted-binding.js";
-const target={controllerRunId:"38565432100",controllerAttempt:"1",date:"2026-10-14",repository:"tibame201020/Queqiao"};
+const target={controllerRunId:"38565432100",controllerAttempt:"1",date:"2026-10-14",repository:"tibame201020/Queqiao",sourceRevision:"a".repeat(40)};
 const lease={providerId:"github-actions",leaseId:"ee9f4f43-777b-4578-8fce-e7a4de693898",state:"ready",expiresAt:"2099-01-01T00:00:00Z",
  worker:{workerId:"gha-worker-1",environmentId:"gha_worker_alpha"},
  metadata:{taskKind:"gate3-content",gate3Date:target.date,controllerRunId:target.controllerRunId,controllerRunAttempt:target.controllerAttempt,sourceRevision:"a".repeat(40)},
