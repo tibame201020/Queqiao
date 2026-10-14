@@ -42,7 +42,7 @@ describe("server-origin Gate3 custom MCP read-only audit",()=>{
   await expect(svc.readHead("oauth-client-a")).rejects.toThrow(/G3_CUSTOM_MCP_AUDIT_FAILED/);
  });
  it("refuses a missing authenticated principal before any outbound network or event",async()=>{
-  const {svc,audit,fetchImpl}=fixture();
+  const {svc,append,fetchImpl}=fixture();
   await expect(svc.readHead("")).rejects.toThrow(/G3_CUSTOM_MCP_UNAUTHORIZED/);
   expect(fetchImpl).not.toHaveBeenCalled();expect(append).not.toHaveBeenCalled();
  });
