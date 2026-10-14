@@ -39,7 +39,7 @@ async function appendAuthAudit(audit: AuditSink | undefined, action: string | un
   }
 }
 
-export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService, sessions?: WorkerSessionRegistry, audit?: AuditSink, githubActionsRuntime?: GitHubActionsRuntimeCoordinator, gate3Read?: Gate3McpAuditRead): Promise<Express> {
+export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService, sessions?: WorkerSessionRegistry, audit?: AuditSink, githubActionsRuntime?: GitHubActionsRuntimeCoordinator, gate3Read?: Pick<Gate3McpAuditRead,"execute">): Promise<Express> {
   const oauth = new OAuthService(config); await oauth.initialize();
   const memberships = enrollment?.memberships ?? new WorkerMembershipStore(config.stateDir);
   const workerSource = new MembershipWorkerRegistry(memberships, sessions, audit);
