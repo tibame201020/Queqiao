@@ -15,7 +15,9 @@ describe("G3.3 custom MCP server-originated receipt validator",()=>{
  });
  it("rejects cross-run, wrong lease/action/result and independent github instead of Queqiao provider",()=>{
   for(const field of ["controllerRunId","workerRunId","environmentId","leaseId","taskId","repository","action","requestSha256","resultSha256"] as const)
-   expect(validateCustomMcpExecutionReceipt({...receipt,[field]:"different"},expected,witness)).toBe("receipt_mismatch");
+   expect(["receipt_mismatch","invalid_receipt"]).toContain(validateCustomMcpExecutionReceipt({...receipt,[field]:"different"},expected,witness));
+  expect(validateCustomMcpExecutionReceipt({...receipt,controllerRunId:"38515396066"},expected,witness)).toBe("receipt_mismatch");
+  expect(validateCustomMcpExecutionReceipt({...receipt,resultSha256:hash("different-result")},expected,witness)).toBe("receipt_mismatch");
   expect(validateCustomMcpExecutionReceipt({...receipt,provider:"native_github_app"},expected,witness)).toBe("invalid_receipt");
   expect(validateCustomMcpExecutionReceipt(receipt,expected,{...witness,source:"browser_ui"})).toBe("witness_untrusted");
   expect(validateCustomMcpExecutionReceipt(receipt,expected,{...witness,eventId:"different"})).toBe("witness_mismatch");
