@@ -146,6 +146,14 @@ Official product guidance confirms app calls are part of OpenAI Compliance Logs,
 
 [ADR-0016](adr/0016-gate3-provider-provenance.md) is **Accepted: Route B, Queqiao custom MCP**, by explicit owner approval on 2026-10-14. The native GitHub App L1/L2 PASS remains historical UI evidence only; it cannot satisfy custom MCP tool execution. The new L3 requires an authenticated, server-originated and independently verified same-task receipt. #170 Windows Adversarial must be repaired first, with full CI; this provider selection does not enable a write tool, grant new credentials, or mark G3.3 complete. G3.4/G3.5 NOT PROVED.
 
+### G3.3 Route B receipt contract — PR #173 (implementation pending)
+
+ADR-0016 now accepts **Queqiao custom MCP** as the future Gate 3 execution provider. This is a replacement acceptance route, **not retrospective proof** of native GitHub App invocation. The completed native App UI Run 38515396065 remains historical L1/L2 evidence only; a new, same-task custom MCP hosted run must be validated before Route B L3 PASS.
+
+PR #173 starts with a pure fail-closed `queqiao.gate3.connector-execution.v1` verifier. A candidate must match the expected Controller and Worker IDs/attempts, environment, lease, task/logical target, repository, read-only tool action, request/result SHA-256, non-identifying principal digest and original event ID, and have a **separately authenticated Gateway audit witness** for the identical event/action/task/result. Extra/private fields, fabricated success, wrong provider, a self-attested UI/model receipt or unrelated GitHub read are rejected. The verifier returns at most `candidate_for_independent_review`, not `L3=verified`. A trusted server-originated recorder, durable independent retrieval, supported connected-app invocation and real hosted same-task acceptance are **subsequent** TDD deliverables; this schema is not their implementation.
+
+No new OAuth privilege, GitHub PAT, production writing, schedule switch or signal-notes mutation is part of this PR. Existing #170 Windows packaged CLI regression remains independently tracked and necessary CI may not be waived.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
