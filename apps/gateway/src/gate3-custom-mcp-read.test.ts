@@ -7,10 +7,11 @@ const context:Gate3CustomMcpContext={
 };
 function fixture(){
  const events:any[]=[];
- const audit={append:vi.fn(async(event:any)=>{events.push(event);})};
+ const append=vi.fn(async(event:any)=>{events.push(event);});
+ const audit={append};
  const fetchImpl=vi.fn(async (_url:RequestInfo|URL,_opts?:RequestInit)=>new Response(JSON.stringify({commit:{sha:"a".repeat(40)}}),{status:200}));
  const svc=new Gate3CustomMcpRead(context,audit,fetchImpl as typeof fetch);
- return {events,audit,fetchImpl,svc};
+ return {events,audit,append,fetchImpl,svc};
 }
 describe("server-origin Gate3 custom MCP read-only audit",()=>{
  it("performs exactly one allowlisted public GET and appends event BEFORE returning a success receipt",async()=>{
@@ -30,20 +31,20 @@ describe("server-origin Gate3 custom MCP read-only audit",()=>{
   expect(JSON.stringify(result)+JSON.stringify(events)).not.toContain("oauth-client-a");
  });
  it("fails closed when the independent GitHub result mismatches the pinned expected sha",async()=>{
-  const {svc,audit,fetchImpl}=fixture();
+  const {svc,append,fetchImpl}=fixture();
   fetchImpl.mockResolvedValueOnce(new Response(JSON.stringify({commit:{sha:"b".repeat(40)}}),{status:200}));
   await expect(svc.readHead("oauth-client-a")).rejects.toThrow(/G3_CUSTOM_MCP_READ_/);
-  expect(audit).toHaveBeenCalledTimes(1);
-  expect(audit.mock.calls[0]![0]).toMatchObject({outcome:"failed"});
+  expect(append).toHaveBeenCalledTimes(1);
+  expect(append.mock.calls[0]![0]).toMatchObject({outcome:"failed"});
  });
  it("never emits success if durable audit append fails",async()=>{
-  const {svc,audit}=fixture();audit.mockRejectedValueOnce(new Error("disk full"));
+  const {svc,append}=fixture();append.mockRejectedValueOnce(new Error("disk full"));
   await expect(svc.readHead("oauth-client-a")).rejects.toThrow(/G3_CUSTOM_MCP_AUDIT_FAILED/);
  });
  it("refuses a missing authenticated principal before any outbound network or event",async()=>{
   const {svc,audit,fetchImpl}=fixture();
   await expect(svc.readHead("")).rejects.toThrow(/G3_CUSTOM_MCP_UNAUTHORIZED/);
-  expect(fetchImpl).not.toHaveBeenCalled();expect(audit).not.toHaveBeenCalled();
+  expect(fetchImpl).not.toHaveBeenCalled();expect(append).not.toHaveBeenCalled();
  });
  it("refuses invalid server-trusted same-task metadata rather than trusting a supplied verified flag",()=>{
   const {audit,fetchImpl}=fixture();
