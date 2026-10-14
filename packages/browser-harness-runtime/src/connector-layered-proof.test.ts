@@ -1,3 +1,4 @@
+import {readFileSync} from "node:fs";
 import {describe,it,expect} from "vitest";
 import {makeReadMarker,makeReadPrompt,assessReadLayers,shouldReloadConversation} from "./connector-layered-proof.js";
 const sha="e0c3c1094b692b48ff1e24ef8338594f573fa72f";
@@ -39,4 +40,12 @@ describe("G3.3 layered read-only POC",()=>{
   expect(shouldReloadConversation({...base,sameConversationUrl:false})).toBe(false);
   expect(shouldReloadConversation({...base,conversationCreated:false})).toBe(false);
  });
+ it("source keeps one normal send, a single bounded same-conversation reload, no tool replay or write",()=>{
+  const code=readFileSync("packages/browser-harness-runtime/src/connector-read-preflight.ts","utf8");
+  expect(code.match(/editor\.press\("Enter"\)/g)).toHaveLength(1);
+  expect(code.match(/page\.reload\(/g)).toHaveLength(1);
+  expect(code).toContain('providerReceiptVerified:false');
+  expect(code).not.toMatch(/fetch\(|route\(|request\.post|gh pr create|git push|page\.screenshot\(/);
+ });
+
 });
