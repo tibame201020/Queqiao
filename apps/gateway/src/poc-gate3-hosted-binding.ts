@@ -18,7 +18,7 @@ export function resolveHostedGate3Binding(leases:readonly Candidate[],t:HostedGa
   l.metadata.controllerRunId===t.controllerRunId&&
   l.metadata.controllerRunAttempt===t.controllerAttempt&&
   l.metadata.gate3Date===t.date&&l.metadata.taskKind==="gate3-content"&&
-  SHA.test(l.metadata.sourceRevision??"")&&
+  l.metadata.sourceRevision===t.sourceRevision&&
   ["ready","running"].includes(l.state)&&Date.parse(l.expiresAt)>Date.now()&&
   !!l.worker?.workerId&&/^gha_[a-z0-9_]{4,64}$/.test(l.worker.environmentId)&&
   l.providerMetadata?.environmentId===l.worker.environmentId&&
