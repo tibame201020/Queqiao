@@ -20,7 +20,7 @@ PAT, production daily schedule, or merge to signal-notes/main.
 | --- | --- | --- | --- |
 | G3.1 | Immutable public `gate3.trace.v1`, deterministic date logical target, run-attempt identity, and pre-upload verification | Unit tests, PR CI and real hosted artifact with matching run ID, hash and explicit unobserved downstream stages | **PASS: PR #145; Run 38359475732** |
 | G3.2 | Same-task Worker-to-content task bridge | A **single** Controller Run records Worker Run ID, authenticated content result and hash-bound receipt; no simulated or stitched Run IDs | **PASS: PR #147; Controller 38365316946 / Worker 38365362251** |
-| G3.3 | Supported Connector invocation boundary | Explicitly supported authorization and real tool invocation from the approved control plane; an observed ChatGPT reply or authenticated browser alone is insufficient | **NOT PASSED (L3)**: native GitHub App user turn and contemporaneous correct SHA are visible in user-provided UI evidence and highly correlated with Run 38393395432, but provider tool provenance and exact Run-to-conversation linkage are not independently established; prior safety-rejected write must not be rerouted |
+| G3.3 | Supported Connector invocation boundary | Explicitly supported authorization and real tool invocation from the approved control plane; an observed ChatGPT reply or authenticated browser alone is insufficient | **L1/L2 PASS: Hosted Run 38515396065; L3 NOT PROVED / G3.3 NOT PASSED**. Native App public marker and independently matched stable SHA proven by actual main-only CI; provider tool provenance absent; do not reroute earlier safety-rejected write |
 | G3.4 | Restricted test publication and true idempotency | One date-specific test branch, one draft PR, exact article hash, independently verified commit and CI. Atomic target claim/remote conflict handling prevents retries from creating duplicate publication | Not proved |
 | G3.5 | Unattended full E2E/PC independence | One run links task, Worker, content, Connector, commit, CI and disposed lease, with failure cleanup and no user PC dependency | Not proved |
 
@@ -100,7 +100,7 @@ The App selector obstacle is narrowed, not the Connector authorization boundary 
 
 **Stop/next:** Do not continue guessing selectors, trying alternative credential replay, bypassing environment refusal or sending duplicate prompts after uncertain sends. Obtain an explicitly product-supported App-enabled submission + tool-provenance surface/control-plane authorization. Only after an actual provider tool invocation and independently matched read-only result can G3.3 progress; only then consider G3.4 test branch/Draft PR and G3.5 correlated E2E. No new PAT or signal-notes/main/schedule changes.
 
-### G3.3 layered observer correction (PR #166; acceptance requires a new real hosted run)
+### G3.3 layered observer correction (PR #166; actual hosted L1/L2 PASS)
 
 The previous `user_turn=false` is a **headless observer result, not proof of missing delivery**. A user-provided normal ChatGPT UI screenshot (not copied into this repository) shows the native GitHub App mention, a rendered user message and a correct historical HEAD SHA `e0c3c1094b692b48ff1e24ef8338594f573fa72f` at 19:54 Asia/Taipei. GitHub confirms this exact HEAD was created at 19:53:41 and was replaced only at 20:01:04. Hosted Run 38393395432 was executing from 19:53:50 to 19:55:23 against that commit. This strongly suggests an observer false negative; the screenshot lacks an independently captured Run ID/URL pair and provider execution receipt. Do not assert a causal linkage from matching timestamps alone.
 
@@ -111,6 +111,19 @@ PR #166 retains one standard native GitHub App selection and **exactly one** nor
 - **L3 provider execution:** a real, authorized provider tool-execution receipt correlated to this task; a matching SHA, native App badge or DOM tool card alone is **not sufficient**
 
 If the rendered marker is not observed after a bounded wait and generation is settled, the harness may reload the **same existing conversation once**, without ever resubmitting. An uncertain state is recorded as `observer_unconfirmed`, not a claim that the user message failed. `ui_verified` represents **only** L1+L2, not full G3.3. `providerReceiptVerified=false` and `l3=not_proved` remain explicit until an independently supported control-plane receipt exists. The CI log contains only run metadata and bounded booleans/enums; no private conversation URL, user screenshot, raw response, Session, credentials or account identity is committed or uploaded. PR CI cannot restore Session; only reviewed-main manually dispatched hosted E2E may do so.
+
+#### Verified reviewed-main layered POC — 2026-10-14
+
+PR #166 passed all required unit/Windows/Linux CI checks and was squash-merged to `623f326b380ab5bbf34a4ad512261f4ad453909c`. Its reviewed-main manually dispatched [Hosted Run 38515396065](https://github.com/tibame201020/Queqiao/actions/runs/38515396065), attempt 1, executed exactly that commit. Both the unit-tests job and the real Session portability job completed **SUCCESS**. The sole bounded `queqiao.gate3.connector-layered.v1` receipt reported:
+
+- Public Run Marker: `QG3-38515396065-1`, matched in the normal rendered user-facing conversation; `markerSeen=true`
+- `status=ui_verified`; `appSelected=true`, `submitted=true`, `replySeen=true`, `replyStable=true`
+- `l1=confirmed`, `l2=confirmed`, `l3=not_proved`
+- SHA-only reply matched the independently pinned workflow `github.sha` (the reviewed main commit above); the raw answer and private conversation URL were never logged
+- `reloaded=true`: one same-conversation reload occurred without any additional submission
+- `toolUiObserved=false`, `providerReceiptVerified=false`, `writeAttempted=false`
+
+**Acceptance boundary:** Actual hosted UI L1/L2 PASS resolves the earlier false-negative observer ambiguity. A successful workflow with `ui_verified` is intentionally NOT complete G3.3: the approved provider's tool-execution receipt tied to this exact run is still missing. G3.3 remains **NOT PASSED** at L3, and G3.4/G3.5 remain NOT PROVED. Continue only through supported authorization/tool-provenance channels; do not replay browser credentials, infer provider invocation from matching SHA, mutate signal-notes, or add an independent PAT.
 
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
