@@ -11,6 +11,7 @@ import { CLI_LEAF_CONTRACTS } from "./command-surface.js";
 import { removeRoleInstance } from "./role-remove.js";
 import { runRoleSetupWizard, type RoleSetupPrompts } from "./setup-wizard.js";
 import { uninstallQueqiao } from "./uninstall-cli.js";
+import { describePackagedCliFailure } from "./cli-child-failure.js";
 
 const execFileAsync = promisify(execFile);
 const GATEWAY = "accept-gateway";
@@ -162,15 +163,23 @@ describe.sequential("isolated packaged CLI acceptance", () => {
   const repositoryRoot = path.resolve(process.cwd());
 
   async function runCli(args: string[]): Promise<CliResult> {
-    const { stdout, stderr } = await execFileAsync(process.execPath, [cliEntry, ...args], {
-      cwd: repositoryRoot,
-      env,
-      encoding: "utf8",
-      windowsHide: true,
-      maxBuffer: 8 * 1024 * 1024,
-      timeout: PACKAGED_CLI_PROCESS_TIMEOUT_MS,
-    });
-    return { stdout, stderr };
+    try {
+      const { stdout, stderr } = await execFileAsync(process.execPath, [cliEntry, ...args], {
+        cwd: repositoryRoot,
+        env,
+        encoding: "utf8",
+        windowsHide: true,
+        maxBuffer: 8 * 1024 * 1024,
+        timeout: PACKAGED_CLI_PROCESS_TIMEOUT_MS,
+      });
+      return { stdout, stderr };
+    } catch(error) {
+      // Only the observed failing command gets a bounded diagnostic.
+      // Keep other CLI error shapes unchanged for existing acceptance assertions.
+      if(args.length===2 && args[0]==="restart" && args[1]==="--json")
+        throw new Error(describePackagedCliFailure(args,error));
+      throw error;
+    }
   }
 
   async function waitForJson<T>(args: string[], predicate: (value: T) => boolean, timeoutMs = 20_000): Promise<T> {

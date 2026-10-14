@@ -147,7 +147,11 @@ async function waitForManagedStartup(configFile: string, layout: RuntimeLayout, 
   let lastError = "runtime did not become reachable";
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const state = await health(configFile, role, fetchImpl);
-    const command = await processCommandLine(pid, platform, env, execFile);
+    // Windows CIM starts a full PowerShell child; querying it before the
+    // health/identity probe succeeds cannot establish startup acceptance.
+    // Keep the real PID ownership check for every potentially accepted probe.
+    const candidate = state.reachable && state.identityMatches;
+    const command = candidate ? await processCommandLine(pid, platform, env, execFile) : "";
     const owned = Boolean(command && commandOwnsEntryPoint(command, entryPoint, platform));
     if (state.reachable && state.identityMatches && owned) {
       consecutiveReady += 1;

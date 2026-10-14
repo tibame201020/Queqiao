@@ -12,6 +12,33 @@ async function fixture() {
 }
 
 describe("runtime lifecycle", () => {
+
+  it("defers expensive Windows CIM ownership probes until the health endpoint can identify a ready process", async()=>{
+    const {layout}=await fixture();
+    const gateway="C:\\pkg\\queqiao-gateway.js";
+    let started=false,healthCalls=0,ownershipProbes=0;
+    const result=await startRuntime(layout.configFile,layout,"gateway","shadow",{
+      platform:"win32",env:{SystemRoot:"C:\\Windows"},
+      execFile:async (file,args)=>{
+        if(file.endsWith("powershell.exe")&&args.join(" ").includes("Get-CimInstance")){
+          ownershipProbes++;
+          return {stdout:started?`node.exe ${gateway}`:"",stderr:""};
+        }
+        return {stdout:"",stderr:""};
+      },
+      spawnDetached:()=>{started=true;return 5789;},
+      fetchImpl:async()=>{
+        healthCalls++;
+        if(!started||healthCalls<=3)throw new Error("health not ready");
+        return new Response("{}",{status:200});
+      },
+      entryPoints:{gateway},startupProbeAttempts:5,sleep:async()=>undefined,
+    });
+    expect(result).toMatchObject({started:true,pid:5789});
+    expect(healthCalls).toBe(5);
+    expect(ownershipProbes).toBe(2);
+  });
+
   it("starts directly without an install step and records the managed PID", async () => {
     const { layout } = await fixture();
     const gateway = "C:\\pkg\\queqiao-gateway.js";
