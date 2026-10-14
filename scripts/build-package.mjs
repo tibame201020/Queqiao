@@ -3,6 +3,9 @@ import { build } from "esbuild";
 import path from "node:path";
 
 const internalPackages = new Map(["audit", "config", "contracts", "core-manifest", "mcp-compat", "operations", "platform-paths", "policy", "process-runtime", "protocol", "runtime-control", "runtime-provider-github-actions", "security", "tool-runtime", "worker-protocol", "workspace"].map((name) => [`@queqiao/${name}`, path.resolve(`packages/${name}/src/index.ts`)]));
+// G3.3 server-side content verification is now imported by the production Gateway bundle.
+// Explicit subpath mapping avoids exposing all Browser Harness sources as a package entry.
+internalPackages.set("@queqiao/browser-harness-runtime/gate3-trace", path.resolve("packages/browser-harness-runtime/src/gate3-trace.ts"));
 const internalSourcePlugin = { name: "queqiao-internal-source", setup(build) { build.onResolve({ filter: /^@queqiao\// }, (args) => ({ path: internalPackages.get(args.path) || "", ...(internalPackages.has(args.path) ? {} : { errors: [{ text: `Unknown internal package: ${args.path}` }] }) })); } };
 const inkProductionPlugin = {
   name: "queqiao-ink-production",
