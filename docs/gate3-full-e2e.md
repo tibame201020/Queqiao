@@ -170,6 +170,16 @@ After the original same-Worker G3.2 synthetic artifact becomes available, the Co
 
 **Boundary:** this proves only an auditable Queqiao MCP read of the *synthetic Worker artifact* if a real hosted run succeeds. Even `candidate_for_independent_review` is not native-App provenance, not a separately signed product receipt, and not a GitHub HEAD read or `signal-notes` write. Do not mark G3.3 complete or G3.4/G3.5 passed until the accepted target GitHub operation and associated hosted evidence are implemented and checked independently. No PAT, personal conversation, Browser Session, raw model text or user identity enters the repo/artifact. Standard PR CI never restores a live Browser Session.
 
+### G3.3 Route B — verified same-run synthetic Worker audit (2026-10-14)
+
+Implementation: [PR #175](https://github.com/tibame201020/Queqiao/pull/175) merged at `979435313032c44e3c55bc829f7638b1d19e6488`, all 13 required PR CI checks passed. A manual main-only `gate3_worker=true`, `gate3_mcp_audit=true` [Hosted Run 38569718518](https://github.com/tibame201020/Queqiao/actions/runs/38569718518), attempt 1 and exactly that immutable source revision, returned **both jobs SUCCESS**: `phase3-e2e` and a separately executed, credential-free `gate3-audit-recheck`. It did not modify `signal-notes` or publish an article.
+
+The same-task ephemeral Worker Run was `38569775824`. Real verified synthetic content SHA-256: `bb252e084a899bbfd0c45d066c3084690d8d2a0efc6d851917f1391d45f9c69c`. Controller observed actual one-shot Queqiao MCP `gate3_read_artifact`, the server-generated audit event after the routed read, and `leaseState=disposed` / `workerConclusion=cancelled`. Its `queqiao.gate3.hosted-audit.v1` verdict was `candidate_for_independent_review`, `writeAttempted=false`. The separate job downloaded the matching sanitized, seven-day immutable Actions archive and emitted `queqiao.gate3.archive-recheck.v1` with `archivedEventVerified=true`, `githubTargetRead=not_observed`, `writeAttempted=false`.
+
+Source archive: `gate3-audit-evidence-38569718518-1`, Actions artifact ID `11897211276`, size 1004 bytes; it was also re-downloaded through the connected GitHub App. Independently checked ZIP SHA-256: `a7906f179cbcefed5e0f2ffc128e344e4b9cc16c821193c217ea49ae71ea1fa1`. The original sanitized Gateway audit event ID matched receipt.eventId and its recomputed event SHA-256 matched the archived digest. No raw Browser Session, personal identity, OAuth token, raw model output or conversation was exported.
+
+**Acceptance:** the actual Route B synthetic Worker-read + same-run Gateway audit + independently archived/re-fetched witness sub-gate is PASS. **Full G3.3 NOT PASSED**: this tool only read the synthetic Worker content and the accepted GitHub default-branch HEAD **target read remains not observed**. No custom MCP result retroactively proves the native GitHub App call. The legacy G3.2 completion receipt retains `connector:not_observed`; do not silently upgrade that schema. The next TDD slice must implement a separately auditable, same-Controller read-only GitHub target tool and independently verify its result, before reconsidering G3.3. G3.4/G3.5 remain NOT PROVED.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
