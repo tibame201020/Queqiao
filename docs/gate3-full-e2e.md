@@ -180,6 +180,33 @@ Source archive: `gate3-audit-evidence-38569718518-1`, Actions artifact ID `11897
 
 **Acceptance:** the actual Route B synthetic Worker-read + same-run Gateway audit + independently archived/re-fetched witness sub-gate is PASS. **Full G3.3 NOT PASSED**: this tool only read the synthetic Worker content and the accepted GitHub default-branch HEAD **target read remains not observed**. No custom MCP result retroactively proves the native GitHub App call. The legacy G3.2 completion receipt retains `connector:not_observed`; do not silently upgrade that schema. The next TDD slice must implement a separately auditable, same-Controller read-only GitHub target tool and independently verify its result, before reconsidering G3.3. G3.4/G3.5 remain NOT PROVED.
 
+### G3.3 Route B — read-only GitHub HEAD target (TDD implementation; hosted acceptance pending)
+
+The next opt-in tool is `gate3_read_public_head`. It is registered only together with
+the existing `gate3_mcp_audit` main-only Controller enablement. Its empty MCP input
+cannot choose the target, Run, Lease, repository, OAuth identity or authorization.
+It requires the **previous successful audited Worker content read by the same OAuth
+principal** and re-resolves the unique live server-side Lease before one fixed public
+GET of `tibame201020/Queqiao` default-branch `main` HEAD. The observed SHA must
+exactly equal the Controller's immutable source revision; if main moves meanwhile,
+the attempt fails closed instead of silently accepting a different target.
+
+A distinct Gateway `gate3.read_public_head` event, with run/attempt, Worker,
+environment/lease, task/logical key, request/result hash and pseudonymous OAuth
+principal digest, must be appended before the second tool success receipt. No
+PAT, replayed ChatGPT session, user-selected URL or GitHub write is involved.
+The controller separately reopens the Gateway audit, retains a restricted
+`queqiao.gate3.hosted-github-audit.v1` artifact cross-linked to the original
+Worker archive by hash and principal digest, and a credential-free separate
+job downloads **both** original event archives and checks their correlation,
+content SHA, event IDs and tamper resistance. Failure or uncertain execution is
+one-shot; there is no replay.
+
+The earlier actual Run 38569718518 proves only Worker synthetic content read,
+not this new GitHub target tool. Local TDD/PR CI is distinct from a new reviewed-main
+manual Hosted run. **G3.3 remains NOT PASSED until real Hosted execution and
+independently re-fetched original evidence pass; G3.4/G3.5 remain NOT PROVED.**
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch

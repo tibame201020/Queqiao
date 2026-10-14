@@ -2,6 +2,7 @@ import type {AuditLogStore} from "@queqiao/audit";
 import type {WorkerRegistry} from "./worker-registry.js";
 import type {GitHubActionsRuntimeCoordinator} from "@queqiao/runtime-provider-github-actions";
 import {Gate3McpAuditRead,type Gate3McpBinding} from "./poc-gate3-audit-read.js";
+import {Gate3McpGithubHeadRead} from "./poc-gate3-github-head.js";
 
 export type HostedGate3Target={controllerRunId:string;controllerAttempt:string;date:string;repository:string;sourceRevision:string};
 type Candidate={providerId:string;leaseId:string;state:string;expiresAt:string;
@@ -40,13 +41,28 @@ export function createHostedGate3ReadService(t:HostedGate3Target,
  coordinator:Pick<GitHubActionsRuntimeCoordinator,"list"|"get">,
  workers:()=>Promise<Pick<WorkerRegistry,"requireTool"|"readFile">>,
  audit:Pick<AuditLogStore,"append"|"query">){
- let claimed=false;
- return {async execute(principalId:string){
-  if(claimed)throw Error("G3_MCP_ALREADY_CLAIMED");
-  claimed=true;
-  if(!principalId)throw Error("G3_MCP_UNAUTHENTICATED");
-  const binding=resolveHostedGate3Binding(coordinator.list(),t);
-  const registry=await workers();
-  return new Gate3McpAuditRead(binding,registry,coordinator,audit).execute(principalId);
- }};
+ let claimed=false,headClaimed=false;
+ let successfulBinding:Gate3McpBinding|undefined;
+ let successfulPrincipal:string|undefined;
+ return {
+  async execute(principalId:string){
+   if(claimed)throw Error("G3_MCP_ALREADY_CLAIMED");
+   claimed=true;
+   if(!principalId)throw Error("G3_MCP_UNAUTHENTICATED");
+   const binding=resolveHostedGate3Binding(coordinator.list(),t);
+   const registry=await workers();
+   const receipt=await new Gate3McpAuditRead(binding,registry,coordinator,audit).execute(principalId);
+   successfulBinding=binding;successfulPrincipal=principalId;
+   return receipt;
+  },
+  async readHead(principalId:string){
+   if(headClaimed)throw Error("G3_GITHUB_ALREADY_CLAIMED");
+   headClaimed=true;
+   if(!successfulBinding||!successfulPrincipal)throw Error("G3_GITHUB_WORKER_UNVERIFIED");
+   if(!principalId||principalId!==successfulPrincipal)throw Error("G3_GITHUB_PRINCIPAL_MISMATCH");
+   const current=resolveHostedGate3Binding(coordinator.list(),t);
+   if(JSON.stringify(current)!==JSON.stringify(successfulBinding))throw Error("G3_GITHUB_LEASE_CHANGED");
+   return new Gate3McpGithubHeadRead(current,t.sourceRevision,coordinator,audit).execute(principalId);
+  },
+ };
 }

@@ -11,6 +11,7 @@ import type { McpCancellationRegistry } from "./cancellation-registry.js";
 import type { ActionsMcpPoc } from "./actions-mcp-poc.js";
 import type { ShortTaskService } from "./short-task-runtime.js";
 import type { Gate3McpAuditRead } from "./poc-gate3-audit-read.js";
+export type Gate3ReadTools=Pick<Gate3McpAuditRead,"execute"> & {readHead?: (principalId:string)=>Promise<unknown>};
 import { z } from "zod";
 import { toQueqiaoErrorEnvelope } from "./errors.js";
 
@@ -62,7 +63,7 @@ export function createGatewayToolRuntime(): ToolRuntime<GatewayToolContext> {
   return runtime.seal();
 }
 
-export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = [], actionsMcpPoc?: ActionsMcpPoc, shortTasks?: ShortTaskService, gate3Read?: Pick<Gate3McpAuditRead,"execute">): McpServer {
+export function createMcpServer(workers: WorkerRegistry, scopes: readonly string[], cancellation?: { principalId: string; registry: McpCancellationRegistry }, extensions: readonly InstalledExtensionConfig[] = [], actionsMcpPoc?: ActionsMcpPoc, shortTasks?: ShortTaskService, gate3Read?: Gate3ReadTools): McpServer {
   const server = new McpServer({ name: "queqiao-mcp", version: "0.1.0" }, { supportedProtocolVersions: [...QUEQIAO_SUPPORTED_MCP_PROTOCOL_VERSIONS] });
   const runtime = createGatewayToolRuntime();
   const diagnostics = buildOperationsDiagnostics({
@@ -168,6 +169,19 @@ export function createMcpServer(workers: WorkerRegistry, scopes: readonly string
         const principal=cancellation?.principalId;
         if(!principal||!scopes.includes("queqiao:access"))throw Error("Authenticated Queqiao OAuth client required");
         return result(await gate3Read.execute(principal));
+      }catch(error){return failure(error);}
+    });
+  }
+  if(gate3Read?.readHead){
+    server.registerTool("gate3_read_public_head",{
+      description:"Gate 3 opt-in: one fixed public Queqiao default-branch HEAD read, audited by Gateway.",
+      inputSchema:z.object({}).shape,
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+    },async()=>{
+      try{
+        const principal=cancellation?.principalId;
+        if(!principal||!scopes.includes("queqiao:access"))throw Error("Authenticated Queqiao OAuth client required");
+        return result(await gate3Read.readHead!(principal));
       }catch(error){return failure(error);}
     });
   }

@@ -5,6 +5,7 @@ import { verifyRoutedGate3Content } from "./poc-gate3-worker-receipt.js";
 import { writeFile } from "node:fs/promises";
 import {validateCustomMcpExecutionReceipt} from "./poc-gate3-connector-execution.js";
 import {gate3ReadRequestHash,type Gate3McpBinding} from "./poc-gate3-audit-read.js";
+import {gate3GithubHeadRequestHash,gate3GithubHeadResultHash} from "./poc-gate3-github-head.js";
 
 // This acceptance client is only run inside a manually approved GitHub Actions
 // controller. Do not put OAuth artifacts or approval credentials into logs.
@@ -138,6 +139,22 @@ try {
     if(validateCustomMcpExecutionReceipt(receipt,expected,null)!=="witness_missing")
       throw Error("G3_MCP_RECEIPT_MISMATCH");
     await writeFile(receiptPath,JSON.stringify(receipt)+"\n",{flag:"wx",mode:0o600});
+    // Same authenticated MCP transport, same Controller/Worker lease, second named read-only tool.
+    // An uncertain invocation cannot be retried. Public GitHub HEAD must still equal pinned run source.
+    const headPath=process.env["QUEQIAO_POC_G3_GITHUB_RECEIPT_PATH"];
+    const revision=process.env["GITHUB_SHA"]??"";
+    if(!headPath||!/^[a-f0-9]{40}$/.test(revision))throw Error("G3_GITHUB_ACCEPTANCE_INPUT_MISSING");
+    const head=await client.callTool({name:"gate3_read_public_head",arguments:{}},{timeout:40000});
+    if(head.isError)throw Error("G3_GITHUB_MCP_HEAD_FAILED");
+    let headReceipt:unknown;
+    try{headReceipt=JSON.parse(head.content?.find(x=>x.type==="text")?.text??"");}
+    catch{throw Error("G3_GITHUB_RECEIPT_FORMAT_INVALID");}
+    const headExpected={...expected,action:"read_public_github_head",
+      requestSha256:gate3GithubHeadRequestHash(b,revision),
+      resultSha256:gate3GithubHeadResultHash(revision)};
+    if(validateCustomMcpExecutionReceipt(headReceipt,headExpected,null)!=="witness_missing")
+      throw Error("G3_GITHUB_RECEIPT_MISMATCH");
+    await writeFile(headPath,JSON.stringify(headReceipt)+"\n",{flag:"wx",mode:0o600});
   }
   console.log(JSON.stringify(verified));
 }finally{

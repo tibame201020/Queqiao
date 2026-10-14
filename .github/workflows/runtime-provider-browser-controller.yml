@@ -286,6 +286,7 @@ jobs:
           if [ "${G3_MCP_AUDIT:-0}" = "1" ]; then
             export QUEQIAO_POC_LEASE_ID="$LEASE_ID"
             export QUEQIAO_POC_G3_MCP_RECEIPT_PATH="$RUNNER_TEMP/gate3-mcp-receipt.json"
+            export QUEQIAO_POC_G3_GITHUB_RECEIPT_PATH="$RUNNER_TEMP/gate3-github-receipt.json"
           fi
           npx tsx apps/gateway/src/poc-gate3-worker-client.ts
 
@@ -299,6 +300,17 @@ jobs:
           export G3_GATEWAY_STATE_DIR="$POC_RUNTIME_DIR/state"
           export G3_AUDIT_PROOF_PATH="$RUNNER_TEMP/gate3-audit-evidence.json"
           npx tsx apps/gateway/src/poc-gate3-audit-finalize.ts
+
+      - name: Verify original Gateway GitHub HEAD audit before lease disposal
+        if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker && inputs.gate3_mcp_audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          export G3_AUDIT_PROOF_PATH="$RUNNER_TEMP/gate3-audit-evidence.json"
+          export G3_GITHUB_RECEIPT_PATH="$RUNNER_TEMP/gate3-github-receipt.json"
+          export G3_GATEWAY_STATE_DIR="$POC_RUNTIME_DIR/state"
+          export G3_GITHUB_AUDIT_PROOF_PATH="$RUNNER_TEMP/gate3-github-evidence.json"
+          npx tsx apps/gateway/src/poc-gate3-github-finalize.ts
 
       - name: Complete lease and verify provider cancellation
         shell: bash
@@ -348,6 +360,15 @@ jobs:
         with:
           name: gate3-audit-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/gate3-audit-evidence.json
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload sanitized same-task G3.3 GitHub target audit evidence
+        if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker && inputs.gate3_mcp_audit && success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate3-github-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gate3-github-evidence.json
           retention-days: 7
           if-no-files-found: error
 
@@ -405,3 +426,13 @@ jobs:
         env:
           G3_AUDIT_ARTIFACT_PATH: ${{ runner.temp }}/gate3-audit-recheck/gate3-audit-evidence.json
         run: npx tsx apps/gateway/src/poc-gate3-audit-artifact.ts
+      - name: Independently download original GitHub HEAD Gateway event artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate3-github-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gate3-github-recheck
+      - name: Independently recheck same-run GitHub HEAD source event and Worker link
+        env:
+          G3_AUDIT_ARTIFACT_PATH: ${{ runner.temp }}/gate3-audit-recheck/gate3-audit-evidence.json
+          G3_GITHUB_AUDIT_ARTIFACT_PATH: ${{ runner.temp }}/gate3-github-recheck/gate3-github-evidence.json
+        run: npx tsx apps/gateway/src/poc-gate3-github-artifact.ts

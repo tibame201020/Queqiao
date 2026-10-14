@@ -5,7 +5,7 @@ import {
   type McpHandlerRequestOptions,
 } from "@modelcontextprotocol/server";
 import { toNodeHandler, type FetchLikeMcpHandler, type NodeMcpRequestHandler } from "@modelcontextprotocol/node";
-import { createMcpServer } from "./mcp.js";
+import { createMcpServer,type Gate3ReadTools } from "./mcp.js";
 import {
   McpCancellationCapacityError,
   extractCancelledRequest,
@@ -16,7 +16,7 @@ import {
 import type { WorkerRegistry } from "./worker-registry.js";
 import type { ActionsMcpPoc } from "./actions-mcp-poc.js";
 import type { ShortTaskService } from "./short-task-runtime.js";
-import type { Gate3McpAuditRead } from "./poc-gate3-audit-read.js";
+
 import type { InstalledExtensionConfig } from "@queqiao/config";
 
 export type McpNodeAdapter = {
@@ -52,7 +52,7 @@ export function createMcpNodeAdapter(
   extensions: readonly InstalledExtensionConfig[] = [],
   actionsMcpPoc?: ActionsMcpPoc,
   shortTasks?: ShortTaskService,
-  gate3Read?: Pick<Gate3McpAuditRead,"execute">,
+  gate3Read?: Gate3ReadTools,
 ): McpNodeAdapter {
   const factory = () => createMcpServer(workers, scopes, cancellation, extensions, actionsMcpPoc, shortTasks, gate3Read);
   const modern = createMcpHandler(factory, {

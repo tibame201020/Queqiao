@@ -16,7 +16,7 @@ import type { GitHubActionsRuntimeCoordinator } from "@queqiao/runtime-provider-
 import { ActionsMcpPoc } from "./actions-mcp-poc.js";
 import path from "node:path";
 import { ShortTaskJournal, ShortTaskService } from "./short-task-runtime.js";
-import type { Gate3McpAuditRead } from "./poc-gate3-audit-read.js";
+import type { Gate3ReadTools } from "./mcp.js";
 
 function authAuditOutcome(status: number): "success" | "denied" | "failed" {
   if (status < 400) return "success";
@@ -39,7 +39,7 @@ async function appendAuthAudit(audit: AuditSink | undefined, action: string | un
   }
 }
 
-export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService, sessions?: WorkerSessionRegistry, audit?: AuditSink, githubActionsRuntime?: GitHubActionsRuntimeCoordinator, gate3ReadFactory?: (source:MembershipWorkerRegistry)=>Pick<Gate3McpAuditRead,"execute">): Promise<Express> {
+export async function createGatewayApp(config: GatewayRuntimeConfig, enrollment?: EnrollmentService, sessions?: WorkerSessionRegistry, audit?: AuditSink, githubActionsRuntime?: GitHubActionsRuntimeCoordinator, gate3ReadFactory?: (source:MembershipWorkerRegistry)=>Gate3ReadTools): Promise<Express> {
   const oauth = new OAuthService(config); await oauth.initialize();
   const memberships = enrollment?.memberships ?? new WorkerMembershipStore(config.stateDir);
   const workerSource = new MembershipWorkerRegistry(memberships, sessions, audit);
