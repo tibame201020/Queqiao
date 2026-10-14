@@ -45,7 +45,7 @@ describe("G3.3 Route B server-originated real Worker read + durable Gateway audi
   const service=new Gate3McpAuditRead(binding,workers,coordinator,store);
   const receipt=await service.execute("oauth-client-private");
   expect(receipt).toMatchObject({schema:"queqiao.gate3.connector-execution.v1",provider:"queqiao_custom_mcp",
-   ...binding,taskId:"gate3-38365362251-1",logicalKey:"gate3/synthetic-2026-10-14",
+   ...Object.fromEntries(Object.entries(binding).filter(([key])=>key!=="date")),taskId:"gate3-38365362251-1",logicalKey:"gate3/synthetic-2026-10-14",
    action:"read_gate3_artifact",outcome:"success",executionObserved:true});
   expect(receipt.principalDigest).toBe(sha("oauth-client-private"));
   expect(receipt).not.toHaveProperty("article");
