@@ -13,16 +13,16 @@ export function makeReadPrompt(marker:string):string{
 export type ReadLayerSignals={
  appSelected:boolean;conversationCreated:boolean;markerOutsideComposer:boolean;composerCleared:boolean;
  reply:string;replyOutsideUserAndComposer:boolean;replyStable:boolean;expectedSha:string;
- toolUiObserved:boolean;providerReceiptVerified:boolean;
+ toolUiObserved:boolean;
 };
 export type ReadLayers={l1:"confirmed"|"unconfirmed";l2:"confirmed"|"unconfirmed";l3:"verified"|"not_proved";toolUiObserved:boolean};
-/** A UI tool card or matching model output alone is never a provider execution receipt. */
+/** UI-only observer never grants L3, including a forged runtime providerReceiptVerified flag.\n * Independent trusted product-app activity provenance is reviewed outside this browser process. */
 export function assessReadLayers(s:ReadLayerSignals):ReadLayers{
  const l1=s.appSelected&&s.conversationCreated&&s.markerOutsideComposer&&s.composerCleared;
  const l2=l1&&s.replyOutsideUserAndComposer&&s.replyStable&&
   /^[a-f0-9]{40}$/.test(s.expectedSha)&&/^[a-f0-9]{40}$/.test(s.reply)&&s.reply===s.expectedSha;
  return {l1:l1?"confirmed":"unconfirmed",l2:l2?"confirmed":"unconfirmed",
-  l3:l2&&s.providerReceiptVerified?"verified":"not_proved",toolUiObserved:s.toolUiObserved};
+  l3:"not_proved",toolUiObserved:s.toolUiObserved};
 }
 /** Revisit only the existing conversation through the normal UI; never re-submit. */
 export function shouldReloadConversation(s:{

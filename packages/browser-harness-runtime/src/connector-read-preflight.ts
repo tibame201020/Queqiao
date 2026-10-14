@@ -89,7 +89,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
  let layers=assessReadLayers({
   appSelected:false,conversationCreated:false,markerOutsideComposer:false,composerCleared:false,
   reply:"",replyOutsideUserAndComposer:false,replyStable:false,expectedSha,
-  toolUiObserved:false,providerReceiptVerified:false,
+  toolUiObserved:false,
  });
  let replySeen=false,markerSeen=false,replyStable=false,toolUiObserved=false,receiptEmitted=false;
  try{
@@ -133,7 +133,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
   let current:ReadLayerSignals={
    appSelected,conversationCreated:true,markerOutsideComposer:false,composerCleared:false,
    reply:"",replyOutsideUserAndComposer:false,replyStable:false,expectedSha,
-   toolUiObserved:false,providerReceiptVerified:false,
+   toolUiObserved:false,
   };
   // Normal visible UI only; observe even if a brittle native role selector is absent.
   // A page reload is allowed ONCE only after generation has settled, with NO resend.
@@ -152,7 +152,7 @@ export async function runConnectorReadPreflight(page:Page,authenticated:boolean)
    toolUiObserved=await observeToolUi(page);
    current={appSelected,conversationCreated:true,markerOutsideComposer:markerSeen,composerCleared,
     reply:answer.reply,replyOutsideUserAndComposer:answer.outside,replyStable,expectedSha,
-    toolUiObserved,providerReceiptVerified:false};
+    toolUiObserved};
    layers=assessReadLayers(current);
    if(layers.l1==="confirmed"&&layers.l2==="confirmed")break;
    if(i>=13&&!markerSeen&&shouldReloadConversation({

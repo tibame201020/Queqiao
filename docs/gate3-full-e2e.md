@@ -125,6 +125,21 @@ PR #166 passed all required unit/Windows/Linux CI checks and was squash-merged t
 
 **Acceptance boundary:** Actual hosted UI L1/L2 PASS resolves the earlier false-negative observer ambiguity. A successful workflow with `ui_verified` is intentionally NOT complete G3.3: the approved provider's tool-execution receipt tied to this exact run is still missing. G3.3 remains **NOT PASSED** at L3, and G3.4/G3.5 remain NOT PROVED. Continue only through supported authorization/tool-provenance channels; do not replay browser credentials, infer provider invocation from matching SHA, mutate signal-notes, or add an independent PAT.
 
+### G3.3 L3 native App provenance boundary — PR #168
+
+The reviewed-main [Run 38515396065](https://github.com/tibame201020/Queqiao/actions/runs/38515396065) already proved native GitHub App UI delivery and exact stable pinned HEAD: **L1/L2 PASS**. Browser Harness has no independently authenticated native GitHub App execution record for that specific conversation; `toolUiObserved=false` and `providerReceiptVerified=false`. Re-running the same public SHA lookup adds no provider provenance. The native GitHub App is not the same as Queqiao's separate custom MCP Connector; a successful custom MCP read or separate in-chat GitHub App call must not be substituted.
+
+**Authoritative source and access:** OpenAI documents that App calls are recorded in its Compliance Logs platform. The Compliance Platform is available to eligible Enterprise/Edu workspaces, subject to the required admin permissions and app-log coverage; access is not implied by browser login or a connected user account. The present CI workflow has no approved, authenticated original app-activity log producer or supported provider receipt. No new Admin key, user credential, PAT or Compliance export has been requested or added.
+
+The `connector-l3-evidence.ts` pure classifier rejects `normal_ui`, `independent_github_read` and `another_chat_tool`. A candidate requires a separately approved original App activity record, independently authenticated by a trusted producer and correlated to **the same conversation, public Run Marker, GitHub read action and provider result**. Even this only returns `candidate_for_independent_review`, not an automatic L3 PASS. A record's self-declared `source` or booleans alone do not authenticate its origin. There is currently no trusted producer wired to the CI browser process; do not invent one from intercepted private APIs, tokens or session cookies.
+
+**Runtime safety fix:** `assessReadLayers` is now UI-only and hard-stops at `l3=not_proved`, even if a caller injects a forged `providerReceiptVerified=true` field. The emitted public read-only receipt retains its explicit `providerReceiptVerified=false` diagnostic. Future L3 promotion requires a product-supported independent authenticated provider verification implementation, new TDD and real hosted evidence. G3.3 remains NOT PASSED until then. Do not expand to G3.4/G3.5 or modify signal-notes/main/schedule.
+
+Official product references:
+- https://help.openai.com/en/articles/11487775-connected-apps-in-chatgpt
+- https://help.openai.com/en/articles/11509118-admin-controls-security-and-compliance-for-plugins-and-apps
+- https://help.openai.com/en/articles/9261474-compliance-api-%20forenterprise-customers
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
