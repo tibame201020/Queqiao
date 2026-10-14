@@ -154,6 +154,14 @@ PR #173 starts with a pure fail-closed `queqiao.gate3.connector-execution.v1` ve
 
 No new OAuth privilege, GitHub PAT, production writing, schedule switch or signal-notes mutation is part of this PR. Existing #170 Windows packaged CLI regression remains independently tracked and necessary CI may not be waived.
 
+### G3.3 Route B — server-side audited Worker read (implementation slice; not hosted L3 PASS)
+
+The opt-in `Gate3McpAuditRead` service in `apps/gateway/src/poc-gate3-audit-read.ts` is wired through the actual authenticated Gateway `/mcp` / `tools/call` path as `gate3_read_artifact`. The service is **absent by default**: only a trusted server-side Controller injection may register it, and it accepts **no caller-controlled task/lease/repository input**. Actual enabled production/hosted wiring has not yet been implemented.
+
+The service requires an OAuth principal with `queqiao:access`; a fresh, ready/running Runtime Lease whose actual Worker, provider Run/environment and immutable controller metadata match the server-side binding; a read permission for `runtime/gate3-artifact.json`; the real WorkerRegistry routed read; and `verifyRoutedGate3Content` (content trace and route validation). It derives the request and result SHA-256 from the executed operation, generates an event ID in the Gateway and **awaits** `AuditLogStore.append` before returning a sanitized `queqiao.gate3.connector-execution.v1` receipt. Uncertain/failing executions cannot be retried inside the one-shot service. The normal `AuditLogStore` is rotating JSONL and does **not** itself provide an independently signed remote attest; the verifier can reopen the store and correlate its original event, but this is only `candidate_for_independent_review`, never automatic L3 PASS.
+
+TDD includes malformed/expired lease, wrong route, denied/failed Worker read, audit append failure, duplicate invocation, missing OAuth principal, opt-in tool exposure and real MCP Client `tools/call` propagation. Full G3.3 still needs actual hosted Controller/Worker injection plus independently retained and re-fetched source evidence, without publishing to signal-notes or adding credentials. The historical native GitHub App L1/L2 Run 38515396065 remains separate.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
