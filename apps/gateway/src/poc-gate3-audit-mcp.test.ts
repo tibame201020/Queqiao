@@ -46,8 +46,7 @@ describe("G3.3 custom MCP opt-in tools/call boundary",()=>{
  it("rejects missing authenticated principal before invoking the service",async()=>{
   let calls=0;const service={execute:async()=>{calls++;return {};}} as unknown as Gate3McpAuditRead;
   await withClient(service,"",async(client)=>{
-   const response=await client.callTool({name:"gate3_read_artifact",arguments:{}});
-   expect(response.isError).toBe(true);
+   await expect(client.callTool({name:"gate3_read_artifact",arguments:{}})).rejects.toThrow();
   });
   expect(calls).toBe(0);
  });
