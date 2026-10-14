@@ -8,7 +8,7 @@ const context:Gate3CustomMcpContext={
 function fixture(){
  const events:any[]=[];
  const audit={append:vi.fn(async(event:any)=>{events.push(event);})};
- const fetchImpl=vi.fn(async()=>new Response(JSON.stringify({commit:{sha:"a".repeat(40)}}),{status:200}));
+ const fetchImpl=vi.fn(async (_url:RequestInfo|URL,_opts?:RequestInit)=>new Response(JSON.stringify({commit:{sha:"a".repeat(40)}}),{status:200}));
  const svc=new Gate3CustomMcpRead(context,audit,fetchImpl as typeof fetch);
  return {events,audit,fetchImpl,svc};
 }
