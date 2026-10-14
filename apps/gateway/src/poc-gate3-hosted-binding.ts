@@ -13,7 +13,7 @@ export function resolveHostedGate3Binding(leases:readonly Candidate[],t:HostedGa
  if(!ID.test(t.controllerRunId)||!ATT.test(t.controllerAttempt)||
   !/^\d{4}-\d{2}-\d{2}$/.test(t.date)||Number.isNaN(Date.parse(t.date))||
   new Date(t.date).toISOString().slice(0,10)!==t.date||
-  t.repository!=="tibame201020/Queqiao")return fail();
+  t.repository!=="tibame201020/Queqiao"||!SHA.test(t.sourceRevision))return fail();
  const matched=leases.filter(l=>l.providerId==="github-actions"&&
   l.metadata.controllerRunId===t.controllerRunId&&
   l.metadata.controllerRunAttempt===t.controllerAttempt&&
