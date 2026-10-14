@@ -146,6 +146,12 @@ Official product guidance confirms app calls are part of OpenAI Compliance Logs,
 
 [ADR-0016](adr/0016-gate3-provider-provenance.md) is **Accepted: Route B, Queqiao custom MCP**, by explicit owner approval on 2026-10-14. The native GitHub App L1/L2 PASS remains historical UI evidence only; it cannot satisfy custom MCP tool execution. The new L3 requires an authenticated, server-originated and independently verified same-task receipt. #170 Windows Adversarial must be repaired first, with full CI; this provider selection does not enable a write tool, grant new credentials, or mark G3.3 complete. G3.4/G3.5 NOT PROVED.
 
+### Route B implementation slice 1 — server-origin read executor (PR #172)
+
+The approved provider is `queqiao_custom_mcp`. `apps/gateway/src/gate3-custom-mcp-read.ts` implements a **server-side read executor** only, not yet a live ChatGPT-registered tool or full L3 receipt. The trusted Gateway context validates Controller Run/attempt, Worker Run, environment/lease, exact task identity and independently pinned main SHA. Once called with an authenticated OAuth principal, it performs **one fixed public GET** to the Queqiao GitHub main branch, rejects HTTP/shape/SHA mismatch, and writes a sanitized `@queqiao/audit` tool event before it can return a success receipt. Missing authentication, invalid trusted task context or audit storage failure fail closed. It neither accepts a caller URL, freeform command nor a user-supplied `verified` boolean. No credential, private conversation or user identifier is persisted.
+
+This slice still requires, in subsequent reviewed PRs: (1) wiring to a formally authorized and opt-in Queqiao MCP tool inside the approved same-task Controller/Worker runtime (not from a model claim or private ChatGPT API), (2) independent durable event/artifact retention and verification against the actual hosted task and audit event, and (3) actual hosted read-only run demonstrating the entire chain. A matching SHA from a unit-test fetch fixture, this local executor or previous native App UI proof must **not** mark L3 PASS. Do not enable signal-notes writes, G3.4 or a production schedule yet.
+
 ## G3.2 implementation contract (PR #147; acceptance pending)
 
 A **manual, reviewed-main** `runtime-provider-browser-controller.yml` dispatch
