@@ -20,3 +20,4 @@ instead of silently rewriting the reason a boundary exists.
 - [ADR-0015: Provider-neutral Runtime Lease lifecycle](0015-runtime-lease-provider-boundary.md)
 - [ADR-0016: Gate 3 L3 provider execution provenance](0016-gate3-provider-provenance.md)
 - [ADR-0017: Gate 3.4 ChatGPT-delegated GitHub publication](0017-gate3-chatgpt-delegated-publication.md)
+- [ADR-0018: CI-native ChatGPT on-demand Queqiao acceptance](0018-ci-native-chatgpt-runtime-acceptance.md)

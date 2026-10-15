@@ -1,0 +1,35 @@
+﻿# ADR-0018 — CI-native ChatGPT on-demand Queqiao acceptance
+
+- Status: Accepted for the **acceptance definition**, implementation/live execution: **NOT ACCEPTED** (2026-10-15)
+- Tracking: [#185](https://github.com/tibame201020/Queqiao/issues/185)
+- Review base: source `main` `97cdc09b66c5894020b7fb6b1c08eccd0192ca1b`
+- ADR-0017 and Issue #124 remain true for their **narrower interactive delegated publishing** POC, and cannot grant this architecture gate a PASS.
+
+## Product goal, not a publication goal
+
+An authenticated **CI ChatGPT session**, with its native custom-MCP connection/client within the CI Browser Harness, requests a bounded public Queqiao Agent tool through one registered **stable URL**. The fixed front door accepts the native tool request, provisions an **on-demand Lease** (new dynamic Queqiao Gateway/Worker behind the front door), sends the request to the ready runtime and returns its result to that **same ChatGPT conversation**. A Gateway original event and independently observed ChatGPT native tool-call/result, Worker output and disposal prove the sequence. Two independent reviewed-main runs must reuse exactly the same externally observed URL while using fresh CI sessions, original invocations, Gateway/Worker runtimes and disposed leases. A separate Controller Node.js test client is never the CI ChatGPT client for this purpose.
+
+## Current facts / why the previous PASS cannot be promoted
+
+- `.github/workflows/runtime-provider-browser-controller.yml` creates a run-specific `trycloudflare.com` quick tunnel and sets `gateway.publicBaseUrl` to it. A random tunnel hostname is **not** a stable URL.
+- The Gateway/Worker is provisioned before the Worker ChatGPT synthetic prompt; the preflight is from workflow inputs, not ChatGPT demand.
+- `apps/gateway/src/poc-gate3-worker-client.ts` (Controller Runner) calls MCP directly via the Node SDK, using the local `127.0.0.1` URL and a separate test OAuth client. This is a valid Gateway call, but not ChatGPT's original tool request.
+- `packages/browser-harness-runtime/src/session-acceptance.ts` runs inside the ephemeral Worker Runner and `gate3-prompt.ts` produces plain synthetic TDD JSON. It does not independently observe a native Queqiao custom MCP tool-call event/response in that ChatGPT session.
+- The later signal-notes Draft PR #4 and target CI are genuine, but GitHub App writes occurred in a different, external ChatGPT session. Content/hash agreement does not establish native CI tool-call origin. All previous Run IDs and stage-local receipts remain untouched.
+
+## Trusted boundaries and stop rules
+
+1. **Front door:** confirm an owned domain / installed named tunnel (or equivalent stable ingress) and its current authorized external DNS/credential model. A stable adapter MUST reject ephemeral quick tunnels. A fixed address alone is not live evidence: independently initialize MCP and list tools against it for **two independent reviewed-main runs**. If a permanent front door is needed to awaken a fully stopped Gateway, identify its actual owner, dispatch authority and fail-closed unbound route rather than asserting a nonexistent server. No DNS, credential or production publication changes are authorized by this ADR.
+2. **Native origin:** confirm the real product supports a **registered ChatGPT custom MCP** accessible in the restored CI session and an original UI observation showing the model's native tool-call and response. A synthetic prompt instructing it to use the tool does not itself prove the tool existed or was called. A `Client.callTool` issued by a Controller test script is a negative control. The specific App name, tool semantics and permissions must be inspected before designing the probe; no fabricated DOM attribute, network interception, session cookie export or identity bypass.
+3. **On-demand causal order:** CI-native tool intent → original Gateway receive → dispatch Lease → ready Worker → actual Worker result → Gateway return → same CI ChatGPT response → disposed Lease. Original Gateway audit must independently bind invocation/session and request/result digests, not just content SHA. Two runs: same fixed MCP URL, distinct CI session, invocation, Worker/Lease and controller Run IDs. An expired route, stale lease, ambiguous or missing original evidence fails closed.
+4. **Independent verifier:** `assessCiNativeAgentRuns()` is only a strict **data-candidate** seam and always returns `NOT_VERIFIED`: even a passing two-run fixture yields `eligible_for_independent_provider_readback`, not PASS. The authoritative integration checker must **fetch** original provider evidence itself before issuing a completion receipt. Unit mocks or workflow description never satisfy the hosted gate. G3.4 publication checks are downstream optional, not an alternate proof.
+
+## Bounded tracer bullets (no new publishing features)
+
+A. TDD negative controls and this ADR; current Hosted Run 38677390566 remains architecture **NOT ACCEPTED**. Tests for fixed URL, same session/request, on-demand Lease ordering, two different runtimes and disposal must run under normal PR CI. This commits no real cloud configuration.
+B. Verify the actual ChatGPT CI session's native custom MCP support, stable front-door/provider ownership and existing infra. Only then design and implement one public read-only allowlisted tool end-to-end. If the product/infra can't expose native tool-call evidence or no fixed front door is authorized, mark BLOCKED with primary evidence; don't substitute a script or a new GitHub App.
+C. Real reviewed-main Hosted Run A and Run B using the same external MCP URL with original native UI/tool and Gateway/Worker/Lease receipts, independent provider readback and negative controls. Only that artifact permits the new architecture gate PASS and closure of #185.
+
+### Review criteria
+
+Standards: tests at the pure public candidate boundary; no private profile/session/secret data in repo/logs; strict status semantics; preserve existing CI checks and historical original audit data. Spec: prove the *model-originated* native request with fixed URL and demand-time runtime, not another content-to-GitHub handoff. Any eventual credential/DNS/production transition requires fresh exact owner approval.
