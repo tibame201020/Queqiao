@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { verifyRoutedGate3Content } from "./poc-gate3-worker-receipt.js";
 import { writeFile } from "node:fs/promises";
+import {prepareGate3DraftPlan} from "./poc-gate3-draft-contract.js";
 import {validateCustomMcpExecutionReceipt} from "./poc-gate3-connector-execution.js";
 import {gate3ReadRequestHash,type Gate3McpBinding} from "./poc-gate3-audit-read.js";
 import {gate3GithubHeadRequestHash,gate3GithubHeadResultHash} from "./poc-gate3-github-head.js";
@@ -111,6 +112,20 @@ try {
     if(!file.isError){
       verified=verifyRoutedGate3Content(file,{environmentId,workerRunId,
         controllerRunId,controllerAttempt,date});
+      // Opt-in: preserve the exact original validated PUBLIC synthetic Worker file.
+      const sourcePath=process.env["QUEQIAO_POC_G345_ORIGINAL_ARTIFACT_PATH"];
+      if(sourcePath){
+        if(process.env["G3_MCP_AUDIT"]!=="1")throw Error("G345_REQUIRES_ORIGINAL_AUDIT");
+        const text=file.content?.find(x=>x.type==="text")?.text??"";
+        const found=/^Workspace: runtime\r?\nPath: gate3-artifact\.json\r?\nLines: 1-1 of [1-9]\d*\r?\n\r?\n([^\r\n]+)(?:\r?\n)?$/.exec(text);
+        if(!found)throw Error("G345_ORIGINAL_ARTIFACT_FORMAT_INVALID");
+        let original:unknown;try{original=JSON.parse(found[1]!);}catch{throw Error("G345_ORIGINAL_ARTIFACT_INVALID");}
+        const plan=prepareGate3DraftPlan(original,{controllerRunId,controllerAttempt,workerRunId,
+          workerAttempt:"1",date,sourceRepository:"tibame201020/Queqiao",
+          targetRepository:"tibame201020/signal-notes",baseBranch:"main"});
+        if(plan.articleSha256!==verified.articleSha256)throw Error("G345_WORKER_ARTICLE_NOT_IDENTICAL");
+        await writeFile(sourcePath,JSON.stringify(original)+"\n",{flag:"wx",mode:0o600});
+      }
       break;
     }
     await new Promise<void>(resolve=>setTimeout(resolve,3000));
