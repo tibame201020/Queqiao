@@ -18,6 +18,11 @@ on:
         type: boolean
         default: false
         required: false
+      gate3_delegated_handoff:
+        description: "Main-only: export exact verified public Worker article after disposal; no target write"
+        type: boolean
+        default: false
+        required: false
   pull_request:
     branches: [main]
     paths:
@@ -60,12 +65,14 @@ jobs:
           GATE3_WORKER: ${{ inputs.gate3_worker && '1' || '0' }}
           REQUESTED_DATE: ${{ inputs.gate3_date }}
           REQUESTED_AUDIT: ${{ inputs.gate3_mcp_audit && '1' || '0' }}
+          REQUESTED_DELEGATED: ${{ inputs.gate3_delegated_handoff && '1' || '0' }}
         run: |
           set -euo pipefail
           node <<'NODE'
           const enabled=process.env.GATE3_WORKER==="1",d=process.env.REQUESTED_DATE||"";
           if(!enabled && d)process.exit(1);
           if(process.env.REQUESTED_AUDIT==="1" && !enabled)process.exit(1);
+          if(process.env.REQUESTED_DELEGATED==="1" && (!enabled||process.env.REQUESTED_AUDIT!=="1"))process.exit(1);
           if(enabled && (process.env.GITHUB_EVENT_NAME!=="workflow_dispatch" ||
              process.env.GITHUB_REF!=="refs/heads/main" ||
              !/^\d{4}-\d{2}-\d{2}$/.test(d) ||
@@ -74,6 +81,7 @@ jobs:
           NODE
           echo "G3_WORKER=$GATE3_WORKER" >> "$GITHUB_ENV"
           echo "G3_MCP_AUDIT=$REQUESTED_AUDIT" >> "$GITHUB_ENV"
+          echo "G345_DELEGATED_HANDOFF=$REQUESTED_DELEGATED" >> "$GITHUB_ENV"
           if [ "$GATE3_WORKER" = "1" ]; then
             echo "G3_DATE=$REQUESTED_DATE" >> "$GITHUB_ENV"
           fi
@@ -288,6 +296,9 @@ jobs:
             export QUEQIAO_POC_G3_MCP_RECEIPT_PATH="$RUNNER_TEMP/gate3-mcp-receipt.json"
             export QUEQIAO_POC_G3_GITHUB_RECEIPT_PATH="$RUNNER_TEMP/gate3-github-receipt.json"
           fi
+          if [ "${G345_DELEGATED_HANDOFF:-0}" = "1" ]; then
+            export QUEQIAO_POC_G345_ORIGINAL_ARTIFACT_PATH="$RUNNER_TEMP/gate3-original-validated-artifact.json"
+          fi
           npx tsx apps/gateway/src/poc-gate3-worker-client.ts
 
       - name: Verify independent original Gateway L3 audit evidence
@@ -344,6 +355,28 @@ jobs:
             npx tsx apps/gateway/src/poc-gate3-worker-finalize.ts
           fi
 
+
+      - name: Build exact synthetic ChatGPT delegated handoff after disposed lease
+        if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker && inputs.gate3_mcp_audit && inputs.gate3_delegated_handoff && success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          export G3_EXPECTED_WORKER_RUN_ID="$WORKER_RUN_ID"
+          export G345_ORIGINAL_ARTIFACT_PATH="$RUNNER_TEMP/gate3-original-validated-artifact.json"
+          export G345_COMPLETION_PATH="$RUNNER_TEMP/gate3-controller-complete.json"
+          export G345_WORKER_AUDIT_PATH="$RUNNER_TEMP/gate3-audit-evidence.json"
+          export G345_HEAD_AUDIT_PATH="$RUNNER_TEMP/gate3-github-evidence.json"
+          export G345_HANDOFF_PATH="$RUNNER_TEMP/gate3-delegated-handoff.json"
+          npx tsx apps/gateway/src/poc-gate3-delegated-handoff-finalize.ts
+
+      - name: Upload only public verified delegated synthetic handoff
+        if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker && inputs.gate3_mcp_audit && inputs.gate3_delegated_handoff && success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate3-delegated-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gate3-delegated-handoff.json
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Upload sanitized same-task G3.2 completion proof
         if: github.event_name == 'workflow_dispatch' && inputs.gate3_worker && success()
@@ -436,3 +469,23 @@ jobs:
           G3_AUDIT_ARTIFACT_PATH: ${{ runner.temp }}/gate3-audit-recheck/gate3-audit-evidence.json
           G3_GITHUB_AUDIT_ARTIFACT_PATH: ${{ runner.temp }}/gate3-github-recheck/gate3-github-evidence.json
         run: npx tsx apps/gateway/src/poc-gate3-github-artifact.ts
+      - name: Download original post-disposal Worker completion
+        if: inputs.gate3_delegated_handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate3-worker-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gate3-complete-recheck
+      - name: Download only validated public synthetic handoff
+        if: inputs.gate3_delegated_handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate3-delegated-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gate3-delegated-recheck
+      - name: Independently verify original Worker article, disposed lease and two Gateway archives
+        if: inputs.gate3_delegated_handoff
+        env:
+          G345_HANDOFF_PATH: ${{ runner.temp }}/gate3-delegated-recheck/gate3-delegated-handoff.json
+          G345_COMPLETION_PATH: ${{ runner.temp }}/gate3-complete-recheck/gate3-controller-complete.json
+          G345_WORKER_AUDIT_PATH: ${{ runner.temp }}/gate3-audit-recheck/gate3-audit-evidence.json
+          G345_HEAD_AUDIT_PATH: ${{ runner.temp }}/gate3-github-recheck/gate3-github-evidence.json
+        run: npx tsx apps/gateway/src/poc-gate3-delegated-handoff-recheck.ts
