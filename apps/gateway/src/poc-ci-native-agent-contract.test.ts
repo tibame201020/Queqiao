@@ -3,6 +3,7 @@ import {assessCiNativeAgentRuns} from './poc-ci-native-agent-contract.js';
 const sha='a'.repeat(64);
 const run=(n:number)=>({
  controllerRunId:String(n),workerRunId:String(n+1000),publicMcpUrl:'https://mcp.example.test/mcp',
+ ciStart:{trigger:'workflow_dispatch',startedAt:1,browserSessionReadyAt:5,mcpIngressReadyAt:7},
  ciChatgpt:{sessionId:`ci-session-${n}`,observedActor:'ci_chatgpt_native_ui' as string,
   invocationId:`native-${n}`,toolName:'queqiao_ci_probe',endpoint:'https://mcp.example.test/mcp',
   requestSha256:sha,resultSha256:sha,startedAt:10,finishedAt:90},
