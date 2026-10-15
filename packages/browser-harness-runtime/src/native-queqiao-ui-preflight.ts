@@ -1,9 +1,9 @@
-﻿import {mkdirSync,writeFileSync} from 'node:fs';
+import {mkdirSync,writeFileSync} from 'node:fs';
 import {dirname} from 'node:path';
 import type {Page,Locator} from 'playwright-core';
 import {assessNativeQueqiaoCandidate,assessNativeQueqiaoDifferential} from './native-queqiao-preflight.js';
 
-const QUEQIAO=/^Queqiao(?:\b|[-\s])/i,GITHUB=/^GitHub(?:\b|[-\s])/i;
+const QUEQIAO=/^queqiao pc$/i,GITHUB=/^GitHub(?:\b|[-\s])/i;
 async function cappedVisible(loc:Locator){
  const n=Math.min(await loc.count(),3);let seen=0;
  for(let i=0;i<n;i++)if(await loc.nth(i).isVisible().catch(()=>false))seen++;
@@ -11,7 +11,7 @@ async function cappedVisible(loc:Locator){
 }
 type Candidate=ReturnType<typeof assessNativeQueqiaoCandidate>;
 /** Two fixed public app labels in ONE restored UI session; never send/select/record app inventory. */
-async function observeOne(page:Page,editor:Locator,query:'@Queqiao'|'@GitHub',target:RegExp,
+async function observeOne(page:Page,editor:Locator,query:'@queqiao pc'|'@GitHub',target:RegExp,
  sessionConfirmed:boolean):Promise<{verdict:Candidate,selectorVisible:boolean}>{
  await editor.fill('');
  await page.waitForTimeout(350);
@@ -49,7 +49,7 @@ export async function runNativeQueqiaoPreflight(page:Page,sessionConfirmed:boole
   await editor.waitFor({state:'visible',timeout:15000});
   if(!await editor.isEnabled())throw Error('NATIVE_QUEQIAO_COMPOSER_UNAVAILABLE');
   observedStage='queqiao';
-  const target=await observeOne(page,editor,'@Queqiao',QUEQIAO,sessionConfirmed);
+  const target=await observeOne(page,editor,'@queqiao pc',QUEQIAO,sessionConfirmed);
   verdict=target.verdict;targetSelectorVisible=target.selectorVisible;
   observedStage='github';
   const control=await observeOne(page,editor,'@GitHub',GITHUB,sessionConfirmed);

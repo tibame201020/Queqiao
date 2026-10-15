@@ -18,7 +18,7 @@ describe('#185 manual CI-only read-only native Queqiao preflight',()=>{
   expect(w).toContain('if-no-files-found: ignore');
   expect(w).not.toContain('CHATGPT_BROWSER_SESSION_CAPSULE_PART_1: ${{ env.');
   expect(source).not.toMatch(/\.press\(|\.click\(|\.screenshot\(|page\.route\(/);
-  expect(source).toContain("observeOne(page,editor,'@Queqiao'");
+  expect(source).toContain("observeOne(page,editor,'@queqiao pc'");
   expect(source).toContain("observeOne(page,editor,'@GitHub'");
   expect(source).toContain("controlCandidate");
   expect(doc).toContain('Slice B read-only product discovery');
