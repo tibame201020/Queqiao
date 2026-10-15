@@ -19,6 +19,8 @@ On separate explicit owner approval, ChatGPT actually invoked the **existing con
 
 **Verified Slice B result (Runs 38686156534 and 38687047541): Queqiao candidate NOT OBSERVED** in a first-party-authenticated CI ChatGPT session; GitHub same-session positive control candidate visible in the second run. Both native tool execution and fixed ingress remain unverified. Original sanitized receipts/digests: see ADR-0018; source Issue #185 remains OPEN / NOT ACCEPTED.
 
+**Named Tunnel transport: VERIFIED (private Hosted Run 38689173302)** ? existing owned fixed DNS, ephemeral cloudflared connector, worker membership, external health 200, unauthenticated MCP 401, TLS valid and Cleanup all independently confirmed. Offline same hostname returns 530: persistent dispatch and same-CI ChatGPT model-native tool invocation remain MISSING; this is NOT #185 full architecture acceptance. See ADR-0018.
+
 **Architecture follow-up [#185](https://github.com/tibame201020/Queqiao/issues/185) / [ADR-0018](adr/0018-ci-native-chatgpt-runtime-acceptance.md): NOT ACCEPTED as a separate, stronger gate.** The G3.4/G3.5 PASS above is for ADR-0017 interactive delegated publication only. It does not prove that the ChatGPT session *inside CI* natively invokes Queqiao through a stable URL, provisions runtime on actual model demand and receives a routed result in the same conversation. Existing controller-script MCP calls, per-run quick tunnel, and external ChatGPT App writes do not count. Preserve previous source receipts and scoped PASS without promoting them to this new architecture gate.
 ## Required topology
 
