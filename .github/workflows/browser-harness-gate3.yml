@@ -21,6 +21,11 @@ on:
         type: string
         default: ""
         required: false
+      native_mcp_preflight:
+        description: "Manual CI authenticated ChatGPT native Queqiao app-menu discovery ONLY; no tool call or target write"
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: read
@@ -43,7 +48,7 @@ jobs:
         run: npx vitest run packages/browser-harness-runtime/src
 
   session-portability:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.gate3
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && (inputs.gate3 || inputs.native_mcp_preflight)
     needs: unit-tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -57,11 +62,19 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
-      - name: Validate Gate 3 dispatch selection
+      - name: Validate exclusive Gate 3 / read-only native MCP preflight selection
         env:
           GATE3: ${{ inputs.gate3 && '1' || '0' }}
+          NATIVE_MCP_PREFLIGHT: ${{ inputs.native_mcp_preflight && '1' || '0' }}
+          REQUESTED_DATE: ${{ inputs.gate3_date }}
         run: |
-          if [ "$GATE3" != "1" ]; then exit 1; fi
+          set -euo pipefail
+          if [ "$GATE3" = "1" ] && [ "$NATIVE_MCP_PREFLIGHT" = "1" ]; then
+            echo 'GATE3_AND_NATIVE_PREFLIGHT_CONFLICT'
+            exit 1
+          fi
+          if [ "$GATE3" != "1" ] && [ "$NATIVE_MCP_PREFLIGHT" != "1" ]; then exit 1; fi
+          if [ "$NATIVE_MCP_PREFLIGHT" = "1" ] && [ -n "$REQUESTED_DATE" ]; then exit 1; fi
 
       - name: Validate session capsule secret
         shell: bash
@@ -139,6 +152,8 @@ jobs:
           BROWSER_CDP_URL: http://127.0.0.1:9555
           CHATGPT_BROWSER_GATE2: '0'
           CHATGPT_BROWSER_GATE3: ${{ inputs.gate3 && '1' || '0' }}
+          CHATGPT_BROWSER_NATIVE_MCP_PREFLIGHT: ${{ inputs.native_mcp_preflight && '1' || '0' }}
+          NATIVE_QUEQIAO_PREFLIGHT_RECEIPT_PATH: ${{ runner.temp }}/native-mcp-preflight/native-mcp-preflight.json
           GATE3_OUTPUT_DIR: ${{ runner.temp }}/gate3-out
         run: npx tsx packages/browser-harness-runtime/src/session-acceptance.ts
 
@@ -157,6 +172,15 @@ jobs:
           path: ${{ runner.temp }}/gate3-out/gate3-artifact.json
           retention-days: 7
           if-no-files-found: error
+
+      - name: Upload only bounded read-only native Queqiao UI candidate receipt
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.native_mcp_preflight
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-mcp-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-mcp-preflight/native-mcp-preflight.json
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Diagnostics on failure
         if: failure()

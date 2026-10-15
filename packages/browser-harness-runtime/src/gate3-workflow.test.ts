@@ -8,7 +8,7 @@ describe("Gate 3 CI-only synthetic acceptance policy",()=>{
  });
  it("keeps PR execution synthetic, with no secrets or live browser",()=>{
   expect(workflow).toMatch(/pull_request:/);
-  expect(workflow).toMatch(/if: github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main' && inputs\.gate3/);
+  expect(workflow).toContain("if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && (inputs.gate3 || inputs.native_mcp_preflight)");
   expect(workflow).toMatch(/needs: unit-tests/);
  });
  it("leaves publication to the already connected ChatGPT GitHub Connector outside Actions",()=>{
