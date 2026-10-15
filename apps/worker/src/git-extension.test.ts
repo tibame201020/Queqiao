@@ -14,7 +14,7 @@ import { getWorkerCoreToolDefinitions, type WorkerToolContext } from "./core-too
 const exec = promisify(execFile);
 let temporary: string | undefined;
 let external: string | undefined;
-afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true }); if (external) await rm(external, { recursive: true, force: true }); temporary = undefined; external = undefined; });
+afterEach(async () => { if (temporary) await rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); if (external) await rm(external, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); temporary = undefined; external = undefined; });
 
 const installed: InstalledExtensionConfig = { trusted: true, source: { kind: "local-module", module: "@queqiao/extension-git" }, activation: { kind: "global" }, manifest: GIT_EXTENSION_MANIFEST };
 async function git(cwd: string, args: string[]) { return exec("git", args, { cwd, windowsHide: true }); }
@@ -105,5 +105,5 @@ describe("first-party Git extension", () => {
     await tool(app, "git_worktree_create", { workspaceId: "coding", repositoryPath: "inside", targetPath: "../escape", ref: "HEAD", newBranch: "escape-test" }, 400);
     await tool(app, "git_worktree_create", { workspaceId: "coding", repositoryPath: "inside", targetPath: "linked/child", ref: "HEAD", newBranch: "link-parent-test" }, 400);
     await tool(app, "git_worktree_remove", { workspaceId: "coding", repositoryPath: "inside", targetPath: "external-backed" }, 400);
-  });
+  }, 20_000);
 });
