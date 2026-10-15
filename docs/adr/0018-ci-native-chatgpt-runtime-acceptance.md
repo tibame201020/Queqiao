@@ -1,4 +1,4 @@
-﻿# ADR-0018 — CI-native ChatGPT on-demand Queqiao acceptance
+# ADR-0018 — CI-native ChatGPT on-demand Queqiao acceptance
 
 - Status: Accepted for the **acceptance definition**, implementation/live execution: **NOT ACCEPTED** (2026-10-15)
 - Tracking: [#185](https://github.com/tibame201020/Queqiao/issues/185)
@@ -33,3 +33,9 @@ C. Real reviewed-main Hosted Run A and Run B using the same external MCP URL wit
 ### Review criteria
 
 Standards: tests at the pure public candidate boundary; no private profile/session/secret data in repo/logs; strict status semantics; preserve existing CI checks and historical original audit data. Spec: prove the *model-originated* native request with fixed URL and demand-time runtime, not another content-to-GitHub handoff. Any eventual credential/DNS/production transition requires fresh exact owner approval.
+
+## Slice B read-only product discovery (2026-10-15; no architecture PASS)
+
+The current ChatGPT custom MCP product model uses an account-installed plugin and an externally reachable HTTPS MCP endpoint or supported Secure MCP Tunnel. The installed app must first appear as an actual candidate in the restored **CI ChatGPT** interface; an account/Controller-side app reference alone does not establish that visibility. On demand, a manually gated `native_mcp_preflight` mode in `browser-harness-gate3.yml` restores the existing session, types `@Queqiao` **without sending a message**, and only looks for one visible native app option/menuitem (or exactly one newly appeared differentiated button). This records a sanitized original CI run/attempt with `candidate=visible|not_observed`, but intentionally records `connectedMcp=false`, `nativeToolCallObserved=false`, `gatePassed=false` in every case. It does not click the app, launch a Worker, read the user's chats or record the UI. Negative cases fail closed. Real observed tool-call and independent Gateway events remain an entirely separate later acceptance gate.
+
+A Cloudflare Quick Tunnel creates a random `trycloudflare.com` hostname, while a stable named Tunnel's public hostname requires an authorized domain and tunnel ownership. The Queqiao workflow currently only configures a Quick Tunnel. The existing GitHub Actions Secrets metadata contains no recognizably named ingress/tunnel URL/credential (name-only read, no values). No verified existing public Render service was found via its read-only service listing; this does not prove no infrastructure exists in other accounts. **Do not fabricate a stable host or install a new Cloudflare credential.** Hosted fixed-front-door implementation and ChatGPT app registration must follow verified operator-owned infrastructure and exact authorization. Product references: https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt and https://developers.cloudflare.com/tunnel/get-started/.
