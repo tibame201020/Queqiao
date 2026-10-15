@@ -18,3 +18,5 @@ instead of silently rewriting the reason a boundary exists.
 - [ADR-0013: Worker-initiated gRPC transport for cross-machine Workers](0013-worker-initiated-grpc-transport.md)
 - [ADR-0014: Extensible Worker transport routing and dynamic MCP selector](0014-extensible-worker-transport-routing.md)
 - [ADR-0015: Provider-neutral Runtime Lease lifecycle](0015-runtime-lease-provider-boundary.md)
+- [ADR-0016: Gate 3 L3 provider execution provenance](0016-gate3-provider-provenance.md)
+- [ADR-0017: Gate 3.4 ChatGPT-delegated GitHub publication](0017-gate3-chatgpt-delegated-publication.md)
