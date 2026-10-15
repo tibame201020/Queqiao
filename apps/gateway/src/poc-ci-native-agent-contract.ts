@@ -27,7 +27,15 @@ export function assessCiNativeAgentRuns(runs:readonly unknown[]){
  if(!fixedMcpUrl(a!.publicMcpUrl)||!fixedMcpUrl(b!.publicMcpUrl)||a!.publicMcpUrl!==b!.publicMcpUrl)
   problems.add('FIXED_ENDPOINT_UNPROVEN');
  for(const r of runs as Data[]){
-  const ui=r.ciChatgpt,g=r.gateway,l=r.lease;
+  const ui=r.ciChatgpt,g=r.gateway,l=r.lease,start=r.ciStart;
+  // CI-first: Actions starts a short-lived ingress and the browser session.
+  // The model's original request (not Actions startup) must still trigger the Worker lease.
+  if(!record(start)||start.trigger!=='workflow_dispatch'||!time(start.startedAt)||
+    !time(start.browserSessionReadyAt)||!time(start.mcpIngressReadyAt)||!record(ui)||
+    !time(ui.startedAt)||!(start.startedAt<start.browserSessionReadyAt&&
+     start.startedAt<start.mcpIngressReadyAt&&start.browserSessionReadyAt<=ui.startedAt&&
+     start.mcpIngressReadyAt<=ui.startedAt))
+    problems.add('CI_FIRST_ORIGIN_OR_ORDER_UNPROVEN');
   if(!str(r.controllerRunId)||!/^\d+$/.test(r.controllerRunId)||!str(r.workerRunId)||!/^\d+$/.test(r.workerRunId)||
     !record(ui)||ui.observedActor!=='ci_chatgpt_native_ui'||!str(ui.sessionId)||!str(ui.invocationId)||
     ui.toolName!=='queqiao_ci_probe'||ui.endpoint!==r.publicMcpUrl||!hash(ui.requestSha256)||!hash(ui.resultSha256)||
