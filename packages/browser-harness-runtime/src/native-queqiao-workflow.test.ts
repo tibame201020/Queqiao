@@ -18,8 +18,12 @@ describe('#185 manual CI-only read-only native Queqiao preflight',()=>{
   expect(w).toContain('if-no-files-found: ignore');
   expect(w).not.toContain('CHATGPT_BROWSER_SESSION_CAPSULE_PART_1: ${{ env.');
   expect(source).not.toMatch(/\.press\(|\.click\(|\.screenshot\(|page\.route\(/);
-  expect(source).toContain("await editor.fill('@Queqiao')");
+  expect(source).toContain("observeOne(page,editor,'@Queqiao'");
+  expect(source).toContain("observeOne(page,editor,'@GitHub'");
+  expect(source).toContain("controlCandidate");
   expect(doc).toContain('Slice B read-only product discovery');
   expect(doc).toContain('gatePassed=false');
+  expect(doc).toContain('Run 38686156534');
+  expect(doc).toContain('26ec2533043baaa6c26b69c655ebdd382454d4508d097306b203a2e53dd4d936');
  });
 });
