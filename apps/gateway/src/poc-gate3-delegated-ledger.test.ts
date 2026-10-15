@@ -11,7 +11,7 @@ describe('#124 ADR-0017 current G3.4 delegated acceptance ledger',()=>{
   expect(current).toContain('CURRENT G3.4/G3.5 CONTRACT (ADR-0017');
   expect(current).toContain('G3.4 | ChatGPT-delegated test publication');
   expect(current).toContain('G3.5 | Full cloud-delegated E2E / PC independence');
-  expect(current).toContain('joined delegated flow NOT PROVED');
+  expect(current).toContain('G3.4/G3.5 PASS (ADR-0017 delegated POC)');
   expect(current).not.toContain('Hosted write original Gateway audit NOT PROVED; G3.4 NOT PASSED');
  });
  it('keeps historical independent test evidence and optional autonomous implementation separate',()=>{
