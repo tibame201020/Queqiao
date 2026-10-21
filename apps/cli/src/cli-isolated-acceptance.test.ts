@@ -43,6 +43,7 @@ const ACCEPTANCE_COVERAGE: Readonly<Record<string, string>> = {
   "worker setup": "interactive-setup",
   "worker remove": "interactive-destructive",
   "worker port": "packaged-process-config",
+  "worker process": "packaged-process-config",
   "worker serve": "packaged-managed-runtime",
   "worker stop": "packaged-managed-runtime",
   "worker restart": "packaged-managed-runtime",
@@ -335,6 +336,12 @@ describe.sequential("isolated packaged CLI acceptance", () => {
     const replacementPort = await freePort();
     expect(parseJson<any>(await runCli(["worker", "port", "--worker", WORKER, "--port", String(replacementPort), "--json"]))).toMatchObject({ changed: true, port: replacementPort });
     workerPort = replacementPort;
+    const defaults = parseJson<any>(await runCli(["worker", "process", "--worker", WORKER, "--json"]));
+    expect(defaults).toMatchObject({ changed: false, restartRequired: false, process: { foregroundConcurrency: 8, backgroundConcurrency: 8, sessionConcurrency: 8, jobQueueLimit: 32, jobRetentionMs: 900000 } });
+    expect(parseJson<any>(await runCli(["worker", "process", "--worker", WORKER, "--foreground-concurrency", "4", "--job-queue-limit", "64", "--json"])))
+      .toMatchObject({ changed: true, restartRequired: true, process: { foregroundConcurrency: 4, jobQueueLimit: 64 } });
+    expect(parseJson<any>(await runCli(["worker", "process", "--worker", WORKER, "--defaults", "--json"])))
+      .toMatchObject({ changed: true, process: { foregroundConcurrency: 8, jobQueueLimit: 32 } });
   }, 30_000);
 
   it("runs workspace, local Extension Hub, and diagnostics commands through packaged public CLI processes", async () => {

@@ -2,7 +2,7 @@
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { serializeRuntimeConfig } from "@queqiao/config";
+import { serializeRuntimeConfig, readRuntimeConfig } from "@queqiao/config";
 import { resolveRuntimeLayoutForNamedRole } from "@queqiao/platform-paths";
 import { runRoleSetupWizard, type RoleSetupPrompts } from "./setup-wizard.js";
 
@@ -61,6 +61,26 @@ describe("worker setup protocol edit contract", () => {
     expect(offeredChoices.map(({ value, label }) => ({ value, label }))).toEqual([
       { value: "http", label: "HTTP" }, { value: "websocket", label: "WebSocket" }, { value: "grpc", label: "gRPC" },
     ]);
+  });
+
+  it("configures Worker-wide process limits through the same setup flow used by Workstation TUI", async () => {
+    const f = await fixture();
+    const driver = prompts(["http"]);
+    driver.text = async (message, initial = "") => {
+      if (message.includes("Foreground concurrency")) return "4";
+      if (message.includes("Background concurrency")) return "6";
+      if (message.includes("Session concurrency")) return "3";
+      if (message.includes("Job queue limit")) return "64";
+      if (message.includes("Job retention (ms)")) return "120000";
+      return initial;
+    };
+    const options = { env: f.env, platform: process.platform, prompts: driver, portAvailable: async () => true,
+      reconcileWorkerProtocols: async () => ({ gateway: "https://gateway.example/", enabled: ["http"], offers: [{ type: "http" as const, capable: true }] }),
+      inspectWorkerProtocols: async () => ({ gateway: "https://gateway.example/", enabled: ["http"], offers: [{ type: "http" as const, capable: true }] }) };
+    await runRoleSetupWizard("worker", ["worker", "setup"], options);
+    expect((await readRuntimeConfig(f.layout.configFile)).worker?.process).toMatchObject({
+      foregroundConcurrency: 4, backgroundConcurrency: 6, sessionConcurrency: 3, jobQueueLimit: 64, jobRetentionMs: 120000,
+    });
   });
 
   it("reconciles durable protocol metadata on a port edit but defers protocol selection until the Worker restarts", async () => {

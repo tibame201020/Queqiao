@@ -29,6 +29,7 @@ import { runWorkstation } from "./workstation.js";
 import { listAuditEvents, recordCliAudit } from "./audit-cli.js";
 import { restartManagedRuntimes } from "./restart-cli.js";
 import { updateQueqiao } from "./update-cli.js";
+import { configureWorkerProcess } from "./worker-process-cli.js";
 
 function option(args: string[], name: string): string | undefined { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; }
 function requiredOption(args: string[], name: string): string { const value = option(args, name); if (!value) throw new Error(`--${name} is required`); return value; }
@@ -179,6 +180,7 @@ async function main() {
     if (status.active) throw new Error("Stop the Worker before changing its listener port");
     return print(await updateWorkerPort(configFile, args));
   }
+  if (dispatch?.handler === "worker-process") return print(await configureWorkerProcess(configFile, args));
   if (dispatch?.handler === "gateway-join-token") return print(await createJoinToken(configFile, outputArgs));
   if (dispatch?.handler === "worker-join") return print(await joinWorker(configFile, args));
   if (dispatch?.handler === "membership-list") return print(await listJoinedWorkers(configFile));

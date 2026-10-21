@@ -208,6 +208,19 @@ workspaces:
 
 The optional `worker.process` block is Worker-wide: all Workspaces belonging to the Worker share the same pools. Omitted blocks in existing version-1 configs receive the defaults above on load. Concurrency fields are independently configurable integers from 1 through 8; `jobQueueLimit` allows 0–256 waiting jobs and `jobRetentionMs` allows 1–86,400,000 milliseconds. Background async `run`/`shell` and `job_start` share one pool, and jobs queue only when that pool is full. Changes take effect after Worker restart; `process_capacity` reports actual effective limits.
 
+CLI (non-interactive) reads effective values and updates them atomically; omitted flags preserve their existing/default values:
+
+```sh
+queqiao worker process --worker my-worker --json
+queqiao worker process --worker my-worker --foreground-concurrency 4 --background-concurrency 6 --session-concurrency 3 --job-queue-limit 64 --job-retention-ms 120000 --json
+queqiao worker process --worker my-worker --defaults --json
+queqiao worker restart --worker my-worker
+```
+
+In `queqiao workstation`, select **Workers → Configure** and edit the same five limits. Prompts display effective values (including schema defaults for legacy YAML); saving changes does not restart an active Worker automatically. Restart it deliberately before checking `process_capacity`.
+
+`queqiao update` updates the npm prefix of the **invoking CLI** rather than an unrelated `npm config get prefix` (notably WSL `~/.local/bin` vs `/usr/local`). It reports previous/current installed versions and preserves the prior restart policy: external/unmanaged systemd services pinned to an explicit versioned executable are skipped, not silently rewritten. Check and update those service deployment pins separately.
+
 ### Workspace persistence
 
 **Current Queqiao does not maintain a separate production `workspaces.json`.** Workspaces are persisted directly in the owning Worker's `config.yaml` under `workspaces[]`.

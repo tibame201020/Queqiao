@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.23 - 2026-10-21
+
+- Fixes `queqiao update` to target the npm prefix containing the invoking CLI instead of a potentially unrelated global npm prefix (notably WSL user-local installs); reports actual old/new package versions and installation prefix while retaining unmanaged-runtime skip behavior.
+- Adds `queqiao worker process` read, independent validated capacity overrides and `--defaults` through atomic configuration persistence. Existing YAML without `worker.process` retains schema fallback.
+- Exposes all five Worker-wide process limits in Worker Setup and Workstation TUI Configure, with effective-value prompts and explicit Worker-restart guidance; tests cover CLI parsing, real packaged CLI paths, wizard persistence and Workstation prompts.
+
+
 ## 0.9.22 - 2026-10-21
 
 - Calibrates the packaged Node 24 release-runtime relative resident memory ceiling to 100 MiB based on two repeatable hosted release measurements (97.53 and 97.29 MiB), retaining Node 22/23 at 96 MiB and every other safety limit unchanged.

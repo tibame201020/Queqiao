@@ -206,6 +206,12 @@ workspaces:
 
 選填的 `worker.process` 是 Worker-wide 容量：同一 Worker 的所有 Workspace 共用，不是各自獨立配額。舊有版本 1 設定未填時自動帶入上述預設值。三種 concurrency 分別支援 1–8；`jobQueueLimit` 支援 0–256 筆等待任務，`jobRetentionMs` 支援 1–86,400,000 毫秒。Background async `run`／`shell` 與 `job_start` 共用額度；修改設定需重啟 Worker，並可用 `process_capacity` 核對生效結果。
 
+CLI 可用 `queqiao worker process --worker my-worker --json` 讀取實際生效的預設或自訂值；以 `--foreground-concurrency`、`--background-concurrency`、`--session-concurrency`、`--job-queue-limit`、`--job-retention-ms` 修改指定欄位（其餘維持原值），或用 `--defaults` 全部恢復預設。設定原子寫入；變更後需執行 `queqiao worker restart --worker my-worker` 才會套用。
+
+`queqiao workstation`：選取 **Workers → Configure**，即可編輯相同五項欄位；舊設定未配置時會顯示 schema 預設值。儲存不會默默重啟運行中的 Worker。
+
+`queqiao update` 更新的是**啟動該 CLI 的 npm 安裝位置**，不會錯用另一個 `npm config get prefix`（例如 WSL `~/.local/bin` 優先於 `/usr/local`）。會回報更新前後的實際安裝版號；外部管理、釘選版本的 systemd 服務仍須依其部署流程單獨更新，不會被覆寫。
+
 ### Workspace persistence
 
 **目前 Queqiao 沒有另外維護 production `workspaces.json`。** Workspace 直接存在 owning Worker `config.yaml` 的 `workspaces[]`。
