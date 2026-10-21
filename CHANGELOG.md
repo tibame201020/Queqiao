@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.22 - 2026-10-21
+
+- Calibrates the packaged Node 24 release-runtime relative resident memory ceiling to 100 MiB based on two repeatable hosted release measurements (97.53 and 97.29 MiB), retaining Node 22/23 at 96 MiB and every other safety limit unchanged.
+- Enforces the actual Ubuntu/Node 24 resource gate in PR CI, with a separate evidence artifact, alongside the existing Windows/Ubuntu Node 22 baseline; carries forward Worker process configuration and Workstation acceptance improvements from 0.9.20–0.9.21.
+
 ## 0.9.21 - 2026-10-21
 
 - Fixes Workstation protocol prompts labeling WebSocket as HTTP and updates real Ink enrollment E2E to select the intended HTTP/gRPC transports explicitly when WebSocket is also offered.
