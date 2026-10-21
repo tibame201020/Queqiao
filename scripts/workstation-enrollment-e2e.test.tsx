@@ -140,6 +140,15 @@ async function configureWorkerProtocolsThroughInk(
     ui.stdin.write("e");
     await waitForFrame(ui.lastFrame, /Worker port/);
     ui.stdin.write("\r");
+    // Setup now includes Worker-wide process limits. Exercise the real prompts
+    // with their current/default values before editing membership protocols.
+    for (const label of [
+      "Foreground concurrency", "Background concurrency", "Session concurrency",
+      "Job queue limit", "Job retention \\(ms\\)",
+    ]) {
+      await waitForFrame(ui.lastFrame, new RegExp(label));
+      ui.stdin.write("\r");
+    }
     const protocolFrame = await waitForFrame(ui.lastFrame, /Protocols/);
     expect(protocolFrame).toMatch(/\[ \] WebSocket/);
     ui.stdin.write("\u001b[B");
