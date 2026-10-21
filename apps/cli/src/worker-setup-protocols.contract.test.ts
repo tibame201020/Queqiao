@@ -44,6 +44,25 @@ describe("worker setup protocol edit contract", () => {
     await runRoleSetupWizard("worker", ["worker", "setup"], { env: f.env, platform: process.platform, prompts: prompts(["http", "grpc"]), portAvailable: async () => true, reconcileWorkerProtocols: async () => ({ gateway: "https://gateway.example/", enabled: ["http"], offers: [{ type: "http", capable: true }, { type: "grpc", capable: true, connection: { target: "127.0.0.1:7573", security: "loopback" } }] }), inspectWorkerProtocols: async () => ({ gateway: "https://gateway.example/", enabled: ["http"], offers: [{ type: "http", capable: true }, { type: "grpc", capable: true, connection: { target: "127.0.0.1:7573", security: "loopback" } }] }), changeWorkerProtocols: change });
     expect(change).toHaveBeenCalledWith(f.layout.configFile, "https://gateway.example/", ["http", "grpc"]);
   });
+  it("labels WebSocket distinctly from HTTP when editing Worker protocols", async () => {
+    const f = await fixture();
+    const driver = prompts(["http"]);
+    const offered = [{ type: "http" as const, capable: true }, { type: "websocket" as const, capable: true, connection: { url: "ws://127.0.0.1:7575/worker-session" } }, { type: "grpc" as const, capable: true, connection: { target: "127.0.0.1:7573", security: "loopback" as const } }];
+    const offeredChoices: Array<{ value: string; label: string }> = [];
+    driver.protocols = async (_message, choices) => {
+      offeredChoices.push(...choices);
+      return ["http"];
+    };
+    await runRoleSetupWizard("worker", ["worker", "setup"], {
+      env: f.env, platform: process.platform, prompts: driver, portAvailable: async () => true,
+      reconcileWorkerProtocols: async () => ({ gateway: "https://gateway.example/", enabled: ["http"], offers: offered }),
+      inspectWorkerProtocols: async () => ({ gateway: "https://gateway.example/", enabled: ["http"], offers: offered }),
+    });
+    expect(offeredChoices.map(({ value, label }) => ({ value, label }))).toEqual([
+      { value: "http", label: "HTTP" }, { value: "websocket", label: "WebSocket" }, { value: "grpc", label: "gRPC" },
+    ]);
+  });
+
   it("reconciles durable protocol metadata on a port edit but defers protocol selection until the Worker restarts", async () => {
     const f = await fixture();
     const reconcile = vi.fn().mockResolvedValue({ gateway: "https://gateway.example/", enabled: ["http"], offers: [{ type: "http", capable: true }] });

@@ -71,7 +71,7 @@ function enterSessionEnv(session: WorkstationVerificationSession): () => void {
 async function joinSelectedWorkerThroughInk(
   session: WorkstationVerificationSession,
   workerIndex = 0,
-  selection: "all" | "http-only" = "all",
+  selection: "http-grpc" | "http-only" = "http-grpc",
 ): Promise<{ protocolFrame: string; finalFrame: string }> {
   const restoreEnv = enterSessionEnv(session);
   const snapshot = await collectWorkstationSnapshot();
@@ -94,9 +94,18 @@ async function joinSelectedWorkerThroughInk(
     await waitForFrame(ui.lastFrame, /Enrollment source/);
     ui.stdin.write("\r");
     const protocolFrame = await waitForFrame(ui.lastFrame, /Worker protocols/);
+    // Gateway offers HTTP, WebSocket, then gRPC. Exercise intended transports,
+    // not every newly offered capability.
+    expect(protocolFrame).toMatch(/\[x\] WebSocket/);
+    ui.stdin.write("\u001b[B");
+    await waitForFrame(ui.lastFrame, /›\s*\[x\] WebSocket/);
+    ui.stdin.write(" ");
+    await waitForFrame(ui.lastFrame, /\[ \] WebSocket/);
     if (selection === "http-only") {
-      ui.stdin.write("\u001b[B"); await delay();
-      ui.stdin.write(" "); await delay();
+      ui.stdin.write("\u001b[B");
+      await waitForFrame(ui.lastFrame, /›\s*\[x\] gRPC/);
+      ui.stdin.write(" ");
+      await waitForFrame(ui.lastFrame, /\[ \] gRPC/);
     }
     ui.stdin.write("\r");
     const finalFrame = await waitForFrame(ui.lastFrame, /Worker joined Gateway|Cannot join gateway|worker_session_connect_failed/i);
@@ -132,8 +141,13 @@ async function configureWorkerProtocolsThroughInk(
     await waitForFrame(ui.lastFrame, /Worker port/);
     ui.stdin.write("\r");
     const protocolFrame = await waitForFrame(ui.lastFrame, /Protocols/);
-    ui.stdin.write("\u001b[B"); await delay();
-    ui.stdin.write(" "); await delay();
+    expect(protocolFrame).toMatch(/\[ \] WebSocket/);
+    ui.stdin.write("\u001b[B");
+    await waitForFrame(ui.lastFrame, /›\s*\[ \] WebSocket/);
+    ui.stdin.write("\u001b[B");
+    await waitForFrame(ui.lastFrame, /›\s*\[ \] gRPC/);
+    ui.stdin.write(" ");
+    await waitForFrame(ui.lastFrame, /\[x\] gRPC/);
     ui.stdin.write("\r");
     const finalFrame = await waitForFrame(ui.lastFrame, /Worker configured|Cannot configure|worker_session_connect_failed/i);
     return { protocolFrame, finalFrame };

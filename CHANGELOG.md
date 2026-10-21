@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.21 - 2026-10-21
+
+- Fixes Workstation protocol prompts labeling WebSocket as HTTP and updates real Ink enrollment E2E to select the intended HTTP/gRPC transports explicitly when WebSocket is also offered.
+- Adds the full Workstation release acceptance smoke to the PR CI matrix on Node 24, preventing a PR/release verification gap discovered while attempting to publish 0.9.20. Includes all Worker process configuration enhancements from 0.9.20.
+
 ## 0.9.20 - 2026-10-21
 
 - Makes Worker-wide foreground/background/session process concurrency configurable through optional `worker.process` in version-1 YAML, with independent validated limits of 1–8 and upgraded defaults of 8.
