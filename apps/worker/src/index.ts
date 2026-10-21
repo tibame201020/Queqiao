@@ -3,7 +3,7 @@ import path from "node:path";
 import { AuditLogStore } from "@queqiao/audit";
 import { requireRuntimeConfigFile, resolveRuntimeLayout } from "@queqiao/platform-paths";
 import { readRuntimeConfig } from "@queqiao/config";
-import { ProcessRunner } from "@queqiao/process-runtime";
+import { createConfiguredProcessRunner } from "./process-runner-config.js";
 import { getWorkerCoreToolDefinitions } from "./core-tools.js";
 import { createWorkerApp } from "./app.js";
 import { WorkerCredentialSource } from "./worker-credential-source.js";
@@ -40,7 +40,7 @@ const extensionRuntime = new ReloadableExtensionHost(
   getWorkerCoreToolDefinitions().map((tool) => tool.name),
 );
 await extensionRuntime.initialize();
-const processes = new ProcessRunner();
+const processes = createConfiguredProcessRunner(runtime.worker);
 const protocolService = await createWorkerProtocolService({
   ...(runtime.worker.workerId ? { workerId: runtime.worker.workerId } : {}),
   environmentId: runtime.worker.environmentId,

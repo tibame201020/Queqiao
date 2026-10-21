@@ -180,6 +180,12 @@ worker:
     host: 127.0.0.1
     port: 7576
   tokenFile: <worker-data>/secrets/worker-windows.secret
+  process:
+    foregroundConcurrency: 8
+    backgroundConcurrency: 8
+    sessionConcurrency: 8
+    jobQueueLimit: 32
+    jobRetentionMs: 900000
 extensions:
   - trusted: true
     source: { ... }
@@ -199,6 +205,8 @@ workspaces:
       allow: []
     stepUp: []
 ```
+
+The optional `worker.process` block is Worker-wide: all Workspaces belonging to the Worker share the same pools. Omitted blocks in existing version-1 configs receive the defaults above on load. Concurrency fields are independently configurable integers from 1 through 8; `jobQueueLimit` allows 0–256 waiting jobs and `jobRetentionMs` allows 1–86,400,000 milliseconds. Background async `run`/`shell` and `job_start` share one pool, and jobs queue only when that pool is full. Changes take effect after Worker restart; `process_capacity` reports actual effective limits.
 
 ### Workspace persistence
 

@@ -178,6 +178,12 @@ worker:
     host: 127.0.0.1
     port: 7576
   tokenFile: <worker-data>/secrets/worker-windows.secret
+  process:
+    foregroundConcurrency: 8
+    backgroundConcurrency: 8
+    sessionConcurrency: 8
+    jobQueueLimit: 32
+    jobRetentionMs: 900000
 extensions:
   - trusted: true
     source: { ... }
@@ -197,6 +203,8 @@ workspaces:
       allow: []
     stepUp: []
 ```
+
+選填的 `worker.process` 是 Worker-wide 容量：同一 Worker 的所有 Workspace 共用，不是各自獨立配額。舊有版本 1 設定未填時自動帶入上述預設值。三種 concurrency 分別支援 1–8；`jobQueueLimit` 支援 0–256 筆等待任務，`jobRetentionMs` 支援 1–86,400,000 毫秒。Background async `run`／`shell` 與 `job_start` 共用額度；修改設定需重啟 Worker，並可用 `process_capacity` 核對生效結果。
 
 ### Workspace persistence
 
