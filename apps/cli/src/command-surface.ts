@@ -84,6 +84,7 @@ export const COMMAND_TREE: CommandNode = {
         setup: terminal,
         remove: terminal,
         port: terminal,
+        process: terminal,
         serve: terminal,
         stop: terminal,
         restart: terminal,
@@ -129,7 +130,7 @@ export const COMMAND_TREE: CommandNode = {
 
 export type CliHandlerKey =
   | "list-role-instances" | "role-setup" | "role-remove" | "runtime-serve" | "runtime-stop" | "runtime-restart" | "runtime-restart-all" | "runtime-status"
-  | "gateway-info" | "gateway-join-token" | "membership-list" | "membership-remove" | "worker-port" | "worker-join"
+  | "gateway-info" | "gateway-join-token" | "membership-list" | "membership-remove" | "worker-port" | "worker-process" | "worker-join"
   | "workspace-manager" | "workspace-add" | "workspace-list" | "workspace-info" | "workspace-edit" | "workspace-remove" | "workspace-profiles-list" | "workspace-profiles-info" | "workspace-profiles-create" | "workspace-profiles-edit" | "workspace-profiles-rename" | "workspace-profiles-delete"
   | "extension-install" | "extension-attach" | "extension-detach" | "extension-uninstall" | "extension-list" | "extension-show" | "extension-doctor"
   | "audit-list" | "version" | "completion" | "workstation" | "update" | "doctor" | "doctor-paths" | "manifest-show" | "tool-explain" | "uninstall" | "migrate-from-repo" | "migrate-runtime-v1";
@@ -167,6 +168,7 @@ export const CLI_LEAF_CONTRACTS: readonly CliLeafContract[] = [
   { route: "worker setup", handler: "role-setup", options: [] },
   { route: "worker remove", handler: "role-remove", options: ["worker"], valueOptions: ["worker"] },
   { route: "worker port", handler: "worker-port", options: ["worker", "port"], valueOptions: ["worker", "port"] },
+  { route: "worker process", handler: "worker-process", options: ["worker", "foreground-concurrency", "background-concurrency", "session-concurrency", "job-queue-limit", "job-retention-ms", "defaults"], valueOptions: ["worker", "foreground-concurrency", "background-concurrency", "session-concurrency", "job-queue-limit", "job-retention-ms"] },
   { route: "worker serve", handler: "runtime-serve", options: ["bg", "worker"], valueOptions: ["worker"] },
   { route: "worker stop", handler: "runtime-stop", options: ["worker"], valueOptions: ["worker"] },
   { route: "worker restart", handler: "runtime-restart", options: ["worker"], valueOptions: ["worker"] },

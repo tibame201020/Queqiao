@@ -5,7 +5,7 @@ import path from "node:path";
 import { isIP } from "node:net";
 import selfsigned from "selfsigned";
 import { cancel, intro, isCancel, outro, password, text } from "@clack/prompts";
-import { runtimeConfigSchema, readRuntimeConfig, readRuntimeConfigForRepair, workspaceConfigSchema, type RuntimeConfig, type WorkspaceConfig } from "@queqiao/config";
+import { runtimeConfigSchema, readRuntimeConfig, readRuntimeConfigForRepair, workspaceConfigSchema, type RuntimeConfig, type WorkspaceConfig, type WorkerProcessConfig } from "@queqiao/config";
 import { AtomicConfigStore } from "./atomic-config-store.js";
 import { resolveWorkspaceAuthorityRoot, workspaceRootsEqual } from "./workspace-authority.js";
 import { uniqueWorkspaceId } from "./workspace-cli.js";
@@ -23,7 +23,7 @@ function assertAllowedOptions(args: string[], command: string, allowed: readonly
 }
 export type JoinPrompt = (field: "code" | "protocols", message: string) => Promise<string>;
 export type WorkerSetupPrompt = (field: "port", message: string, initialValue: string) => Promise<string>;
-export type WorkerSetupOptions = { initialWorkspace?: WorkspaceConfig };
+export type WorkerSetupOptions = { initialWorkspace?: WorkspaceConfig; process?: WorkerProcessConfig };
 export type GatewaySetupPrompt = (field: "public-base-url", message: string, initialValue?: string) => Promise<string>;
 
 type JoinCodeEnvelope = {
@@ -880,7 +880,7 @@ export async function setupWorker(configFile: string, args: string[], secretsDir
     if (!workspaces.length) throw new Error("Worker setup requires at least one authorized Workspace");
     const next = runtimeConfigSchema.parse({
       ...current,
-      worker: { ...existingWorker, listen: { ...existingWorker.listen, port } },
+      worker: { ...existingWorker, listen: { ...existingWorker.listen, port }, ...(options.process ? { process: options.process } : {}) },
       workspaces,
     });
     await persistRuntimeConfig(configFile, next, true);
@@ -894,7 +894,7 @@ export async function setupWorker(configFile: string, args: string[], secretsDir
   await writeFile(tokenFile, `${randomBytes(32).toString("base64url")}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
   try {
     await secureRuntimeFile(tokenFile);
-    const next = runtimeConfigSchema.parse({ ...current, worker: { workerId: randomUUID(), environmentId, listen: { host: "127.0.0.1", port }, tokenFile }, workspaces });
+    const next = runtimeConfigSchema.parse({ ...current, worker: { workerId: randomUUID(), environmentId, listen: { host: "127.0.0.1", port }, tokenFile, ...(options.process ? { process: options.process } : {}) }, workspaces });
     await persistRuntimeConfig(configFile, next);
     if (!portArg && !prompt) outro(`Worker setup complete: ${environmentId}`);
     return { setup: true, mode: "create", role: "worker", file: configFile, workerId: next.worker?.workerId, environmentId, port, workspaceCount: workspaces.length };

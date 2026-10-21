@@ -3,7 +3,7 @@ import path from "node:path";
 import { createServer } from "node:net";
 import { hostname as systemHostname, networkInterfaces as systemNetworkInterfaces, type NetworkInterfaceInfo } from "node:os";
 import { cancel, intro, isCancel, outro } from "@clack/prompts";
-import { effectiveGatewayWorkerSessionPort, readRuntimeConfig, readRuntimeConfigForRepair } from "@queqiao/config";
+import { effectiveGatewayWorkerSessionPort, readRuntimeConfig, readRuntimeConfigForRepair, workerProcessConfigSchema, type WorkerProcessConfig } from "@queqiao/config";
 import {
   resolveNamedRoleConfigRoot,
   resolveRuntimeLayoutForNamedRole,
@@ -423,6 +423,28 @@ export async function runRoleSetupWizard(
     if (creating || !configuredWorkspaces.length) {
       setupOptions.initialWorkspace = await collectInitialWorkspace(prompts, Boolean(injectedPrompts), accessProfileStore);
     }
+    // Shared Worker capacity, not one quota per Workspace. Every prompt displays the
+    // effective value from the schema, including in legacy configs without process.
+    const defaults = workerProcessConfigSchema.parse({});
+    const fields: Array<{ key: keyof WorkerProcessConfig; title: string; max: number }> = [
+      { key: "foregroundConcurrency", title: "Foreground concurrency", max: 8 },
+      { key: "backgroundConcurrency", title: "Background concurrency", max: 8 },
+      { key: "sessionConcurrency", title: "Session concurrency", max: 8 },
+      { key: "jobQueueLimit", title: "Job queue limit", max: 256 },
+      { key: "jobRetentionMs", title: "Job retention (ms)", max: 86_400_000 },
+    ];
+    const process = { ...defaults, ...current?.worker?.process };
+    for (const field of fields) {
+      const minimum = field.key === "jobQueueLimit" ? 0 : 1;
+      const value = await prompts.text(
+        hint(field.title, `Worker-wide; default ${defaults[field.key]}. Requires Worker restart.`),
+        String(process[field.key]),
+        (raw) => /^(0|[1-9][0-9]*)$/.test(raw) && Number(raw) >= minimum && Number(raw) <= field.max
+          ? undefined : `${field.title} must be an integer from ${minimum} to ${field.max}`,
+      );
+      process[field.key] = Number(value);
+    }
+    setupOptions.process = workerProcessConfigSchema.parse(process);
     const primitive = dependencies.setupWorker ?? setupWorkerPrimitive;
     result = await primitive(layout.configFile, setupArgs, layout.secretsDir, undefined, setupOptions);
     if (!creating && current?.worker?.memberships?.length) {

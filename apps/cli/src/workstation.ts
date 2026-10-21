@@ -365,7 +365,7 @@ export async function executeWorkstationFlowAction(
     const record = outcomeRecord(value);
     const label = action.role === "gateway" ? "Gateway" : "Worker";
     return actionOutcome("success", `${label} configured`, {
-      summary: record.mode === "create" ? "Configuration created." : "Configuration updated.",
+      summary: record.mode === "create" ? "Configuration created." : action.role === "worker" ? "Configuration saved. Restart this Worker to apply process capacity changes." : "Configuration updated.",
       details: [
         { label, value: action.name || outcomeValue(record.name) },
         ...(record.mode ? [{ label: "Mode", value: outcomeValue(record.mode) }] : []),

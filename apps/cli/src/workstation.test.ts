@@ -99,6 +99,22 @@ describe("Queqiao Workstation", () => {
     expect(renderWorkstationSummary(snapshot, false)).toContain("Getting started");
   });
 
+  it("routes Worker Configure prompts through Workstation and warns of the required restart", async () => {
+    const text = vi.fn(async (message: string, initial = "") =>
+      message.includes("Foreground concurrency") ? "4" : initial);
+    const setupRole = vi.fn(async (_role: string, _args: string[], deps: any) => {
+      expect(await deps.prompts.text("Foreground concurrency", "8")).toBe("4");
+      return { mode: "edit", name: "wins-worker" };
+    });
+    const result = await executeWorkstationFlowAction(
+      { type: "setup-role", role: "worker", name: "wins-worker" },
+      promptDriver({ text }), { setupRole },
+    );
+    expect(setupRole).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ status: "success", title: "Worker configured",
+      summary: expect.stringContaining("Restart this Worker") });
+  });
+
   it("dispatches direct runtime actions through existing lifecycle handlers", async () => {
     const stopRuntime = vi.fn(async () => ({ stopped: true }));
     const result = await executeWorkstationDirectAction(
