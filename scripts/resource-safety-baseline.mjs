@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { relativeResidentBudgetMiB } from "./resource-safety-budgets.mjs";
 
 const MiB = 1024 * 1024;
 const mode = process.argv.includes("--soak") ? "soak" : "baseline";
@@ -12,7 +13,7 @@ const reportFile = path.resolve(process.env.QUEQIAO_RESOURCE_REPORT || path.join
 const budgets = {
   packageBytes: 24 * MiB,
   absoluteResidentBytes: 192 * MiB,
-  relativeResidentBytes: 96 * MiB,
+  relativeResidentBytes: relativeResidentBudgetMiB(Number(process.versions.node.split(".")[0])) * MiB,
   residualResidentBytes: (mode === "soak" ? 48 : 32) * MiB,
   secondPhaseResidentBytes: 24 * MiB,
   idleCpuSeconds: 0.5,

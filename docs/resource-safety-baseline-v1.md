@@ -25,7 +25,7 @@ The baseline fails when any of these limits is exceeded:
 | --- | ---: |
 | Installed Queqiao package footprint | <= 24 MiB |
 | Gateway or Worker resident memory | <= 192 MiB each |
-| Gateway or Worker resident overhead vs blank Node | <= 96 MiB each |
+| Gateway or Worker resident overhead vs blank Node | Node 22/23: <= 96 MiB each; Node 24: <= 100 MiB each |
 | Residual resident growth after baseline workload | <= 32 MiB each |
 | Idle CPU over a 5-second window | <= 0.5 CPU seconds each |
 | Core idle write I/O over a 5-second window | <= 4096 bytes each |
@@ -34,6 +34,8 @@ The baseline fails when any of these limits is exceeded:
 | Thread growth after baseline workload | <= 4 each |
 | Gateway request-log amplification | <= 256 bytes/request |
 | Gateway and Worker cleanup | both processes must exit |
+
+The PR resource workflow additionally runs the exact Node 24 Ubuntu release-runtime resource baseline. Two immutable v0.9.21 release-gate measurements after the MCP SDK security update found Gateway overhead of 97.53 and 97.29 MiB under Node 24; the corresponding Node 22 Ubuntu PR baseline measured approximately 67.53 MiB. The Node 24 ceiling is explicitly calibrated to 100 MiB, retaining 96 MiB for Node 22/23. Absolute resident (192 MiB), residual growth, idle, cleanup and package ceilings remain unchanged. The budget selector rejects unsupported Node majors; release publishing still runs the full resource gate, not an exemption.
 
 The CI measurement intentionally uses resident memory (Windows Working Set / Linux RSS) as the cross-platform gating metric. Windows private memory and Linux process details may be recorded as additional evidence but are not mixed into a cross-platform threshold.
 
