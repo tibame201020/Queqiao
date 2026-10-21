@@ -514,7 +514,7 @@ export async function executeWorkstationFlowAction(
       "Worker protocols",
       protocolState.offers.map((offer) => ({
         value: offer.type,
-        label: offer.type === "grpc" ? "gRPC" : "HTTP",
+        label: offer.type === "grpc" ? "gRPC" : offer.type === "websocket" ? "WebSocket" : "HTTP",
         description: describeGatewayProtocolOffer(offer),
         disabled: !offer.capable,
       })),

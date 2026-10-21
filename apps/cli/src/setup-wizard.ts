@@ -432,7 +432,7 @@ export async function runRoleSetupWizard(
         const state = await (dependencies.inspectWorkerProtocols ?? inspectWorkerMembershipProtocols)(layout.configFile, membership.gateway);
         const choices = state.offers.map((offer) => ({
           value: offer.type,
-          label: offer.type === "grpc" ? "gRPC" : "HTTP",
+          label: offer.type === "grpc" ? "gRPC" : offer.type === "websocket" ? "WebSocket" : "HTTP",
           description: describeGatewayProtocolOffer(offer),
           disabled: !offer.capable,
         }));

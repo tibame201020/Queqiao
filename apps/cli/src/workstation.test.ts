@@ -275,6 +275,7 @@ describe("Queqiao Workstation", () => {
       gateway: "https://remote.example/gateway/",
       offers: [
         { type: "http" as const, capable: true },
+        { type: "websocket" as const, capable: true, connection: { url: "wss://remote.example/gateway/worker-session" } },
         { type: "grpc" as const, capable: true, connection: { target: "remote.example:7573", security: "tls" as const, caCertificate: "certificate" } },
       ],
     }));
@@ -296,8 +297,9 @@ describe("Queqiao Workstation", () => {
     expect(inspectJoinProtocols).toHaveBeenCalledWith(joinCode);
     expect(multi).toHaveBeenCalledWith("Worker protocols", expect.arrayContaining([
       expect.objectContaining({ value: "http", label: "HTTP", disabled: false }),
+      expect.objectContaining({ value: "websocket", label: "WebSocket", disabled: false }),
       expect.objectContaining({ value: "grpc", label: "gRPC", disabled: false }),
-    ]), ["http", "grpc"]);
+    ]), ["http", "websocket", "grpc"]);
     expect(joinWorker).toHaveBeenCalledWith(expect.any(String), ["worker", "join", "--worker", "wins-worker", "--join-code", joinCode, "--protocols", "http"]);
     expect(result).toMatchObject({ status: "success", title: "Worker joined Gateway" });
     expect(JSON.stringify(result)).not.toContain(joinCode);
