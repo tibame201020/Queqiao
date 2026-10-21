@@ -25,6 +25,34 @@ const manifest = {
   }],
 };
 
+describe("Worker process capacity configuration", () => {
+  const worker = { environmentId: "windows", tokenFile: "worker.secret", listen: { port: 7576 } };
+
+  it("upgrades legacy Worker configs to bounded default 8 and retains existing queue defaults", () => {
+    const parsed = runtimeConfigSchema.parse({ ...base, worker });
+    expect(parsed.worker?.process).toEqual({
+      foregroundConcurrency: 8, backgroundConcurrency: 8, sessionConcurrency: 8,
+      jobQueueLimit: 32, jobRetentionMs: 900_000,
+    });
+  });
+
+  it("accepts independent Worker-local capacity overrides", () => {
+    const process = { foregroundConcurrency: 4, backgroundConcurrency: 6, sessionConcurrency: 3, jobQueueLimit: 64, jobRetentionMs: 120_000 };
+    expect(runtimeConfigSchema.parse({ ...base, worker: { ...worker, process } }).worker?.process).toEqual(process);
+  });
+
+  it("rejects unbounded and malformed concurrency and queue/retention values", () => {
+    for (const key of ["foregroundConcurrency", "backgroundConcurrency", "sessionConcurrency"] as const) {
+      for (const invalid of [0, 9, -1, 1.5, "8"]) {
+        expect(() => runtimeConfigSchema.parse({ ...base, worker: { ...worker, process: { [key]: invalid } } })).toThrow();
+      }
+    }
+    for (const process of [{ jobQueueLimit: -1 }, { jobQueueLimit: 100000 }, { jobRetentionMs: 0 }, { jobRetentionMs: -1 }, { jobRetentionMs: "900000" }]) {
+      expect(() => runtimeConfigSchema.parse({ ...base, worker: { ...worker, process } })).toThrow();
+    }
+  });
+});
+
 describe("extension config schema", () => {
   it("accepts an explicitly trusted local extension with Worker host and Workspace scope", () => {
     const parsed = runtimeConfigSchema.parse({ ...base, extensions: [{ trusted: true, source: { kind: "local-module", module: "extensions/git.mjs" }, activation: { kind: "workspaces", workspaceIds: ["alpha"] }, manifest }] });

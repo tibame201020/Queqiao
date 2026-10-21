@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.20 - 2026-10-21
+
+- Makes Worker-wide foreground/background/session process concurrency configurable through optional `worker.process` in version-1 YAML, with independent validated limits of 1–8 and upgraded defaults of 8.
+- Makes durable Job queue capacity and completed-Job retention configurable (defaults remain 32 queued jobs and 15 minutes); existing Worker configs load without migration.
+- Verifies schema rejection, defaults, and Worker ProcessRunner wiring through CI regression tests.
+- Updates MCP Express/Server SDK and transitive Hono to patched versions so the existing production dependency audit gate remains enforceable.
+
 ## 0.9.19 - 2026-10-08
 
 - Completes synchronous run/shell results after confirmed native process exit and a bounded output drain. Windows PowerShell commands that launch background services with inherited output handles no longer retain foreground capacity indefinitely.

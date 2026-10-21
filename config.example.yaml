@@ -28,6 +28,13 @@ worker:
     host: 127.0.0.1
     port: 7576
   tokenFile: /replace/with/queqiao/data/secrets/worker-token.secret
+  # Worker-wide process pools; each concurrency value must be an integer from 1 to 8.
+  process:
+    foregroundConcurrency: 8
+    backgroundConcurrency: 8
+    sessionConcurrency: 8
+    jobQueueLimit: 32
+    jobRetentionMs: 900000
   # Created automatically after a successful remote `worker join`:
   # reverseSession:
   #   target: gateway.local:7573

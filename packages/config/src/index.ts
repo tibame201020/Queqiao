@@ -197,12 +197,23 @@ export const installedExtensionSchema = z.object({
   manifest: extensionManifestSchema,
 });
 
+// All process pools are Worker-wide (shared by its Workspaces), not per Workspace.
+export const workerProcessConfigSchema = z.object({
+  foregroundConcurrency: z.number().int().min(1).max(8).default(8),
+  backgroundConcurrency: z.number().int().min(1).max(8).default(8),
+  sessionConcurrency: z.number().int().min(1).max(8).default(8),
+  jobQueueLimit: z.number().int().min(0).max(256).default(32),
+  jobRetentionMs: z.number().int().min(1).max(86_400_000).default(900_000),
+}).prefault({});
+export type WorkerProcessConfig = z.infer<typeof workerProcessConfigSchema>;
+
 export const workerConfigSchema = z.object({
   version: z.literal(QUEQIAO_CONFIG_VERSION),
   workerId: workerIdSchema,
   environmentId: environmentIdSchema,
   gatewayUrl: z.url(),
   credentialsFile: z.string().min(1),
+  process: workerProcessConfigSchema,
   workspaces: z.array(workspaceConfigSchema),
 });
 
@@ -276,6 +287,7 @@ const runtimeConfigBaseSchema = z.object({
     listen: z.object({ host: z.literal("127.0.0.1").default("127.0.0.1"), port: z.number().int().min(1).max(65535).default(7576) }),
     // Local control credential used only by CLI/Workstation -> local Worker control APIs.
     tokenFile: z.string().min(1),
+    process: workerProcessConfigSchema,
     memberships: z.array(z.object({
       gateway: z.url().transform((value) => new URL(value).href),
       credentialRef: z.object({ kind: z.literal("secret-file"), path: z.string().min(1).max(4096) }),

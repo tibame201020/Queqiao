@@ -5,9 +5,9 @@
   "type": "module",
   "dependencies": {
     "@grpc/grpc-js": "^1.14.5",
-    "@modelcontextprotocol/express": "2.0.0",
+    "@modelcontextprotocol/express": "2.0.2",
     "@modelcontextprotocol/node": "2.0.0",
-    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/server": "2.3.1",
     "@queqiao/audit": "0.1.0",
     "@queqiao/browser-harness-runtime": "0.1.0",
     "@queqiao/config": "0.1.0",
